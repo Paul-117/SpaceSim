@@ -1,0 +1,480 @@
+SPACESIM VERSION 1.0 - IMPLEMENTIERUNGSÜBERSICHT
+==============================================
+
+ZWECK DIESES DOKUMENTS
+
+Dieses Dokument beschreibt den implementierten Stand von SpaceSim v1.0.
+Es dient als Kontext für eine andere KI. Implementierte Funktionen und lediglich
+vorbereitete Erweiterungsmöglichkeiten werden ausdrücklich unterschieden.
+
+Versionsbezug:
+- Projektversion: 1.0.0
+- Git-Tag: v1.0 (annotiert)
+- Commit: ace9b64fc11c65899ab753463350c0a6c231de87
+- Commit-Nachricht: Release SpaceSim 1.0
+- Branch: main
+- Repository: lokal; noch kein Remote-Repository eingerichtet
+- Dieses Übersichtsdokument wurde nach dem Versions-Commit erstellt und ist
+  selbst nicht Bestandteil des Tags v1.0.
+
+1. PROJEKTZIEL UND SPIELBARER UMFANG
+
+SpaceSim ist ein erster spielbarer Raumschiff-Simulator in 2D-Top-Down-Ansicht.
+Der Spieler steuert ein Schiff mit newtonscher Trägheit und beschießt statische
+Ziele mit einer automatisch ladenden Energiewaffe, der Lanze.
+
+Das Testgefecht läuft endlos. Getroffene Ziele werden ersetzt. Beim Weiterflug
+werden sehr weit entfernte Ziele ebenfalls durch neue lokale Ziele ersetzt.
+Es gibt kein Hauptmenü; die Testszene startet direkt.
+
+Langfristig sollen reale Cockpit- und Systemstationen mit einem zentralen
+Simulationsrechner kommunizieren. Diese Kommunikation ist noch nicht umgesetzt.
+
+2. TECHNISCHER STACK
+
+- Windows
+- Godot 4.7.2 .NET, Compatibility-Renderer
+- C# und .NET 10; lokal mit SDK 10.0.401 geprüft
+- System.Numerics für Vector3 und Quaternion im Simulationskern
+- Keine zusätzlichen NuGet-Pakete außer den notwendigen Godot-Paketen
+- Lokale Godot-Pakete aus GodotSharp/Tools/nupkgs über NuGet.Config
+- Automatisierte Core-Tests als Konsolenprogramm ohne Testframework-Paket
+
+3. ARCHITEKTUR UND ZUSTANDSHOHEIT
+
+Der C#-Simulationskern SpaceSim.Core ist Eigentümer des Spielzustands.
+Er besitzt keine Godot-Abhängigkeit. Godot übernimmt Eingabe, Darstellung,
+Kamera, HUD und Szenenverwaltung.
+
+Datenfluss:
+
+Tastatur
+  -> KeyboardShipControl / IShipControl
+  -> ShipCommand
+  -> Simulation.Step()
+  -> WorldState und SimulationEvent-Liste
+  -> Godot-Darstellung und HUD
+
+Ein Sprite oder gezeichneter Strahl ist nicht das eigentliche Spielobjekt.
+Treffer, Bewegung und Waffenladung werden ausschließlich im Core berechnet.
+Die öffentlichen Zustandsmodelle sind außerhalb des Core nur lesbar.
+
+WorldState enthält:
+- Schiffszustand
+- Lanzenzustand
+- Statische Ziele
+- Trefferzähler
+- Tick-Zähler und daraus abgeleitete Simulationszeit
+
+Ein Simulationsschritt verarbeitet in dieser Reihenfolge:
+1. Ereignisliste des vorherigen Schritts leeren.
+2. Schiff und Flugphysik aktualisieren.
+3. Lanze laden und gegebenenfalls einen Schuss berechnen.
+4. Zielpopulation auffüllen und entfernte Ziele ersetzen.
+5. Tick-Zähler erhöhen.
+
+4. FESTER SIMULATIONSTAKT
+
+Die Simulation läuft mit 60 Ticks pro Simulationssekunde.
+Jeder Aufruf von Simulation.Step() entspricht genau 1/60 Sekunde.
+Godot ruft die Simulation aus _PhysicsProcess auf.
+
+Für die Flugphysik wird semi-implizites Euler verwendet: Zuerst wird die
+Geschwindigkeit aus der Beschleunigung aktualisiert, anschließend die Position
+mit dieser Geschwindigkeit fortgeschrieben.
+
+Die Darstellung interpoliert zwischen vorherigem und aktuellem Zustand.
+Diese Interpolation verändert den Core-Zustand nicht.
+Unter starker Rechnerlast kann Simulationszeit langsamer als reale Zeit laufen.
+
+5. SCHIFFSMODELL UND VORBEREITUNG AUF 3D
+
+ShipState enthält:
+- Vector3 Position
+- Vector3 Velocity
+- Quaternion Rotation
+- Vector3 AngularVelocity
+- Masse in kg
+- Yaw-Trägheitsmoment in kg*m²
+
+Die lokale Schiffsnase zeigt nach -Z.
+In v1.0 gelten folgende Bewegungsregeln:
+- Bewegung auf der X/Z-Ebene
+- Y bleibt 0
+- Rotation ausschließlich um die Y-Achse (Yaw)
+- Kein Pitch und kein Roll
+
+Godot bildet Welt-X/Z auf Bildschirm-X/Y ab.
+Das Datenmodell ist bereits räumlich. Freie 3D-Physik ist jedoch noch nicht
+implementiert: Dafür müssen Integrator, Trägheitsmodell und Commands erweitert
+werden. Ein vollständiger 3D-Trägheitstensor fehlt.
+
+6. FLUGPHYSIK UND TRIEBWERKE
+
+Implementiert:
+- Vorwärtsschub relativ zur aktuellen Schiffsausrichtung
+- Rückwärtsschub relativ zur aktuellen Schiffsausrichtung
+- Linkes und rechtes Drehmoment
+- Erhaltung linearer Geschwindigkeit ohne Schub
+- Erhaltung der Winkelgeschwindigkeit ohne Drehmoment
+- Abbremsen und Umkehren der Rotation durch Gegendrehmoment
+- Keine künstliche Reibung
+- Keine automatische Stabilisierung oder Geschwindigkeitsreduktion
+- Keine künstliche Maximalgeschwindigkeit
+
+Berechnung:
+- Lineare Beschleunigung = resultierende Schubkraft / Schiffsmasse
+- Winkelbeschleunigung = resultierendes Drehmoment / Yaw-Trägheitsmoment
+- Schubrichtung wird aus dem Orientierungsquaternion abgeleitet
+- Die Orientierung wird pro Tick aktualisiert und normalisiert
+
+Die Beschleunigung verändert die Geschwindigkeit; sie setzt sie nicht direkt.
+Das Loslassen einer Taste bremst deshalb nicht.
+Rückwärtsschub bremst die gesamte Bewegung nur bei passender Schiffsausrichtung.
+
+7. STEUERUNG UND EINGABE-ABSTRAKTION
+
+Tasten:
+- W: Haupttriebwerk / Vorwärtsschub
+- S: Rückwärtsschub
+- A: Drehmoment nach links
+- D: Drehmoment nach rechts
+- Leertaste: Lanze einmal abfeuern, sofern bereit
+
+ShipCommand besitzt die neutralen Felder:
+- MainThrust
+- ReverseThrust
+- YawLeft
+- YawRight
+- FireLance
+
+IShipControl definiert ReadCommand().
+KeyboardShipControl ist der derzeit implementierte Eingabeadapter.
+Die Simulation selbst fragt keine Tastatur ab.
+
+FireLance ist ein Impuls. Der Tastaturadapter unterdrückt automatische
+Tastenwiederholungen. Halten der Leertaste erzeugt kein Dauerfeuer.
+
+Bei Fokusverlust werden Eingaben deaktiviert und ein vorgemerkter Feuerimpuls
+verworfen. Die Simulation läuft währenddessen weiter.
+
+Andere Eingabequellen können später Commands liefern. Hardware-, Netzwerk-
+oder Autopilotadapter existieren in v1.0 noch nicht.
+
+8. WAFFE: LANZE
+
+Implementiertes Verhalten:
+- Startet ungeladen
+- Lädt automatisch in 3 Simulationssekunden
+- Ladung von 0 bis 100 Prozent
+- Bei voller Ladung feuerbereit
+- Frühe Feuerbefehle werden verworfen und nicht für später gespeichert
+- Ein gültiger Schuss setzt die Ladung sofort auf 0
+- Anschließend beginnt das automatische Nachladen
+- Reichweite: 1.600 Meter
+
+Trefferberechnung:
+- Im Core wird ein Ray ab der Schiffsposition in Blickrichtung ausgewertet.
+- Ziele werden mathematisch als Kugeln behandelt.
+- Der nächste Schnitt mit einer Zieloberfläche innerhalb der Reichweite zählt.
+- Das erste getroffene Ziel blockiert dahinterliegende Ziele.
+- Ziele hinter dem Schiff oder außerhalb des Strahls werden nicht getroffen.
+- Es wird kein langsam fliegendes Projektil erzeugt.
+
+Bei einem Treffer:
+1. Ziel sofort entfernen.
+2. Trefferzähler erhöhen.
+3. Trefferereignis ausgeben.
+4. Zielpopulation im selben Simulationsschritt wieder auffüllen.
+
+Darstellung:
+- WeaponFired enthält Start- und Endpunkt des berechneten Strahls.
+- Godot zeichnet daraus für etwa 0,16 Sekunden einen Lichtstrahl.
+- Bei einem Treffer erscheint für etwa 0,35 Sekunden ein expandierender Ring.
+- Die visuellen Effekte haben keinen Einfluss auf das Trefferergebnis.
+
+9. STATISCHE ZIELE UND ENDLOSES TESTGEFECHT
+
+- Standardmäßig 12 Ziele gleichzeitig
+- Eindeutige, fortlaufende Ziel-IDs
+- Zielradius: 14 Meter
+- Ziele bewegen sich nicht und folgen dem Schiff nicht
+- Neue Ziele entstehen im Ring zwischen 180 und 750 Metern um das Schiff
+- Zufällige Positionen sind gleichmäßig über die Ringfläche verteilt
+- Bis zu 32 Platzierungsversuche reduzieren Überlappungen zwischen Zielen;
+  eine vollständige Überlappungsfreiheit ist bei dichten Einstellungen nicht
+  garantiert
+- Der Mindestabstand zum Schiff ist größer als der Zielradius
+- Ziele weiter als 2.000 Meter vom Schiff werden entfernt und lokal ersetzt
+- Dieses Ersetzen zählt nicht als Treffer
+- Die Zielpopulation bleibt begrenzt
+
+Der Zufallsgenerator verwendet standardmäßig den Seed 42. Dadurch sind die
+zufällig erzeugten Positionen bei gleichem Ablauf reproduzierbar.
+Seed und definierte Anfangspositionen lassen sich für Tests vorgeben.
+
+10. EREIGNISSE UND AUSGABEN
+
+Vorhandene Ereignistypen:
+- WeaponFired: Startpunkt, Endpunkt und gegebenenfalls getroffene Ziel-ID
+- TargetHit: Ziel-ID und Zielposition
+- TargetSpawned: Ziel-ID und Zielposition
+- TargetDespawned: Ziel-ID
+
+Die Ereignisse sind unveränderliche C#-Records ohne Event-Bus-Bibliothek.
+Simulation.Events enthält die Ereignisse des letzten abgeschlossenen Ticks.
+Sie müssen vor dem nächsten Step verarbeitet oder kopiert werden.
+Direkt nach dem Konstruktor enthält die Liste die initialen Spawnereignisse.
+
+Es handelt sich um eine lokale Ausgabe. Netzwerkübertragung, dauerhafte
+Ereignisspeicherung und garantierte Zustellung sind nicht implementiert.
+
+11. GODOT-DARSTELLUNG
+
+Implementiert:
+- Dunkler Weltraumhintergrund
+- Prozeduraler Sternenhimmel mit zwei Parallaxebenen
+- Geometrisches Schiff mit klar erkennbarer Nase
+- Sichtbare Effekte für Haupt-, Rückwärts- und Drehtriebwerke
+- Orange Zielmarkierungen mit ID und Entfernung
+- Kurz sichtbarer Lanzenstrahl und Trefferring
+- Kamera, die dem Schiff folgt
+- Gestrichelte Visierlinie in Blickrichtung
+- Türkisfarbener Pfeil für die Bewegungsrichtung
+- Randpfeil zum nächsten Ziel, wenn dieses außerhalb des zentralen
+  Sichtbereichs liegt
+
+Der Sternenhimmel wird aus gehashten Kacheln erzeugt. Dadurch gibt es keinen
+sichtbaren Hintergrundrand und keinen ständig wachsenden Sternen-Objektpool.
+Es werden keine externen Grafikassets benötigt.
+
+Darstellungsmaßstab: 0,85 Pixel pro Meter.
+Die Standardansicht ist auf 1280 x 800 ausgelegt.
+
+12. HUD
+
+Angezeigt werden:
+- Geschwindigkeitsbetrag in m/s
+- Winkelgeschwindigkeit mit Vorzeichen in rad/s
+- Lanzenladung in Prozent und als Balken
+- READY bei voller Ladung, ansonsten LÄDT
+- Trefferzahl
+- Aktuelle Zielanzahl
+- Weltposition X/Z
+- Schiffskurs in Grad
+- Simulationszeit in Sekunden
+- Tastenhinweise und aktive Steuerbefehle
+- Hinweis auf deaktivierte Eingabe bei Fokusverlust
+
+Das HUD liest den vollständigen lokalen WorldState.
+Es ist eine Entwicklungs- und Cockpitanzeige, noch keine durch Sensorzugriff
+eingeschränkte externe Station.
+
+13. ZENTRALE PARAMETER
+
+Simulationsparameter in:
+SpaceSim.Core/Simulation/SimulationSettings.cs
+
+- Simulationstakt: 60 Hz
+- Schiffsmasse: 12.000 kg
+- Hauptschub: 144.000 N
+- Daraus resultierende Vorwärtsbeschleunigung: 12 m/s²
+- Rückwärtsschub: 72.000 N
+- Daraus resultierende Rückwärtsbeschleunigung: 6 m/s²
+- Yaw-Drehmoment: 54.000 N*m
+- Yaw-Trägheitsmoment: 90.000 kg*m²
+- Daraus resultierende Winkelbeschleunigung: 0,6 rad/s²
+- Lanzenladezeit: 3 s
+- Lanzenreichweite: 1.600 m
+- Zielanzahl: 12
+- Zielradius: 14 m
+- Spawnentfernung: 180 bis 750 m
+- Entfernung für Zielersetzung: über 2.000 m
+
+Darstellungsparameter in:
+SpaceSim.Godot/Rendering/ViewSettings.cs
+
+- Maßstab: 0,85 Pixel pro Meter
+- Strahldauer: 0,16 s
+- Trefferringdauer: 0,35 s
+- Gemeinsame Farben für Schiff, Ziele und HUD
+
+Ungültige physikalische Einstellungen und unzulässige Anfangszustände werden
+bei der Erstellung einer Simulation zurückgewiesen.
+
+14. AUTOMATISIERTE TESTS UND BISHERIGE PRÜFUNG
+
+SpaceSim.Core.Tests ist ein Konsolen-Testläufer mit 19 Testfällen:
+
+1. Ohne Schub bleibt Geschwindigkeit erhalten; Position wird fortgeschrieben.
+2. Hauptschub wirkt entlang einer gedrehten Schiffsnase.
+3. Nach Loslassen des Schubs bleibt die erreichte Geschwindigkeit erhalten.
+4. Rotation besitzt nach Loslassen des Drehmoments Trägheit.
+5. Gegendrehmoment bremst und kehrt Winkelgeschwindigkeit um.
+6. Rückwärtsschub wirkt relativ zur Schiffsausrichtung.
+7. Ebenenregel und Quaternion-Normalisierung bestehen über 36.000 Ticks.
+8. Es gibt kein künstliches Geschwindigkeitslimit.
+9. Die Lanze benötigt genau drei Sekunden Ladezeit.
+10. Frühes Feuern wird verworfen und nicht gespeichert.
+11. Ein Schuss entlädt die Waffe, erzeugt ein Ereignis und erlaubt Nachladen.
+12. Ein Ziel auf dem Strahl wird sofort getroffen, gezählt und ersetzt.
+13. Ein Ziel außerhalb des Strahls wird verfehlt.
+14. Das nächste Ziel blockiert dahinterliegende Ziele.
+15. Ziele hinter dem Schiff und außerhalb der Reichweite werden verfehlt.
+16. Die Lanzenrichtung folgt der Schiffsausrichtung.
+17. Zielplatzierung hält den Spawnring ein und ist mit gleichem Seed wiederholbar.
+18. Ziele bleiben statisch; entfernte Ziele werden ohne Trefferwertung ersetzt.
+19. Ungültige physikalische Einstellungen werden zurückgewiesen.
+
+Die Core-Tests benötigen keinen Godot-Prozess und keinen Editor.
+Sie melden PASS/FAIL und liefern bei Fehlern Exitcode 1.
+
+Zusätzlich implementiert:
+- Godot-Smoke-Test mit 240 Ticks in der echten Szene. Prüft Schuss- und
+  Trefferereignisse, Trefferzähler, Beschleunigung und Rotation.
+- Prüfung der Import- und Smoke-Test-Logs auf Fehler durch scripts/Test.ps1.
+- Optionaler grafischer Screenshot-Modus über --capture=<absoluter Pfad>.
+
+Bisherige Prüfergebnisse:
+- Beim Speichern von v1.0: Debug-Build erfolgreich, keine Warnungen oder Fehler.
+- Beim Speichern von v1.0: alle 19 Core-Tests bestanden.
+- Während der vorangegangenen Implementierung: ExportRelease-Build erfolgreich,
+  Godot-Smoke-Test bestanden und grafischer Start samt Screenshots geprüft.
+- Die anschließende Umstellung auf v1.0 änderte Versionsangaben und ergänzte
+  Git-Dokumentation; die Spiellogik blieb dabei unverändert.
+
+15. PROJEKTSTRUKTUR
+
+SpaceSim.sln
+  Gemeinsame Projektmappe für Core, Tests und Godot.
+
+SpaceSim.Core/
+  Simulation/   Simulation, Einstellungen, WorldState und Ereignisse
+  Ships/        Schiffszustand, Commands, Eingabeschnittstelle und Flugphysik
+  Weapons/      Lanzenzustand und Trefferberechnung
+  Targets/      Statische Ziele, Platzierung und Ersetzung
+
+SpaceSim.Core.Tests/
+  Program.cs    Die 19 automatisierten Core-Testfälle
+
+SpaceSim.Godot/
+  project.godot       Godot-Projekteinstellungen und Startszene
+  SpaceSim.Godot.sln  Projektmappe für den Godot-Editor
+  Flight.cs          Verbindung zwischen Simulation, Eingabe und Darstellung
+  Scenes/            Direkt startende Flight-Szene
+  Input/             KeyboardShipControl
+  Rendering/         Schiff, Ziele, Strahl, Sternenhimmel und Darstellungswerte
+  UI/                FlightHud
+
+scripts/
+  Build.ps1     Build der Projektmappe
+  Test.ps1      Core-Tests und optionaler Godot-Smoke-Test
+  Start.ps1     Spiel- oder Editorstart
+
+Start.cmd               Start per Doppelklick
+README.md               Einrichtung, Architektur, Steuerung und Einschränkungen
+Plan                    Unveränderter ursprünglicher Projektauftrag
+NuGet.Config            Lokale Godot-Paketquelle
+global.json             Auswahl des .NET-SDK
+Directory.Build.props   Gemeinsame C#-Einstellungen und Version 1.0.0
+.gitignore              Ausschluss von Engine-Binärdateien, Builds und Caches
+.gitattributes          Behandlung von Textdateien und Zeilenenden
+
+16. STARTEN, BAUEN UND TESTEN
+
+Voraussetzung: .NET SDK 10.0.x sowie Godot 4.7.2 .NET im Ordner
+Godot_v4.7.2-stable_mono_win64/ neben den Projektverzeichnissen.
+
+Einfacher Spielstart:
+Start.cmd doppelklicken.
+
+Build aus dem Workspace-Stamm:
+dotnet build SpaceSim.sln
+
+Core-Tests ohne Editor:
+dotnet run --project SpaceSim.Core.Tests
+
+Build, Core-Tests und Godot-Smoke-Test:
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test.ps1 -GodotSmoke
+
+Editorstart:
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1 -Editor
+
+Alternativ SpaceSim.Godot/project.godot im Godot-.NET-Editor importieren und
+mit F5 starten.
+
+Verfügbare Build-Konfigurationen:
+- Debug
+- ExportDebug
+- ExportRelease
+
+Die Core-Projekte werden dabei passend als Debug oder Release gebaut.
+Ein vollständiger eigenständiger Spiel-Export oder Installer ist noch nicht
+Bestandteil des Projekts.
+
+17. GIT UND VERSIONIERUNG
+
+Der erste gespeicherte Stand umfasst 44 Dateien.
+Der Tag v1.0 verweist auf den Versions-Commit und bleibt beim Weiterentwickeln
+auf diesem Stand stehen.
+
+Ausgeschlossen sind insbesondere:
+- Der Godot-Binärordner
+- bin/ und obj/
+- .godot/
+- Lokale .NET- und NuGet-Caches
+- .artifacts/ mit Logs und Prüfscreenshots
+
+Nützliche Befehle:
+git status
+git log --oneline
+git show v1.0 --stat
+
+18. VORBEREITETE ERWEITERUNGEN UND AKTUELLE GRENZEN
+
+Bereits vorbereitet:
+- Räumliches Zustandsmodell mit Vector3 und Quaternion
+- Engine-unabhängiger Core für einen späteren Headless-Simulationsserver
+- Neutrale Steuerbefehle für andere Eingabequellen
+- Einfache Ereignisausgabe für weitere lokale Verbraucher
+- Zentrale physikalische und spielbezogene Parameter
+
+Noch NICHT implementiert:
+- Freie 3D-Bewegung, Pitch und Roll
+- Vollständiges räumliches Trägheitsmodell
+- ESP32-, Raspberry-Pi- oder sonstige Hardwareanbindung
+- Serial-Protokoll und Netzwerkkommunikation
+- Server/Client-Betrieb und Multiplayer
+- Stationsspezifische Rechte oder eingeschränkte Systemausgaben
+- Sensoranalyse und ungenaue Sensorinformationen
+- Energieverteilung und Schadensmodell
+- Feindliche Schiffe, KI und Autopilot
+- Kollisionen mit Schiffen, Asteroiden oder Höhlen
+- Navigation, Sternenkarte und Jump Drive
+- Relativistische Effekte
+- Audio
+- Inventar und Spielstände
+- Hauptmenü, Pausefunktion und komplexe Bedienoberfläche
+- Origin-Rebasing bzw. ein vollständiges Large-World-System
+- Eigenständiger Export-Installer
+
+Bekannte technische Grenzen:
+- Weltkoordinaten verwenden Single Precision. Bei sehr großen Entfernungen
+  und extremen Geschwindigkeiten sinkt die numerische Genauigkeit.
+- Das HUD ist für Desktop-Fenster ausgelegt.
+- Der aktuelle vollständige WorldState ist eine lokale Simulationssicht und
+  keine fertige Netzwerk- oder Stations-API.
+- Zukünftige externe Stationen sollten gefilterte, systemspezifische Ausgaben
+  erhalten, nicht automatisch alle exakten Informationen des WorldState.
+
+19. LEITPLANKEN FÜR WEITERE ENTWICKLUNG
+
+- Die Zustandshoheit bleibt im Simulationskern.
+- Godot bleibt für Darstellung, Eingabe und UI zuständig.
+- Physik und Treffer dürfen nicht in visuelle Objekte verlagert werden.
+- Neue Eingabequellen sollen neutrale Commands erzeugen.
+- Die 2D-Einschränkung ist eine aktuelle Simulationsregel, keine grundlegende
+  Beschränkung des Zustandsmodells.
+- Nach größeren Änderungen bauen und relevante Tests ausführen.
+- Kleine verständliche Systeme und klare Verantwortlichkeiten bevorzugen.
+- Noch nicht benötigte Systeme nicht allein auf Vorrat implementieren.

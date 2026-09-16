@@ -10,6 +10,8 @@ public partial class FlightHud : Control
     public WorldState World { get; set; } = null!;
     public ShipCommand Command { get; set; }
     public bool IsFocused { get; set; } = true;
+    public Button WarpButton { get; } = CockpitButton.Create("Warp Drive");
+    public event Action? WarpMapRequested;
     private Font Font => ThemeDB.FallbackFont;
     private readonly StyleBoxFlat _panelStyle = new()
     {
@@ -20,8 +22,20 @@ public partial class FlightHud : Control
         CornerRadiusBottomLeft = 4, CornerRadiusBottomRight = 4
     };
 
-    public override void _Ready() => MouseFilter = MouseFilterEnum.Ignore;
-    public override void _Process(double delta) => QueueRedraw();
+    public override void _Ready()
+    {
+        SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        MouseFilter = MouseFilterEnum.Ignore;
+        WarpButton.Pressed += () => WarpMapRequested?.Invoke();
+        AddChild(WarpButton);
+    }
+    public override void _Process(double delta)
+    {
+        Vector2 viewport = GetViewportRect().Size;
+        WarpButton.Position = new Vector2(viewport.X - 220, viewport.Y - 77);
+        WarpButton.Size = new Vector2(190, 40);
+        QueueRedraw();
+    }
 
     public override void _Draw()
     {
@@ -32,8 +46,8 @@ public partial class FlightHud : Control
         DrawRect(new Rect2(0, 0, width, 154), new Color(0.0196f, 0.0314f, 0.0549f, 0.96f));
         DrawRect(new Rect2(0, height - 129, width, 129), new Color(0.0196f, 0.0314f, 0.0549f, 0.96f));
         Text(new Vector2(30, 35), "SPACESIM", 23, ViewSettings.Text);
-        Text(new Vector2(165, 34), "/  LANCE TEST RANGE", 13, ViewSettings.Muted);
-        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.0", 12, ViewSettings.Cyan);
+        Text(new Vector2(165, 34), $"/  {World.CurrentEncounter.Name.ToUpperInvariant()}", 13, ViewSettings.Muted);
+        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.1", 12, ViewSettings.Cyan);
         DrawLine(new Vector2(30, 49), new Vector2(width - 30, 49), ViewSettings.Line, 1);
 
         float column = (width - 60) / 4;
@@ -47,7 +61,8 @@ public partial class FlightHud : Control
         Text(new Vector2(lanceX + 117, 115), World.Lance.IsReady ? "READY" : "LÄDT", 13, chargeColor);
         DrawRect(new Rect2(lanceX + 14, 131, column - 38, 3), ViewSettings.Line);
         DrawRect(new Rect2(lanceX + 14, 131, (column - 38) * World.Lance.ChargeFraction, 3), chargeColor);
-        Metric(30 + column * 3, 64, column - 10, "TREFFER", $"{World.HitCount:000}", $"/ {World.Targets.Count} Ziele");
+        Metric(30 + column * 3, 64, column - 10, $"TREFFER GESAMT · HIER {World.CurrentEncounter.HitCount}/{World.CurrentEncounter.InitialTargetCount}",
+            $"{World.HitCount:000}", $"/ {World.Targets.Count} übrig");
 
         float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(World.Ship.Forward.X, -World.Ship.Forward.Z)), 360);
         Text(new Vector2(30, height - 107), $"POS  X {World.Ship.Position.X,9:0.0}   Z {World.Ship.Position.Z,9:0.0} m", 12, ViewSettings.Muted);
@@ -59,6 +74,9 @@ public partial class FlightHud : Control
         KeyHint(new Vector2(340, height - 72), "A / D", "Drehmoment", Command.YawLeft || Command.YawRight, 56);
         KeyHint(new Vector2(561, height - 72), "SPACE", "Lanze", Command.FireLance, 70);
         Text(new Vector2(30, height - 21), "TRÄGHEITSFLUG   ·   Zum Bremsen Gegenschub geben. Auch Rotation bleibt erhalten.", 12, ViewSettings.Muted);
+        Text(new Vector2(width - 220, height - 21), World.WarpDrive.IsReady ? "WARP 100% · READY" :
+            $"WARP {World.WarpDrive.ChargeFraction * 100:0}% · {World.WarpDrive.RemainingSeconds:0.0} s",
+            12, World.WarpDrive.IsReady ? ViewSettings.Cyan : ViewSettings.Amber);
         if (!IsFocused)
             Text(new Vector2(width / 2 - 160, height / 2 + 70), "FENSTER INAKTIV  ·  Eingabe aus", 14, ViewSettings.Amber);
     }

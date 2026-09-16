@@ -1,9 +1,10 @@
-# SpaceSim 1.0
+# SpaceSim 1.1
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Trägheitsflug,
-statische Ziele und eine automatisch ladende Energielanze. Das Testgefecht läuft
-endlos. Grafik und HUD entstehen aus geometrischen Formen; externe Assets sind
-nicht erforderlich.
+statische Ziele, eine automatisch ladende Energielanze und zwei über eine
+Sternenkarte verbundene Encounter. Encounter 1 startet mit 10 Zielen, Encounter 2
+mit 15. Es gibt keinen Respawn. Grafik und HUD entstehen aus geometrischen
+Formen; externe Assets sind nicht erforderlich.
 
 ## Schnellstart unter Windows
 
@@ -45,6 +46,10 @@ Godot-Projekt und die Pfade in den Skripten gemeinsam anpassen.
 | A | Drehmoment nach links |
 | D | Drehmoment nach rechts |
 | Leertaste | Lanze einmal abfeuern, wenn bereit |
+| Button „Warp Drive“ | Sternenkarte jederzeit öffnen |
+| Klick auf einen anderen Encounter | Sprungpunkt auswählen |
+| Button „Jump“ | Zum ausgewählten Encounter springen, sobald der Drive bereit ist |
+| Esc / „Zurück zum Flug“ | Sternenkarte schließen |
 
 **Loslassen bremst nicht.** Lineare und Winkelgeschwindigkeit bleiben erhalten.
 Zum Bremsen passend gegensteuern. Rückwärtsschub bremst nur dann die gesamte
@@ -54,10 +59,33 @@ weder Reibung noch ein Geschwindigkeitslimit und keine automatische Stabilisieru
 Die Lanze startet ungeladen, lädt in drei Simulationssekunden und schießt entlang
 der gestrichelten Visierlinie. Ein zu früher Tastendruck wird verworfen; Halten
 löst kein Dauerfeuer aus. Nach dem Schuss erneut drücken. Die erste Zieloberfläche
-innerhalb von 1.600 m stoppt den Strahl. Ein Treffer zählt sofort und erzeugt ein
-neues Ziel. Der sichtbare Strahl bleibt nur 0,16 Sekunden bestehen.
+innerhalb von 1.600 m stoppt den Strahl. Ein Treffer zählt sofort und entfernt das
+Ziel dauerhaft für diese Sitzung. Der sichtbare Strahl bleibt nur 0,16 Sekunden
+bestehen. Auch beim Wegfliegen oder Zurückspringen werden keine Ziele ersetzt.
 
-Das HUD zeigt Geschwindigkeit, Winkelgeschwindigkeit, Ladung/READY, Treffer,
+## Sternenkarte und Warp Drive
+
+Der Warp Drive lädt beim Spielstart und nach jedem Sprung automatisch in
+**10 Simulationssekunden** auf. „Warp Drive“ öffnet die Karte unabhängig von der
+Ladung. Wähle dort einen anderen Encounter und bestätige mit **Jump**.
+Ohne Auswahl, während des Ladens oder für den aktuellen Encounter ist Jump
+gesperrt. Auswahl allein löst keinen Sprung aus; frühe Sprungbefehle werden
+verworfen und nicht für später vorgemerkt.
+
+**Die Sternenkarte pausiert das Spiel nicht.** Flug, Rotation, Waffenladung und
+Warp-Ladung laufen weiter. W/S, A/D und Leertaste bleiben bedienbar. Die Buttons
+übernehmen keinen Tastaturfokus, damit Leertaste keinen Sprung auslösen kann.
+
+Nach einem Sprung schließt sich die Karte. Das Schiff startet am lokalen
+Einstiegspunkt `(0, 0, 0)`, mit Standardausrichtung und ohne lineare oder
+Winkelgeschwindigkeit. Lanzenladung und Gesamttrefferzahl bleiben erhalten.
+Beide Encounter behalten ihre verbliebenen Ziele und Treffer auch bei späteren
+Besuchen. Nach dem letzten Treffer bleibt ein Encounter leer und weiter
+besuchbar; ein Sprung erfordert nicht, vorher alle Ziele zu zerstören.
+Dieser Fortschritt gilt für die laufende Sitzung; ein Savegame existiert nicht.
+
+Das HUD zeigt den aktuellen Encounter, Geschwindigkeit, Winkelgeschwindigkeit,
+Lanzenladung/READY, Gesamttreffer, lokalen Fortschritt, Warp-Ladung und Restzeit,
 Position und Kurs. Der türkisfarbene Pfeil zeigt die Bewegungsrichtung;
 orange Markierungen kennzeichnen Ziele. Bei Bedarf weist ein Randpfeil zum
 nächsten Ziel. Bei Fokusverlust wird die Eingabe deaktiviert, die Simulation
@@ -83,10 +111,15 @@ Build, Core-Tests und Godot-Integrationstest gemeinsam:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test.ps1 -GodotSmoke
 ```
 
-Der Integrationstest importiert das Projekt headless, startet die echte Szene
-und simuliert 240 Ticks mit Schuss, Treffer, Ersatzziel, Schub und Drehmoment.
-Er beendet sich automatisch mit Exitcode 0 und `SMOKE PASS`, wenn die Prüfungen
-bestehen. Das Skript prüft zusätzlich die Godot-Logs auf Fehler. Logs liegen in
+Die Integrationstests importieren das Projekt headless und starten die echte
+Szene. Ein kurzer Test simuliert 240 Ticks mit Schuss, Treffer ohne Respawn, Schub
+und Drehmoment. Der Warp-Test bedient die echten Buttons mit Mausereignissen:
+Karte während des Ladens öffnen, Ziel wählen, gesperrten Jump prüfen, bei laufendem
+Flug laden, nach Encounter 2 und wieder zurück springen, Fortschritt prüfen.
+Er dauert 1.205 Ticks, also etwa 20 Simulationssekunden.
+Beide beenden sich automatisch mit Exitcode 0 und `SMOKE PASS` bzw.
+`WARP SMOKE PASS`, wenn die Prüfungen bestehen. Das Skript prüft zusätzlich die
+Godot-Logs auf Fehler. Logs liegen in
 `.artifacts/`. Ohne `-GodotSmoke` werden nur Build und Core-Tests ausgeführt;
 `-SkipBuild` verwendet den bestehenden Debug-Build.
 
@@ -100,16 +133,18 @@ $capture = Join-Path $PWD '.artifacts/flight.png'
 ```
 
 `--capture` benötigt den grafischen Renderer und darf nicht mit `--headless`
-verwendet werden. Zusammen mit `--smoke-test` wird der Trefferstrahl erfasst.
+verwendet werden. Zusammen mit `--smoke-test` wird der Trefferstrahl erfasst;
+zusammen mit `--warp-smoke-test` die geöffnete Sternenkarte während des Ladens.
 
 ## Architektur
 
 ```text
-KeyboardShipControl : IShipControl
-        | ShipCommand (ein Tick)
-        v
+KeyboardShipControl : IShipControl     StarMap: Ziel wählen + Jump
+        | ShipCommand                     | NavigationCommand
+        +------------------+--------------+
+                           v
 Simulation.Step()                  <-- fester Takt: 60 Hz
-  ShipPhysics -> LanceSystem -> TargetSystem
+  ShipPhysics -> LanceSystem -> WarpDriveSystem
         |                          |
         v                          v
   WorldState                  SimulationEvent-Liste
@@ -132,7 +167,8 @@ SpaceSim.Core/
   Simulation/    Simulation, Einstellungen, WorldState, Events
   Ships/         3D-Schiffszustand, Commands, Steuerungsschnittstelle, Physik
   Weapons/       Lanzenladung und Ray/Sphere-Trefferberechnung
-  Targets/       Statische Ziele, zufällige Platzierung und Ersetzung
+  Targets/       Statische Ziele und einmalige zufällige Platzierung
+  Navigation/    Encounter-Zustand, Sprungbefehl und Warp Drive
 SpaceSim.Core.Tests/
   Program.cs     Automatisierte Physik-, Waffen- und Zieltests
 SpaceSim.Godot/
@@ -142,7 +178,8 @@ SpaceSim.Godot/
   Scenes/        Direkt startende Flight-Szene
   Input/         Tastaturadapter
   Rendering/     Schiff, Ziele, Strahl, Sternenhimmel, Darstellungskonstanten
-  UI/            Cockpit-HUD
+  UI/            Cockpit-HUD und Sternenkarte
+  Testing/       Automatischer Maus-/Warp-Integrationstest
 scripts/         Build-, Test- und Startskripte
 Start.cmd        Start per Doppelklick
 ```
@@ -153,13 +190,12 @@ Start.cmd        Start per Doppelklick
   Werte wie Masse (12.000 kg), Schub (144.000 N), Rückschub (72.000 N), Drehmoment,
   Waffenreichweite und Spawnradien stehen zentral in
   `SpaceSim.Core/Simulation/SimulationSettings.cs`.
-- **3D-Daten, planare Regel:** Position, Geschwindigkeit und Winkelgeschwindigkeit
 - **Build-Konfigurationen:** Die Projektmappen verwenden Godots `Debug`,
   `ExportDebug` und `ExportRelease`; der Core wird dabei passend als Debug oder
   Release gebaut. `scripts/Build.ps1 -Configuration ExportRelease` erstellt die
   optimierten Assemblies. Ein eigenständiger Spiel-Export ist noch nicht enthalten.
 - **3D-Daten, planare Regel:** Position, Geschwindigkeit und Winkelgeschwindigkeit
-  sind Vector3; Orientierung ist ein Quaternion. Version 1.0 hält Y = 0 und dreht
+  sind Vector3; Orientierung ist ein Quaternion. Version 1.1 hält Y = 0 und dreht
   nur um Y. Die Nase zeigt lokal nach -Z; positives Y-Drehmoment dreht nach links.
   Godot projiziert X/Z auf Bildschirm-X/Y. Für vollständiges 3D müssen Integrator,
   Trägheitsmodell und Commands erweitert werden, nicht das Zustandsformat ersetzt.
@@ -171,15 +207,23 @@ Start.cmd        Start per Doppelklick
   Adapter kann später Hardware, Netzwerk oder Autopilot übersetzen. Tastenzustände
   werden ausschließlich im Godot-Adapter gelesen. `FireLance` ist ein Impuls.
 - **Einfache Events:** `WeaponFired`, `TargetHit`, `TargetSpawned` und
-  `TargetDespawned` sind unveränderliche C#-Records. `Simulation.Events` gilt für
+  `EncounterChanged` sind unveränderliche C#-Records. `Simulation.Events` gilt für
   den gerade abgeschlossenen Tick und muss vor dem nächsten Step verarbeitet
-  werden. Direkt nach dem Konstruktor enthält es die initialen Spawnereignisse.
+  werden. Direkt nach dem Konstruktor enthält es die initialen Spawnereignisse
+  beider Encounter, jeweils mit Encounter-ID.
   Dies ist eine lokale Ausgabe ohne Event-Bus oder Netzwerkgarantien.
-- **Lokales Testgefecht:** 12 statische Ziele erscheinen zufällig im Ring
-  zwischen 180 und 750 m um das Schiff, mit Abstand zur Schiffsmittelposition
-  größer als der Zielradius. Jenseits von 2.000 m werden sie entfernt und lokal
-  ersetzt, ohne Trefferpunkte zu vergeben. Ein fester, konfigurierbarer Seed
-  macht Testläufe reproduzierbar; die Zielpositionen werden zufällig erzeugt.
+- **Zwei persistente Encounter:** Beim Erstellen der Simulation werden einmalig
+  10 bzw. 15 statische Ziele im Ring zwischen 180 und 750 m erzeugt. Beide
+  Encounter besitzen eigene Ziellisten in lokalen Koordinaten. Treffer entfernen
+  Ziele nur aus dem aktiven Encounter. Es gibt weder Respawn noch Recycling.
+  Ein fester, konfigurierbarer Seed macht Testläufe reproduzierbar.
+- **Warp im Core:** Der unabhängige `WarpDriveState` lädt mit dem festen Takt.
+  `NavigationCommand` enthält einen einmaligen Sprungwunsch. Der Core prüft
+  Ladung und Ziel selbst, wechselt den aktiven Encounter und setzt den
+  Schiffszustand am Einstieg zurück. Ein `EncounterChanged`-Ereignis lässt die
+  Ansicht alte Effekte verwerfen und verhindert Interpolation zwischen Encountern.
+- **Karte als Overlay:** Auswahl und Sichtbarkeit sind reine UI-Zustände.
+  Es gibt keinen Szenenwechsel und kein Pausieren des SceneTree beim Öffnen.
 - **Treffer unabhängig von Grafik:** Der Core schneidet einen vorwärtsgerichteten,
   reichweitenbegrenzten Ray mit den Zielkugeln. Godot verwendet nur das resultierende
   Ereignis für Strahl und Trefferring. Es gibt keine Godot-Physik-Kollisionen.
@@ -193,7 +237,7 @@ Start.cmd        Start per Doppelklick
 
 ## Testumfang
 
-Die 19 Core-Tests prüfen unter anderem:
+Die 26 Core-Tests prüfen unter anderem:
 
 - Geschwindigkeit ohne Schub, Beschleunigung in gedrehter Schiffsausrichtung,
   Weiterflug nach Loslassen, Rückschub und fehlendes Geschwindigkeitslimit.
@@ -203,8 +247,12 @@ Die 19 Core-Tests prüfen unter anderem:
   Nachladen und einmalige Ereignisausgabe.
 - Sofortigen Treffer, Fehlschuss, nächstes Ziel, Reichweite, Ziele hinter dem
   Schiff und gedrehte Waffenrichtung.
-- Trefferzähler, Ersatzziele, sichere und reproduzierbare Platzierung,
-  statische Zielpositionen und begrenzte Population bei längerem Flug.
+- Trefferzähler, fehlenden Respawn, sichere und reproduzierbare Platzierung,
+  statische Zielpositionen auch bei großer Entfernung und 10/15 Anfangsziele.
+- Zehn Sekunden Warp-Ladezeit, verworfene frühe und ungültige Sprungbefehle,
+  Entladung nach dem Sprung, Ankunft im Stillstand, erhaltene Lanzenladung
+  und Fortschritt nach Hin- und Rücksprung.
+- Weiterlaufenden Flug und unabhängige Waffenladung während des Warp-Ladens.
 - Zurückweisen ungültiger physikalischer Parameter.
 
 ## Aktuelle Einschränkungen
@@ -224,21 +272,28 @@ Die 19 Core-Tests prüfen unter anderem:
 ## Kurze Roadmap
 
 1. Fluggefühl und physikalische Parameter im Testgefecht abstimmen.
-2. Lokale Encounter-Koordinaten und ein vollständiges 3D-Bewegungsmodell ergänzen.
+2. Encounter-Inhalte erweitern und ein vollständiges 3D-Bewegungsmodell ergänzen.
 3. Stationsspezifische Systemausgaben entwerfen, anschließend einen ersten
    Hardware- oder Netzwerkadapter anbinden.
 4. Sensoren, Energie und Schäden einzeln als testbare Core-Systeme entwickeln.
 
-## Git und Version 1.0
+## Git und Versionsstände
 
 Der erste spielbare Stand ist als Version **1.0.0** auf dem Branch `main`
 mit dem annotierten Git-Tag **`v1.0`** gesichert. Das Repository ist lokal;
 ein Remote-Repository ist noch nicht eingerichtet.
 
+Version **1.1.0** ist mit dem annotierten Tag **`v1.1`** gesichert.
+Die Änderungen gegenüber v1.0 stehen in [SpaceSim_v1.1_Changelog.txt](SpaceSim_v1.1_Changelog.txt).
+Der bestehende Tag `v1.0` bleibt unverändert und enthält weiterhin die
+ursprüngliche Version ohne Warp Drive. `SpaceSim_v1.0_Uebersicht.txt`
+dokumentiert diesen historischen Stand.
+
 ```powershell
 git status             # Änderungen seit dem letzten Commit anzeigen
 git log --oneline      # Gespeicherte Entwicklungsstände anzeigen
 git show v1.0 --stat   # Den gespeicherten Stand von Version 1.0 anzeigen
+git show v1.1 --stat   # Den gespeicherten Stand von Version 1.1 anzeigen
 ```
 
 Für weitere Arbeit empfiehlt sich ein eigener Branch, zum Beispiel

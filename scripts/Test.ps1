@@ -16,7 +16,12 @@ if ($GodotSmoke) {
     if (-not (Select-String -LiteralPath (Join-Path $artifacts 'smoke.log') -SimpleMatch 'SMOKE PASS' -Quiet)) {
         throw 'Godot did not complete the smoke test.'
     }
-    foreach ($log in @('import.log', 'smoke.log')) {
+    & $engine --headless --path $game --log-file (Join-Path $artifacts 'warp-smoke.log') -- --warp-smoke-test
+    if ($LASTEXITCODE -ne 0) { throw 'Godot warp smoke test failed.' }
+    if (-not (Select-String -LiteralPath (Join-Path $artifacts 'warp-smoke.log') -SimpleMatch 'WARP SMOKE PASS' -Quiet)) {
+        throw 'Godot did not complete the warp smoke test.'
+    }
+    foreach ($log in @('import.log', 'smoke.log', 'warp-smoke.log')) {
         if (Select-String -LiteralPath (Join-Path $artifacts $log) -Pattern 'ERROR:|SCRIPT ERROR:|Unhandled exception' -Quiet) {
             throw "Godot errors in $log"
         }

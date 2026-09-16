@@ -18,6 +18,11 @@ public partial class ArenaView : Node2D
     {
         foreach (var item in events)
         {
+            if (item is EncounterChanged)
+            {
+                _beams.Clear();
+                _impacts.Clear();
+            }
             if (item is WeaponFired shot)
                 _beams.Add(new Beam(ViewSettings.Project(shot.Origin), ViewSettings.Project(shot.End)));
             if (item is TargetHit hit)

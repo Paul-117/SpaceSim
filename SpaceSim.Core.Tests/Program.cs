@@ -1,6 +1,7 @@
 using System.Numerics;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Simulation;
+using SpaceSim.Core.Navigation;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -97,16 +98,18 @@ var tests = new (string Name, Action Run)[]
         Step(sim, 1);
         Check(sim.World.Lance.IsReady, "Must recharge automatically.");
     }),
-    ("Ray hits target immediately, counts hit and replaces it", () =>
+    ("Ray hits target immediately and never respawns it", () =>
     {
         var sim = WithTargets(new Vector3(0, 0, -300));
         int id = sim.World.Targets[0].Id;
         Fire(sim);
         Check(sim.World.HitCount == 1, "Expected immediate hit.");
-        Check(sim.World.Targets.Count == 1 && sim.World.Targets[0].Id != id, "Target must be replaced.");
+        Check(sim.World.Targets.Count == 0, "Destroyed target must remain removed.");
         Check(sim.Events.OfType<TargetHit>().Single().TargetId == id, "Missing hit event.");
-        Check(sim.Events.OfType<TargetSpawned>().Count() == 1, "Missing spawn event.");
+        Check(!sim.Events.OfType<TargetSpawned>().Any(), "No replacement may spawn.");
         NearVector(sim.Events.OfType<WeaponFired>().Single().End, new Vector3(0, 0, -286));
+        Step(sim, 1200);
+        Check(sim.World.Targets.Count == 0, "Cleared encounter must stay empty.");
     }),
     ("Off-axis target is missed", () =>
     {
@@ -151,17 +154,16 @@ var tests = new (string Name, Action Run)[]
             NearVector(target.Position, other.World.Targets[i].Position);
         }
     }),
-    ("Targets remain static and distant targets recycle without scoring", () =>
+    ("Targets remain static even when flying far away", () =>
     {
         var sim = new Simulation(initialShip: new ShipInitialState(Velocity: new Vector3(1000, 0, 0)));
-        var original = sim.World.Targets[0];
+        var original = sim.World.Targets.ToArray();
         Step(sim, 1);
-        Check(sim.World.Targets.Contains(original), "Targets must not follow the ship.");
+        Check(sim.World.Targets.SequenceEqual(original), "Targets must not follow the ship.");
         Step(sim, 600);
         Check(sim.World.Targets.Count == sim.Settings.TargetCount, "Population must remain bounded.");
-        Check(sim.World.HitCount == 0, "Recycling is not a hit.");
-        Check(sim.World.Targets.All(t => Vector3.Distance(t.Position, sim.World.Ship.Position)
-            <= sim.Settings.TargetRecycleDistanceMeters), "Targets must remain in the local encounter.");
+        Check(sim.World.HitCount == 0, "Travel must not score hits.");
+        Check(sim.World.Targets.SequenceEqual(original), "Targets must not be recycled or relocated.");
     }),
     ("Invalid physical settings are rejected", () =>
     {
@@ -169,6 +171,90 @@ var tests = new (string Name, Action Run)[]
         try { _ = new Simulation(new SimulationSettings { ShipMassKg = 0 }); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Check(rejected, "Zero mass must not enter the simulation.");
+    }),
+    ("Two encounters start with ten and fifteen distinct targets", () =>
+    {
+        var sim = new Simulation();
+        Check(sim.World.CurrentEncounter.Id == 1, "Start in encounter 1.");
+        Check(sim.World.Encounters.Count == 2, "There must be two destinations.");
+        Check(sim.World.Targets.Count == 10 && sim.World.Encounters[1].Targets.Count == 15, "Wrong populations.");
+        Check(sim.World.Encounters.SelectMany(e => e.Targets).Select(t => t.Id).Distinct().Count() == 25,
+            "Target IDs must be unique across encounters.");
+    }),
+    ("Warp starts empty and takes exactly ten seconds", () =>
+    {
+        var sim = New();
+        Check(!sim.World.WarpDrive.IsReady, "Warp must start empty.");
+        Near((float)sim.World.WarpDrive.RemainingSeconds, 10);
+        Step(sim, 599);
+        Check(!sim.World.WarpDrive.IsReady, "Warp must not be ready early.");
+        Step(sim, 1);
+        Check(sim.World.WarpDrive.IsReady, "Warp must be ready at tick 600.");
+        Near(sim.World.WarpDrive.ChargeFraction, 1);
+        Near((float)sim.World.WarpDrive.RemainingSeconds, 0);
+    }),
+    ("Early jump is rejected without being queued", () =>
+    {
+        var sim = New();
+        sim.Step(default, new NavigationCommand(2));
+        Check(sim.World.CurrentEncounter.Id == 1, "Uncharged warp must not jump.");
+        Step(sim, 599);
+        Check(sim.World.CurrentEncounter.Id == 1 && sim.World.WarpDrive.IsReady, "No delayed jump allowed.");
+    }),
+    ("Jump changes encounter, stops the ship, and consumes warp charge", () =>
+    {
+        var sim = New(new ShipInitialState(Position: new Vector3(100, 0, 50), Velocity: new Vector3(10, 0, -3),
+            YawRadians: 1, YawRateRadiansPerSecond: 0.4f));
+        Step(sim, 600);
+        sim.Step(default, new NavigationCommand(2));
+        Check(sim.World.CurrentEncounter.Id == 2 && sim.World.Targets.Count == 15, "Wrong destination.");
+        NearVector(sim.World.Ship.Position, Vector3.Zero);
+        NearVector(sim.World.Ship.Velocity, Vector3.Zero);
+        NearVector(sim.World.Ship.AngularVelocity, Vector3.Zero);
+        NearVector(sim.World.Ship.Forward, -Vector3.UnitZ);
+        Near(sim.World.WarpDrive.ChargeFraction, 0);
+        Check(!sim.World.WarpDrive.IsReady, "Jump must consume charge.");
+        Check(sim.Events.OfType<EncounterChanged>().Single() == new EncounterChanged(1, 2), "Wrong jump event.");
+        Check(sim.World.Lance.IsReady, "Warp must not drain the independent lance.");
+        Step(sim, 599);
+        Check(!sim.World.WarpDrive.IsReady, "Recharge must last full ten seconds.");
+        Step(sim, 1);
+        Check(sim.World.WarpDrive.IsReady, "Warp must automatically recharge.");
+    }),
+    ("Unknown and current destinations do not consume warp charge", () =>
+    {
+        var sim = New();
+        Step(sim, 600);
+        foreach (int id in new[] { 1, -1, 999 })
+        {
+            sim.Step(default, new NavigationCommand(id));
+            Check(sim.World.CurrentEncounter.Id == 1 && sim.World.WarpDrive.IsReady, "Invalid jump changed state.");
+            Check(!sim.Events.OfType<EncounterChanged>().Any(), "Invalid jump emitted an event.");
+        }
+    }),
+    ("Encounter progress and remaining targets survive a round trip", () =>
+    {
+        var sim = WithTargets(new Vector3(0, 0, -300), new Vector3(200, 0, 200));
+        var survivor = sim.World.Targets[1];
+        var secondTargets = sim.World.Encounters[1].Targets.ToArray();
+        Fire(sim);
+        Step(sim, 600);
+        sim.Step(default, new NavigationCommand(2));
+        Check(sim.World.Targets.SequenceEqual(secondTargets), "Encounter 2 must retain its initial layout.");
+        Step(sim, 600);
+        sim.Step(default, new NavigationCommand(1));
+        Check(sim.World.Targets.Count == 1 && sim.World.Targets[0] == survivor, "Destroyed target respawned.");
+        Check(sim.World.CurrentEncounter.HitCount == 1 && sim.World.HitCount == 1, "Progress must survive travel.");
+        Check(!sim.Events.OfType<TargetSpawned>().Any(), "Revisiting must not spawn targets.");
+    }),
+    ("Warp charging does not freeze flight or lance charging", () =>
+    {
+        var sim = New(new ShipInitialState(Velocity: new Vector3(12, 0, 0), YawRateRadiansPerSecond: 0.2f));
+        Step(sim, 600);
+        NearVector(sim.World.Ship.Position, new Vector3(120, 0, 0), 0.002f);
+        Check(sim.World.Lance.IsReady && sim.World.WarpDrive.IsReady, "Both systems must charge while moving.");
+        Near(sim.World.Ship.AngularVelocity.Y, 0.2f);
+        Check(sim.World.Tick == 600, "World time must advance.");
     })
 };
 

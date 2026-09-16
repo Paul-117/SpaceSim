@@ -13,11 +13,12 @@ public sealed record SimulationSettings
     public float YawTorqueNewtonMeters { get; init; } = 54_000f;
     public float LanceChargeSeconds { get; init; } = 3f;
     public float LanceRangeMeters { get; init; } = 1_600f;
-    public int TargetCount { get; init; } = 12;
+    public float WarpChargeSeconds { get; init; } = 10f;
+    public int TargetCount { get; init; } = 10;
+    public int EncounterTwoTargetCount { get; init; } = 15;
     public float TargetRadiusMeters { get; init; } = 14f;
     public float SpawnMinDistanceMeters { get; init; } = 180f;
     public float SpawnMaxDistanceMeters { get; init; } = 750f;
-    public float TargetRecycleDistanceMeters { get; init; } = 2_000f;
 
     internal void Validate()
     {
@@ -28,16 +29,17 @@ public sealed record SimulationSettings
         Positive(YawTorqueNewtonMeters, nameof(YawTorqueNewtonMeters));
         Positive(LanceChargeSeconds, nameof(LanceChargeSeconds));
         Positive(LanceRangeMeters, nameof(LanceRangeMeters));
+        Positive(WarpChargeSeconds, nameof(WarpChargeSeconds));
         Positive(TargetRadiusMeters, nameof(TargetRadiusMeters));
         Positive(SpawnMinDistanceMeters, nameof(SpawnMinDistanceMeters));
         Positive(SpawnMaxDistanceMeters, nameof(SpawnMaxDistanceMeters));
-        Positive(TargetRecycleDistanceMeters, nameof(TargetRecycleDistanceMeters));
         if (TargetCount < 0 || TargetCount > 256)
             throw new ArgumentOutOfRangeException(nameof(TargetCount));
+        if (EncounterTwoTargetCount < 0 || EncounterTwoTargetCount > 256)
+            throw new ArgumentOutOfRangeException(nameof(EncounterTwoTargetCount));
         if (SpawnMinDistanceMeters <= TargetRadiusMeters ||
-            SpawnMaxDistanceMeters <= SpawnMinDistanceMeters ||
-            TargetRecycleDistanceMeters <= SpawnMaxDistanceMeters + TargetRadiusMeters)
-            throw new ArgumentException("Target spawn and recycle distances must describe a safe annulus.");
+            SpawnMaxDistanceMeters <= SpawnMinDistanceMeters)
+            throw new ArgumentException("Target spawn distances must describe a safe annulus.");
     }
 
     private static void Positive(float value, string name)

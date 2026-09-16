@@ -1,0 +1,166 @@
+SPACESIM V1.1 - CHANGELOG
+=======================
+
+Version: 1.1.0
+Git-Tag: v1.1
+Vorgängerversion: v1.0 (Commit ace9b64)
+Datum: 16.09.2026
+
+Dieses Dokument beschreibt die Änderungen gegenüber v1.0 und kann als Kontext
+an eine andere KI weitergegeben werden. Es ist Bestandteil des v1.1-Commits.
+
+1. NEU: ZWEI ENCOUNTER UND STERNENKARTE
+
+- Die Simulation startet in Encounter 1.
+- Encounter 2 wurde als weiterer besuchbarer Bereich hinzugefügt.
+- Der Button "Warp Drive" im HUD öffnet jederzeit die Sternenkarte, auch bei
+  ungeladenem oder noch ladendem Drive.
+- Die Karte zeigt beide Encounter, den aktuellen Standort, die verbleibenden
+  Ziele, die Auswahl sowie Warp-Ladung und Restladezeit.
+- Ein anderer Encounter muss ausdrücklich ausgewählt werden.
+- Erst der Button "Jump" bestätigt den Sprung. Auswahl allein löst nichts aus.
+- Der aktuelle Encounter kann nicht als Sprungziel verwendet werden.
+- "Zurück zum Flug" oder Esc schließt die Karte ohne Sprung.
+
+2. NEU: WARP DRIVE
+
+- Der Drive startet ungeladen und lädt automatisch in 10 Simulationssekunden.
+- Nach jedem erfolgreichen Sprung beginnt die volle Ladezeit erneut.
+- Jump ist ohne Zielauswahl oder ohne vollständige Ladung gesperrt.
+- Der Simulationskern prüft Ladung und Ziel unabhängig von der Oberfläche.
+- Zu frühe oder ungültige Sprungbefehle werden verworfen, nicht vorgemerkt.
+- Ein Sprung ist auch möglich, wenn im aktuellen Encounter noch Ziele leben.
+- Ein erfolgreicher Sprung schließt die Sternenkarte.
+- Das Schiff kommt am lokalen Einstiegspunkt (0, 0, 0) in Standardausrichtung
+  an. Lineare und Winkelgeschwindigkeit werden auf null gesetzt.
+- Lanzenladung, Gesamttrefferzahl und globale Simulationszeit bleiben erhalten.
+
+3. GEÄNDERT: ZIELE OHNE RESPAWN
+
+Vorher in v1.0:
+- 12 Ziele im endlosen Testgefecht.
+- Getroffene Ziele wurden ersetzt.
+- Sehr weit entfernte Ziele wurden entfernt und lokal neu erzeugt.
+
+Jetzt in v1.1:
+- Encounter 1 startet mit genau 10 Zielen.
+- Encounter 2 startet mit genau 15 Zielen.
+- Beide Ziellisten werden einmal beim Erstellen der Simulation erzeugt.
+- Treffer entfernen Ziele dauerhaft für die laufende Sitzung.
+- Auch große Entfernung löst keine Ersetzung oder Neupositionierung aus.
+- Beim Zurückspringen bleiben zerstörte Ziele zerstört und übrige Ziele an
+  ihren bisherigen Positionen.
+- Ein vollständig geräumter Encounter bleibt leer und weiterhin besuchbar.
+- Ziel-IDs sind über beide Encounter hinweg eindeutig.
+- Zufällige Platzierung, Spawnring von 180 bis 750 Metern und Zielradius von
+  14 Metern bleiben erhalten.
+
+4. LIVE-SIMULATION BEI GEÖFFNETER KARTE
+
+- Die Sternenkarte ist ein Overlay und pausiert die Simulation nicht.
+- Bewegung, Rotation, Lanzenladung und Warp-Ladung laufen weiter.
+- W/S, A/D und Leertaste bleiben während der Kartenansicht bedienbar.
+- Die Kartenbuttons übernehmen keinen Tastaturfokus. Dadurch kann die
+  Leertaste nicht versehentlich einen Sprung auslösen.
+- Der bisherige Schutz bei Fokusverlust des gesamten Fensters bleibt bestehen.
+
+5. TECHNISCHE UMSETZUNG
+
+Die Zustandshoheit bleibt im Godot-unabhängigen C#-Core.
+
+Neue Core-Dateien unter SpaceSim.Core/Navigation/:
+- EncounterState.cs: eigener Zielbestand und Fortschritt je Encounter.
+- NavigationCommand.cs: einmaliger Sprungwunsch mit Ziel-ID.
+- WarpDriveState.cs: Ladung, Restladezeit und Bereitschaft.
+- WarpDriveSystem.cs: automatisches Laden, Sprungprüfung und Zustandswechsel.
+
+Änderungen am Core:
+- WorldState enthält beide Encounter, den aktiven Encounter und den Warp Drive.
+- WorldState.Targets liefert die Ziele des gerade aktiven Encounters.
+- Simulation.Step nimmt zusätzlich einen optionalen NavigationCommand entgegen.
+- Pro Tick laufen Schiffphysik, Lanze und danach Warp Drive.
+- TargetSystem erzeugt Ziele nur bei der Initialisierung; das bisherige
+  MaintainPopulation und Entfernungs-Recycling entfallen.
+- SimulationSettings enthält WarpChargeSeconds = 10, TargetCount = 10 und
+  EncounterTwoTargetCount = 15. TargetRecycleDistanceMeters entfällt.
+- Neues Ereignis EncounterChanged mit Ausgangs- und Ziel-Encounter.
+- TargetSpawned enthält nun zusätzlich die Encounter-ID.
+- Das bisherige TargetDespawned-Ereignis entfällt mit dem Recycling.
+
+Neue Godot-Dateien:
+- UI/StarMap.cs: Kartenansicht, Zielauswahl und Jump-Button.
+- UI/CockpitButton.cs: gemeinsame Gestaltung der klickbaren Buttons.
+- Testing/WarpSmokeScenario.cs: automatisierter Test der Kartenbedienung.
+
+Änderungen an der Darstellung:
+- Flight.cs verbindet Kartenaktionen mit neutralen Sprungbefehlen.
+- FlightHud zeigt aktuellen Encounter, lokalen Fortschritt, Warp-Ladung und
+  Restzeit sowie den jederzeit verfügbaren Warp-Drive-Button.
+- Beim Sprung werden alte Strahl- und Treffereffekte entfernt.
+- Die Positionsinterpolation wird beim Sprung zurückgesetzt, damit das Schiff
+  nicht sichtbar zwischen den lokalen Koordinatensystemen verschoben wird.
+- Die Versionsanzeige und Projektversion wurden auf 1.1 bzw. 1.1.0 angehoben.
+
+6. TESTS UND VALIDIERUNG
+
+- 26 automatisierte Core-Tests statt bisher 19.
+- Bestehende Respawn-/Recyclingtests wurden an die neue Regel angepasst.
+- Zusätzliche Tests prüfen Anfangsbestände von 10/15 Zielen, genau zehn Sekunden
+  Ladezeit, abgewiesene frühe und ungültige Sprünge, Verbrauch und Nachladen,
+  Ankunft im Stillstand sowie erhaltenen Fortschritt nach Hin- und Rücksprung.
+- Ein Test prüft, dass Flug und Lanzenladung während des Warp-Ladens weiterlaufen.
+- Der bestehende Godot-Smoke-Test prüft nun Treffer ohne Respawn.
+- Ein neuer Warp-Smoke-Test bedient die echten Buttons mit Mausereignissen und
+  prüft über 1.205 Ticks Kartenöffnung, Auswahl, gesperrten frühen Jump,
+  weiterlaufenden Flug, Hin- und Rücksprung sowie erhaltene Ziele.
+- scripts/Test.ps1 -GodotSmoke führt beide Godot-Tests aus und prüft deren Logs.
+- Der grafische Warp-Test unterstützt einen Screenshot der geöffneten Karte.
+
+Ergebnisse der Validierung dieses Implementierungsstands:
+- Debug-Build erfolgreich, keine Compilerwarnungen oder Compilerfehler.
+- Alle 26 Core-Tests bestanden.
+- Beide Godot-Integrationstests bestanden.
+- Grafischer Start, Kartenbedienung und beide Sprünge erfolgreich geprüft.
+- Screenshot der Sternenkarte geprüft.
+- Finale Godot-Prüflogs ohne Fehler oder Warnungen.
+
+7. DOKUMENTATION UND GIT
+
+- README.md wurde für v1.1 aktualisiert: Bedienung, Architektur, Tests und Grenzen.
+- Dieses Changelog liegt als UTF-8-Textdatei vor.
+- Die zuvor erstellte SpaceSim_v1.0_Uebersicht.txt wird ebenfalls versioniert;
+  sie beschreibt weiterhin ausschließlich den historischen Stand v1.0.
+- v1.1 wird als neuer Commit mit annotiertem Tag v1.1 gespeichert.
+- Der bestehende Tag v1.0 bleibt unverändert.
+- Das Repository bleibt lokal; ein Remote ist nicht eingerichtet.
+- Godot-Binärdateien, Build-Ausgaben, Caches und Prüfscreenshots bleiben ignoriert.
+
+8. START UND TESTBEFEHLE
+
+Spiel starten:
+Start.cmd doppelklicken.
+
+Sprung ausführen:
+Warp Drive -> anderen Encounter auswählen -> volle Ladung abwarten -> Jump.
+
+Bauen:
+dotnet build SpaceSim.sln
+
+Core-Tests:
+dotnet run --project SpaceSim.Core.Tests
+
+Build und vollständige Integrationstests:
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test.ps1 -GodotSmoke
+
+9. AKTUELLE GRENZEN
+
+- Encounter-Fortschritt bleibt nur während der laufenden Sitzung erhalten.
+  Nach einem Neustart beginnen beide Encounter wieder mit voller Zielanzahl.
+- Kein Savegame, Netzwerk, Hardwareadapter, Sensor- oder Schadenssystem.
+- Die Karte enthält genau zwei feste Sprungpunkte; keine generierte Galaxie.
+- Sprünge erfolgen nach Bestätigung unmittelbar, ohne Reisephase oder Animation.
+- Flug bleibt auf X/Z und Yaw beschränkt; freie 3D-Steuerung fehlt weiterhin.
+- Lokale Encounter-Koordinaten existieren, aber kein Origin-Rebasing innerhalb
+  eines Encounters. Bei sehr großen Entfernungen bleiben Präzisionsgrenzen.
+- Der Warp Drive lädt in Simulationszeit; bei starker Rechnerlast kann dies
+  länger als zehn reale Sekunden dauern.
