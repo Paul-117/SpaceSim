@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/.godot/
+.dotnet/
+.nuget/
+.artifacts/
+.vs/
+Godot_v*-mono_win64/
+Godot_v*_mono_win64/
+*.user
+*.tmp

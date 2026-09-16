@@ -1,0 +1,26 @@
+; SpaceSim 1.0 — presentation and input only; authoritative state lives in Core.
+config_version=5
+
+[application]
+config/name="SpaceSim | Lance test range"
+config/version="1.0.0"
+run/main_scene="res://Scenes/Flight.tscn"
+config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=800
+window/size/window_width_override=1280
+window/size/window_height_override=800
+window/stretch/mode="canvas_items"
+
+[dotnet]
+project/assembly_name="SpaceSim.Godot"
+
+[physics]
+common/physics_ticks_per_second=60
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.0196, 0.0314, 0.0549, 1)

@@ -1,0 +1,554 @@
+# SpaceSim – Projektauftrag
+
+Erstelle einen ersten spielbaren Prototypen eines modularen Raumschiff-Simulators.
+
+## Technischer Stack
+
+Verwende:
+
+* Godot 4.7.x .NET
+* C#
+* .NET
+* Git-kompatible Projektstruktur
+* keine zusätzlichen NuGet-Pakete, sofern sie nicht zwingend notwendig sind
+
+Das Projekt soll unter Windows funktionieren.
+
+Bevor du Änderungen vornimmst, untersuche den bestehenden Workspace und vorhandene Projektdateien. Überschreibe keine vorhandenen sinnvollen Einstellungen ohne Grund.
+
+Nach jeder größeren Implementierungsstufe:
+
+1. Projekt bauen.
+2. Compilerfehler beheben.
+3. Relevante Tests ausführen.
+4. Erst danach mit dem nächsten Schritt fortfahren.
+
+## Grundidee
+
+Das langfristige Projekt ist ein physischer Raumschiff-Simulator.
+
+Mehrere reale Stationen sollen später gleichzeitig mit einem zentralen Simulationsrechner kommunizieren können.
+
+Beispiele:
+
+* Cockpit / Flugsteuerung
+* Waffenstation
+* Sensorstation
+* Energieversorgung
+* Navigation
+* Damage Control
+
+Die Stationen können später aus PCs, Raspberry Pis, ESP32-Mikrocontrollern, Displays, Schaltern, Buttons, LEDs usw. bestehen.
+
+Der zentrale Simulationskern ist die verbindliche Realität.
+
+Externe Stationen sollen später nur die Informationen erhalten, auf die ihr jeweiliges Schiffssystem Zugriff hat.
+
+Beispiel:
+
+Der zentrale World State kennt die exakte Position eines feindlichen Schiffes.
+
+Eine Sensorstation soll diese exakte Position später nicht automatisch erhalten. Sie könnte stattdessen Rohdaten wie Peilung, Signalstärke oder andere Sensordaten erhalten, aus denen die Besatzung die Position bestimmen muss.
+
+Diese komplexeren Systeme sind NICHT Bestandteil der ersten Version.
+
+Die Architektur soll ihre spätere Ergänzung aber nicht unnötig erschweren.
+
+---
+
+# Wichtigste Architekturregel
+
+Godot ist NICHT Eigentümer des Simulationszustands.
+
+Der eigentliche Spielzustand und die wesentliche Spiellogik befinden sich in einem möglichst Engine-unabhängigen C#-Simulationskern.
+
+Godot dient zunächst hauptsächlich für:
+
+* Darstellung
+* Tastatureingabe
+* Audio später
+* UI/HUD
+* Szenenverwaltung
+
+Ein Godot-Sprite ist beispielsweise nicht das eigentliche Raumschiff.
+
+Das Raumschiff existiert als Datenmodell im Simulationskern. Godot visualisiert lediglich seinen Zustand.
+
+Die Struktur soll ungefähr diesem Prinzip folgen:
+
+Input
+→ Commands
+→ Simulation Core
+→ World State
+→ Rendering / UI / spätere externe Systeme
+
+---
+
+# Vorbereitung auf 3D
+
+Die erste spielbare Version ist ein 2D-Top-Down-Spiel.
+
+Die Simulation soll intern aber bereits so modelliert werden, dass später echte 3D-Bewegung möglich ist.
+
+Das ist eine zentrale Anforderung.
+
+Spätere Versionen sollen beispielsweise ermöglichen:
+
+* freie Bewegung in 3D
+* Pitch
+* Yaw
+* Roll
+* Höhlen
+* Asteroidenfelder
+* räumliche Hindernisse
+* 3D-Raumschlachten
+
+Deshalb keine grundlegende Simulationsarchitektur bauen, die ausschließlich auf Vector2 basiert.
+
+Der World State des Schiffes soll sinngemäß mindestens enthalten:
+
+* Vector3 Position
+* Vector3 Velocity
+* Quaternion Rotation
+* Vector3 AngularVelocity
+* Masse bzw. Parameter für spätere Physik
+
+Für Version 0.1 wird das Schiff auf eine Ebene eingeschränkt.
+
+Beispielsweise:
+
+* Bewegung in X/Z
+* Y = 0
+* kein Pitch
+* kein Roll
+* nur Yaw
+
+Godot zeigt diese Ebene von oben als 2D-Spiel an.
+
+Die Einschränkung auf 2D soll eine Regel der aktuellen Version sein und keine fundamentale Beschränkung des Datenmodells.
+
+---
+
+# Physik
+
+Das Schiff soll sich nach newtonscher Mechanik bewegen.
+
+Keine Arcade-Bewegung.
+
+Keine künstliche Reibung.
+
+Keine automatische Geschwindigkeitsreduktion.
+
+Wenn kein Triebwerk aktiv ist:
+
+* lineare Geschwindigkeit bleibt erhalten
+* Winkelgeschwindigkeit bleibt erhalten
+
+Beispiel:
+
+W wird zwei Sekunden gedrückt.
+
+Das Haupttriebwerk beschleunigt das Schiff.
+
+Danach wird W losgelassen.
+
+Das Schiff fliegt mit der erreichten Geschwindigkeit weiter.
+
+Dasselbe gilt für Rotation.
+
+A erzeugt ein Drehmoment in eine Richtung.
+
+Nach dem Loslassen von A dreht sich das Schiff weiter.
+
+D erzeugt Drehmoment in die Gegenrichtung und kann dadurch die Rotation abbremsen bzw. umkehren.
+
+Für Version 0.1:
+
+W:
+Haupttriebwerk / Schub vorwärts relativ zur aktuellen Schiffsausrichtung.
+
+S:
+Rückwärtsschub relativ zur aktuellen Schiffsausrichtung.
+
+A:
+Drehmoment links.
+
+D:
+Drehmoment rechts.
+
+Keine künstliche maximale Geschwindigkeit implementieren.
+
+Die Beschleunigung kann zunächst konstant sein.
+
+Relativistische Effekte oder geschwindigkeitsabhängige Beschleunigung sind NICHT Bestandteil dieser Version.
+
+Verwende einen Fixed Simulation Timestep, vorzugsweise 60 Hz.
+
+Physikalische interne Einheiten:
+
+* Meter
+* Sekunden
+* m/s
+* m/s²
+* Radiant
+* rad/s
+* Newton bzw. sinnvoll vorbereitete Kraft-/Massenparameter
+
+Gameplaywerte wie Schubkraft und Drehmoment sollen zentral konfigurierbar sein und nicht als Magic Numbers über mehrere Klassen verteilt werden.
+
+---
+
+# Input-Abstraktion
+
+Die Simulation darf nicht direkt von Tastaturabfragen abhängen.
+
+Definiere einen neutralen Command-Zustand, beispielsweise sinngemäß:
+
+ShipCommand
+
+* MainThrust
+* ReverseThrust
+* YawLeft
+* YawRight
+* FireLance
+
+Der Keyboard-Input erzeugt einen ShipCommand.
+
+Später sollen ohne grundlegende Änderung weitere Inputquellen möglich sein:
+
+* ESP32
+* Serial
+* Netzwerk
+* anderer PC
+* AI
+* Autopilot
+
+Eine mögliche Abstraktion wäre beispielsweise:
+
+IShipControl
+
+mit einer Methode, die einen ShipCommand liefert.
+
+Die konkrete API darf sinnvoll gestaltet werden.
+
+Nicht unnötig abstrahieren, aber Simulation und Input klar trennen.
+
+---
+
+# Aktuelles Gameplay – Version 0.1
+
+Es gibt zunächst nur ein endloses Test-Gefecht.
+
+Kein Menü ist notwendig, sofern Godot ein direktes Starten der Testszene erlaubt.
+
+## Darstellung
+
+Zeige:
+
+* dunklen Weltraum
+* Sternenhimmel
+* Raumschiff
+* statische Zielscheiben
+* kurzen Lichtstrahl der Lanze
+* minimalistisches HUD
+
+Das Raumschiff darf zunächst eine einfache geometrische Form sein.
+
+Keine externen Grafikassets erforderlich.
+
+Das Schiff soll klar erkennen lassen, wo vorne ist.
+
+Der Sternenhimmel darf zunächst prozedural bzw. sehr einfach sein.
+
+Die Kamera folgt dem Schiff.
+
+Die Welt soll sich für den Spieler unbegrenzt anfühlen.
+
+Für Version 0.1 ist noch kein vollständiges Large-World-/Origin-Rebasing-System erforderlich.
+
+Die Architektur soll ein späteres lokales Encounter-Koordinatensystem aber nicht verhindern.
+
+---
+
+# Zielscheiben
+
+Zielscheiben sind statische Objekte.
+
+Sie bewegen sich nicht.
+
+Eine überschaubare Anzahl von Zielen soll zufällig um das Schiff bzw. in einem sinnvollen lokalen Bereich erzeugt werden.
+
+Ein Treffer:
+
+1. registriert einen Hit,
+2. entfernt die Zielscheibe,
+3. erhöht den Trefferzähler,
+4. erzeugt anschließend ein neues Ziel an einer zufälligen sinnvollen Position.
+
+Das Gefecht endet nicht.
+
+Ziele dürfen nicht unmittelbar auf dem Schiff erzeugt werden.
+
+---
+
+# Waffe: Lanze
+
+Das Schiff besitzt zunächst genau eine Waffe: die Lanze.
+
+Die Lanze ist eine Licht-/Energiewaffe.
+
+Verhalten:
+
+* lädt automatisch
+* ungefähr 3 Sekunden Ladezeit
+* Ladung von 0 bis 100 %
+* bei 100 % ist sie feuerbereit
+* Space feuert
+* Space während des Ladens bewirkt nichts
+* nach dem Schuss Ladung zurück auf 0
+* anschließend automatisches erneutes Laden
+
+Der Treffer erfolgt praktisch sofort.
+
+Kein langsam fliegendes Projektil erzeugen.
+
+Beim Feuerbefehl wird ein Ray in Blickrichtung des Schiffes ausgewertet.
+
+Wenn dieser ein Ziel trifft:
+
+* Ziel gilt sofort als getroffen.
+
+Zur Darstellung erscheint ein Lichtstrahl nur sehr kurz, ungefähr 0,1 bis 0,2 Sekunden.
+
+Die Trefferberechnung muss von der visuellen Darstellung des Strahls getrennt sein.
+
+Sinngemäßer Ablauf:
+
+FireCommand
+→ WeaponSystem
+→ prüfen, ob Lanze bereit
+→ Trefferberechnung
+→ World State verändern
+→ WeaponFired Event / Visual Event
+→ Godot zeigt kurz den Strahl
+
+Der Godot-Lichtstrahl selbst darf nicht entscheiden, ob ein Ziel getroffen wurde.
+
+---
+
+# HUD
+
+Ein kleines Debug-/Cockpit-HUD reicht.
+
+Zeige mindestens:
+
+* Geschwindigkeit als Betrag in m/s
+* Winkelgeschwindigkeit
+* Lanze-Ladung in Prozent
+* READY, wenn Lanze vollständig geladen ist
+* Trefferzahl
+
+Optional hilfreich:
+
+* Weltposition
+* Schiffswinkel
+
+Das HUD ist zunächst primär für Entwicklung und Tests gedacht.
+
+---
+
+# Gewünschte Projektstruktur
+
+Trenne nach Möglichkeit Simulationskern und Godot-spezifischen Code.
+
+Eine mögliche Struktur ist:
+
+SpaceSim/
+SpaceSim.Core/
+Simulation/
+Ships/
+Weapons/
+Targets/
+
+```
+SpaceSim.Godot/
+    Scenes/
+    Rendering/
+    Input/
+    UI/
+```
+
+Passe die genaue Struktur an die sinnvolle Integration mit Godot .NET an.
+
+Wichtig ist die logische Trennung, nicht das exakte Verzeichnislayout.
+
+Der Core sollte möglichst wenig oder idealerweise gar keine direkten Abhängigkeiten von Godot-Szenen und Nodes haben.
+
+Falls Godot-Typen wie Vector3 oder Quaternion eine unnötige Engine-Abhängigkeit erzeugen, entscheide sinnvoll zwischen Godot-Mathematiktypen und System.Numerics.
+
+Bevorzuge eine Architektur, bei der der Core später prinzipiell auch in einem Headless-Server laufen könnte.
+
+Dokumentiere diese Entscheidung kurz im README.
+
+---
+
+# Events / Outputs
+
+Bereite einen einfachen Mechanismus vor, über den die Simulation relevante Ereignisse ausgeben kann.
+
+Beispiele:
+
+* WeaponFired
+* TargetHit
+* TargetSpawned
+
+Keine komplexe Event-Bus-Bibliothek installieren.
+
+Eine einfache C#-Lösung reicht.
+
+Dies wird später wichtig, damit verschiedene Stationen auf Simulationsereignisse reagieren können.
+
+---
+
+# Nicht implementieren
+
+In Version 0.1 ausdrücklich NICHT implementieren:
+
+* ESP32-Kommunikation
+* Serial-Protokoll
+* Netzwerk-Multiplayer
+* Server/Client-Kommunikation
+* feindliche Schiffe
+* AI
+* Damage Model
+* Sensoranalyse
+* Energieverteilung
+* Jump Drive
+* Sternenkarte
+* Relativität
+* vollständige 3D-Steuerung
+* Kollisionen mit Höhlen
+* komplexe Partikeleffekte
+* komplexes UI
+* Inventar
+* Savegame
+* Audio, sofern es nicht trivial ist
+
+Keine Systeme auf Vorrat implementieren, die wir noch nicht benötigen.
+
+Nur sinnvolle Schnittstellen und klare Trennung vorbereiten.
+
+---
+
+# Tests
+
+Der Simulationskern soll nach Möglichkeit automatisierte Tests besitzen.
+
+Mindestens folgende Fälle testen:
+
+1. Schiff ohne Schub behält seine Geschwindigkeit.
+
+2. Haupttriebwerk erhöht die Geschwindigkeit in Schiffsrichtung.
+
+3. Nach Abschalten des Haupttriebwerks bleibt die erreichte Geschwindigkeit erhalten.
+
+4. Rotation besitzt Trägheit.
+
+5. Gegenläufiges Drehmoment verändert bzw. reduziert die Winkelgeschwindigkeit.
+
+6. Lanze benötigt ihre Ladezeit.
+
+7. Lanze kann vor vollständiger Ladung nicht feuern.
+
+8. Nach einem Schuss ist die Lanze wieder ungeladen.
+
+9. Ein Ziel auf dem Waffenstrahl wird getroffen.
+
+10. Ein Ziel außerhalb des Waffenstrahls wird nicht getroffen.
+
+Die Tests sollen möglichst ohne gestarteten Godot-Editor ausführbar sein.
+
+---
+
+# README
+
+Erstelle ein README.md.
+
+Dokumentiere darin:
+
+* Ziel des Projekts
+* verwendete Architektur
+* Projektstruktur
+* Voraussetzungen
+* Build-Anleitung
+* Startanleitung
+* Steuerung
+* wichtigste Designentscheidungen
+* aktuelle Einschränkungen
+* kurze Roadmap
+
+Steuerung Version 0.1:
+
+W = Vorwärtsschub
+S = Rückwärtsschub
+A = Drehmoment links
+D = Drehmoment rechts
+Space = Lanze abfeuern, sofern geladen
+
+---
+
+# Qualitätsanforderungen
+
+Bevorzuge:
+
+* kleinen verständlichen Code
+* klare Verantwortlichkeiten
+* nachvollziehbare Namen
+* konfigurierbare Simulationsparameter
+* testbaren Simulationscode
+
+Vermeide:
+
+* God Classes
+* unnötige Frameworks
+* unnötige Dependency Injection
+* übermäßige Abstraktion
+* Magic Numbers
+* premature optimization
+
+Wir wollen zuerst einen funktionierenden Prototypen mit einer tragfähigen Architektur.
+
+---
+
+# Vorgehensweise
+
+Arbeite in dieser Reihenfolge:
+
+1. Workspace und installierte Toolchain prüfen.
+2. Projektstruktur anlegen.
+3. Simulations-Core erstellen.
+4. Unit Tests für die Physik erstellen.
+5. Schiff und Thruster implementieren.
+6. Lanze implementieren und testen.
+7. Target-System implementieren und testen.
+8. Godot-Projekt anbinden.
+9. 2D-Darstellung erstellen.
+10. Tastatursteuerung anbinden.
+11. Kamera und Sternenhimmel erstellen.
+12. HUD erstellen.
+13. Lanze visuell darstellen.
+14. Gesamtes Projekt bauen.
+15. Tests ausführen.
+16. Spiel starten, sofern die lokale Umgebung das zulässt.
+17. offensichtliche Fehler beheben.
+18. README aktualisieren.
+
+Wenn eine technische Entscheidung unklar ist, bevorzuge die einfachste Lösung, die den Simulationskern von Godot und zukünftiger Hardwarekommunikation getrennt hält.
+
+Am Ende gib eine kurze Zusammenfassung:
+
+* welche Dateien erstellt wurden
+* wie das Projekt gestartet wird
+* welche Tests existieren
+* ob Build und Tests erfolgreich sind
+* welche bekannten Einschränkungen noch bestehen
