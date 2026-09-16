@@ -7,10 +7,10 @@ namespace SpaceSim.Core.Weapons;
 
 internal static class LanceSystem
 {
-    public static void Charge(LanceState lance, SimulationSettings settings)
+    public static void Charge(LanceState lance, SimulationSettings settings, float weaponsPowerFactor)
     {
         lance.ChargedSeconds = Math.Min(settings.LanceChargeSeconds,
-            lance.ChargedSeconds + 1.0 / SimulationSettings.TickRate);
+            lance.ChargedSeconds + weaponsPowerFactor / SimulationSettings.TickRate);
         // Eliminate rounding residue at exact tick-aligned charge durations.
         if (lance.ChargedSeconds + 1e-10 >= settings.LanceChargeSeconds)
             lance.ChargedSeconds = settings.LanceChargeSeconds;
@@ -50,9 +50,13 @@ internal static class LanceSystem
         events.Add(new WeaponFired(origin, origin + direction * nearestDistance, hitId, WeaponOwner.Player, kind));
         if (enemyHit is not null)
         {
-            enemyHit.IsDestroyed = true;
-            world.HitCount++;
-            events.Add(new EnemyDestroyed(enemyHit.EnemyId, enemyHit.Ship.Position));
+            if (ShieldSystem.ApplyLanceDamage(enemyHit.Ship.Shield, WeaponOwner.Enemy, enemyHit.EnemyId,
+                enemyHit.Ship.Position, settings.Shield, events))
+            {
+                enemyHit.IsDestroyed = true;
+                world.HitCount++;
+                events.Add(new EnemyDestroyed(enemyHit.EnemyId, enemyHit.Ship.Position));
+            }
         }
         else if (hit is not null)
         {
@@ -75,6 +79,8 @@ internal static class LanceSystem
         events.Add(new WeaponFired(origin, origin + direction * distance, null,
             WeaponOwner.Enemy, hit ? WeaponHitKind.Player : WeaponHitKind.None));
         if (!hit) return;
+        if (!ShieldSystem.ApplyLanceDamage(world.Ship.Shield, WeaponOwner.Player, null,
+            world.Ship.Position, settings.Shield, events)) return;
         world.GameState = GameState.GameOver;
         events.Add(new PlayerDestroyed(enemy.EnemyId, world.Ship.Position));
     }

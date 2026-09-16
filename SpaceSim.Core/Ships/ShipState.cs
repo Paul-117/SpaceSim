@@ -1,4 +1,6 @@
 using System.Numerics;
+using SpaceSim.Core.Combat;
+using SpaceSim.Core.Power;
 
 namespace SpaceSim.Core.Ships;
 
@@ -11,12 +13,16 @@ public sealed class ShipState
     public Vector3 AngularVelocity { get; internal set; }
     public float MassKg { get; }
     public float YawMomentOfInertia { get; }
+    public PowerState Power { get; }
+    public ShieldState Shield { get; }
     public Vector3 Forward => Vector3.Transform(-Vector3.UnitZ, Rotation);
 
-    internal ShipState(float massKg, float yawMomentOfInertia)
+    internal ShipState(float massKg, float yawMomentOfInertia, PowerState power, ShieldState shield)
     {
         MassKg = massKg;
         YawMomentOfInertia = yawMomentOfInertia;
+        Power = power;
+        Shield = shield;
     }
 }
 

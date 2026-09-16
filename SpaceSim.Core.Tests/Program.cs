@@ -4,6 +4,7 @@ using SpaceSim.Core.Simulation;
 using SpaceSim.Core.Navigation;
 using SpaceSim.Core.AI;
 using SpaceSim.Core.Combat;
+using SpaceSim.Core.Power;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -70,7 +71,7 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Lance needs exactly three seconds to charge", () =>
     {
-        var sim = New();
+        var sim = NewWeapons();
         Check(!sim.World.Lance.IsReady, "Lance starts empty.");
         Step(sim, 179);
         Check(!sim.World.Lance.IsReady, "Lance must not charge early.");
@@ -79,7 +80,7 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Early fire is ignored and never queued", () =>
     {
-        var sim = New();
+        var sim = NewWeapons();
         sim.Step(new ShipCommand(FireLance: true));
         Check(!sim.Events.OfType<WeaponFired>().Any(), "Early shot must be rejected.");
         Step(sim, 179);
@@ -88,7 +89,7 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Shot resets charge, emits once, and recharges", () =>
     {
-        var sim = New();
+        var sim = NewWeapons();
         Step(sim, 180);
         sim.Step(new ShipCommand(FireLance: true));
         Near(sim.World.Lance.ChargeFraction, 0);
@@ -136,7 +137,7 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Lance follows the ship's 3D orientation", () =>
     {
-        var sim = new Simulation(new SimulationSettings { TargetCount = 1 },
+        var sim = new Simulation(new SimulationSettings { TargetCount = 1, Power = WeaponsOnlyPower() },
             new ShipInitialState(YawRadians: MathF.PI / 2),
             initialTargets: new[] { new Vector3(-300, 0, 0) });
         Fire(sim);
@@ -224,7 +225,7 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Jump changes encounter, stops the ship, and consumes warp charge", () =>
     {
-        var sim = New(new ShipInitialState(Position: new Vector3(100, 0, 50), Velocity: new Vector3(10, 0, -3),
+        var sim = NewWeapons(new ShipInitialState(Position: new Vector3(100, 0, 50), Velocity: new Vector3(10, 0, -3),
             YawRadians: 1, YawRateRadiansPerSecond: 0.4f));
         Step(sim, 600);
         sim.Step(default, new NavigationCommand(2));
@@ -271,7 +272,8 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Warp charging does not freeze flight or lance charging", () =>
     {
-        var sim = New(new ShipInitialState(Velocity: new Vector3(12, 0, 0), YawRateRadiansPerSecond: 0.2f));
+        var sim = new Simulation(new SimulationSettings { TargetCount = 0 },
+            new ShipInitialState(Velocity: new Vector3(12, 0, 0), YawRateRadiansPerSecond: 0.2f), spawnEnemy: false);
         Step(sim, 600);
         NearVector(sim.World.Ship.Position, new Vector3(120, 0, 0), 0.002f);
         Check(sim.World.Lance.IsReady && sim.World.WarpDrive.IsReady, "Both systems must charge while moving.");
@@ -390,10 +392,10 @@ var tests = new (string Name, Action Run)[]
         Check(reachedReposition && ai.CurrentEvadeDirection is null,
             "EVADE must transition once to REPOSITION by its maximum duration.");
     }),
-    ("Enemy lance uses normal charge and causes frozen GameOver", () =>
+    ("Enemy lance overload causes frozen GameOver", () =>
     {
         var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(900, 0, 0),
-            YawRadians: MathF.PI / 2));
+            YawRadians: MathF.PI / 2), shield: new ShieldSettings { MaximumShield = 1f });
         JumpToCombat(sim);
         bool sawAttack = false;
         bool sawReposition = false;
@@ -416,9 +418,9 @@ var tests = new (string Name, Action Run)[]
               sim.World.CurrentEncounter.Enemy!.Ship.Position == enemyPosition && sim.Events.Count == 0,
             "GameOver must freeze physics, weapons, AI, navigation and simulation time.");
     }),
-    ("Player lance destroys enemy in one hit and disables its AI", () =>
+    ("Player lance with overload destroys enemy and disables its AI", () =>
     {
-        var sim = CombatSimulation();
+        var sim = CombatSimulation(shield: new ShieldSettings { LanceDamage = 200f });
         JumpToCombat(sim);
         sim.Step(new ShipCommand(FireLance: true));
         var enemy = sim.World.CurrentEncounter.Enemy!;
@@ -432,6 +434,127 @@ var tests = new (string Name, Action Run)[]
         var position = enemy.Ship.Position;
         Step(sim, 300);
         Check(enemy.Ship.Position == position, "Destroyed enemy physics must stop.");
+    }),
+    ("Power allocation rejects overflow and negative allocations but accepts an atomic valid request", () =>
+    {
+        var sim = new Simulation(new SimulationSettings { TargetCount = 0 }, spawnEnemy: false);
+        var power = sim.World.Ship.Power;
+        sim.Step(default, default, new PowerAllocationCommand(5));
+        Check(!sim.Events.OfType<PowerAllocationChanged>().Any(), "Overflow allocation must be rejected.");
+        Near(power.PropulsionAllocation, 35);
+        sim.Step(default, default, new PowerAllocationCommand(-40));
+        Check(!sim.Events.OfType<PowerAllocationChanged>().Any(), "Negative allocation must be rejected.");
+        sim.Step(default, default, new PowerAllocationCommand(-5, 5));
+        Check(sim.Events.OfType<PowerAllocationChanged>().Single() is { Propulsion: 30, Weapons: 40, Shields: 30 },
+            "Valid allocation must be applied atomically.");
+        Near(power.AllocatedPower, 100);
+    }),
+    ("Propulsion power linearly scales thrust and torque while inertia persists at zero", () =>
+    {
+        var half = New();
+        half.Step(default, default, new PowerAllocationCommand(-50));
+        Step(half, 60, new ShipCommand(MainThrust: true, YawLeft: true));
+        Near(half.World.Ship.Velocity.Length(), 6f, 0.01f);
+        Near(half.World.Ship.AngularVelocity.Y, 0.3f, 0.01f);
+        half.Step(default, default, new PowerAllocationCommand(-50));
+        var velocity = half.World.Ship.Velocity;
+        var angular = half.World.Ship.AngularVelocity.Y;
+        Step(half, 60, new ShipCommand(MainThrust: true, YawLeft: true));
+        NearVector(half.World.Ship.Velocity, velocity, 0.001f);
+        Near(half.World.Ship.AngularVelocity.Y, angular, 0.001f);
+    }),
+    ("Weapons power controls charge rate and preserves existing lance charge", () =>
+    {
+        var sim = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = new PowerSettings { DefaultPropulsionPower = 0, DefaultWeaponsPower = 50, DefaultShieldsPower = 0 }
+        }, spawnEnemy: false);
+        Step(sim, 359);
+        Check(!sim.World.Lance.IsReady, "Fifty percent weapons power must need six seconds.");
+        Step(sim, 1);
+        Check(sim.World.Lance.IsReady, "Fifty percent weapons power must finish after six seconds.");
+        var stopped = NewWeapons();
+        Step(stopped, 90);
+        float charge = stopped.World.Lance.ChargeFraction;
+        stopped.Step(default, default, new PowerAllocationCommand(WeaponsDelta: -100));
+        Step(stopped, 300);
+        Near(stopped.World.Lance.ChargeFraction, charge, 0.0001f);
+        stopped.Step(default, default, new PowerAllocationCommand(WeaponsDelta: 100));
+        Step(stopped, 90);
+        Check(stopped.World.Lance.IsReady, "Restored weapons power must continue from retained charge.");
+    }),
+    ("A ready lance fires after weapons power is removed and still resets charge", () =>
+    {
+        var sim = WithTargets(new Vector3(0, 0, -300));
+        Step(sim, 180);
+        sim.Step(default, default, new PowerAllocationCommand(WeaponsDelta: -100));
+        sim.Step(new ShipCommand(FireLance: true));
+        Check(sim.Events.OfType<WeaponFired>().Any() && sim.World.Targets.Count == 0, "Ready lance must fire without weapons power.");
+        Near(sim.World.Lance.ChargeFraction, 0);
+    }),
+    ("Full enemy shield absorbs one lance hit, emits shield events and delays recharge", () =>
+    {
+        var sim = CombatSimulation(power: CombatPower());
+        JumpToCombat(sim);
+        sim.Step(new ShipCommand(FireLance: true));
+        var enemy = sim.World.CurrentEnemy!;
+        Check(!enemy.IsDestroyed && enemy.Ship.Shield.CurrentShield == 0f, "Full shield must absorb the first hit.");
+        Check(sim.Events.OfType<ShieldHit>().Single().TargetEnemyId == enemy.EnemyId, "Shield hit must identify its enemy.");
+        Check(sim.Events.OfType<ShieldDepleted>().Any(), "Shield depletion event is required.");
+        Step(sim, 180);
+        Near(enemy.Ship.Shield.CurrentShield, 0);
+        Step(sim, 3);
+        Check(enemy.Ship.Shield.CurrentShield > 0f, "Shield must recharge after its delay.");
+    }),
+    ("Partial enemy shield passes residual lance damage through and destroys the ship", () =>
+    {
+        var sim = CombatSimulation(power: CombatPower(), shield: new ShieldSettings { MaximumShield = 40f });
+        JumpToCombat(sim);
+        sim.Step(new ShipCommand(FireLance: true));
+        var enemy = sim.World.CurrentEncounter.Enemy!;
+        Check(enemy.IsDestroyed && enemy.Ship.Shield.CurrentShield == 0f, "Residual lance damage must destroy a partially shielded enemy.");
+    }),
+    ("Enemy lance damages the player shield before GameOver", () =>
+    {
+        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(900, 0, 0), YawRadians: MathF.PI / 2),
+            power: CombatPower());
+        JumpToCombat(sim);
+        for (int i = 0; i < 400 && sim.World.Ship.Shield.CurrentShield > 0f; i++) sim.Step(default);
+        Check(sim.World.Ship.Shield.CurrentShield == 0f && sim.World.GameState == GameState.Running,
+            "First enemy lance hit must deplete the player shield without GameOver.");
+        Check(sim.Events.OfType<ShieldHit>().Any(hit => hit.TargetOwner == WeaponOwner.Player),
+            "Player shield hit event is required.");
+    }),
+    ("Enemy EVADE profile changes its real power allocation", () =>
+    {
+        var sim = CombatSimulation(power: CombatPower());
+        JumpToCombat(sim);
+        Step(sim, 61);
+        var enemy = sim.World.CurrentEnemy!;
+        var ai = sim.World.CurrentEncounter.EnemyAi!;
+        Check(ai.CurrentState == EnemyAiState.Evade, "Charged player lance should threaten the enemy.");
+        Check(enemy.Ship.Power.PropulsionAllocation == sim.Settings.Power.EvadeProfile.Propulsion &&
+              enemy.Ship.Power.WeaponsAllocation == sim.Settings.Power.EvadeProfile.Weapons,
+            "EVADE profile must affect the enemy's actual power state.");
+    }),
+    ("Zero shield allocation prevents recharge and recharge never exceeds maximum", () =>
+    {
+        var noRecharge = CombatPower() with { DefendProfile = new PowerProfile(0f, 0f, 0f) };
+        var stopped = CombatSimulation(power: noRecharge);
+        JumpToCombat(stopped);
+        stopped.Step(new ShipCommand(FireLance: true));
+        var stoppedEnemy = stopped.World.CurrentEnemy!;
+        Step(stopped, 240);
+        Near(stoppedEnemy.Ship.Shield.CurrentShield, 0f);
+
+        var charging = CombatSimulation(power: CombatPower());
+        JumpToCombat(charging);
+        charging.Step(new ShipCommand(FireLance: true));
+        var chargingEnemy = charging.World.CurrentEnemy!;
+        Step(charging, 900);
+        Check(chargingEnemy.Ship.Shield.CurrentShield <= chargingEnemy.Ship.Shield.MaximumShield,
+            "Shield recharge must never exceed its configured maximum.");
     }),
     ("Invalid AI settings are rejected", () =>
     {
@@ -458,12 +581,36 @@ Console.WriteLine($"{tests.Length - failed}/{tests.Length} tests passed.");
 return failed == 0 ? 0 : 1;
 
 static Simulation New(ShipInitialState initial = default) =>
-    new(new SimulationSettings { TargetCount = 0 }, initial, spawnEnemy: false);
+    new(new SimulationSettings { TargetCount = 0, Power = PropulsionOnlyPower() }, initial, spawnEnemy: false);
+static Simulation NewWeapons(ShipInitialState initial = default) =>
+    new(new SimulationSettings { TargetCount = 0, Power = WeaponsOnlyPower() }, initial, spawnEnemy: false);
 static Simulation WithTargets(params Vector3[] targets) =>
-    new(new SimulationSettings { TargetCount = targets.Length }, initialTargets: targets, spawnEnemy: false);
-static Simulation CombatSimulation(ShipInitialState player = default, ShipInitialState? enemy = null) =>
-    new(new SimulationSettings { TargetCount = 0, EncounterTwoTargetCount = 0 }, player,
+    new(new SimulationSettings { TargetCount = targets.Length, Power = WeaponsOnlyPower() }, initialTargets: targets, spawnEnemy: false);
+static Simulation CombatSimulation(ShipInitialState player = default, ShipInitialState? enemy = null,
+    ShieldSettings? shield = null, PowerSettings? power = null) =>
+    new(new SimulationSettings
+    {
+        TargetCount = 0, EncounterTwoTargetCount = 0,
+        Shield = shield ?? new ShieldSettings(), Power = power ?? new PowerSettings()
+    }, player,
         randomSeed: 42, enemyInitial: enemy, spawnEnemy: true);
+static PowerSettings PropulsionOnlyPower() => new()
+{
+    DefaultPropulsionPower = 100f, DefaultWeaponsPower = 0f, DefaultShieldsPower = 0f
+};
+static PowerSettings WeaponsOnlyPower() => new()
+{
+    DefaultPropulsionPower = 0f, DefaultWeaponsPower = 100f, DefaultShieldsPower = 0f
+};
+static PowerSettings CombatPower() => new()
+{
+    DefaultPropulsionPower = 0f, DefaultWeaponsPower = 100f, DefaultShieldsPower = 0f,
+    AttackProfile = new PowerProfile(0f, 100f, 0f),
+    DefendProfile = new PowerProfile(0f, 0f, 100f),
+    EvadeProfile = new PowerProfile(60f, 10f, 30f),
+    RepositionProfile = new PowerProfile(0f, 100f, 0f),
+    MinimumProfileDuration = 1f
+};
 static void JumpToCombat(Simulation sim)
 {
     Step(sim, 600);

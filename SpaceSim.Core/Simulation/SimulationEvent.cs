@@ -12,3 +12,7 @@ public sealed record TargetSpawned(int TargetId, Vector3 Position, int Encounter
 public sealed record EncounterChanged(int FromEncounterId, int ToEncounterId) : SimulationEvent;
 public sealed record EnemyDestroyed(int EnemyId, Vector3 Position) : SimulationEvent;
 public sealed record PlayerDestroyed(int EnemyId, Vector3 Position) : SimulationEvent;
+public sealed record ShieldHit(WeaponOwner TargetOwner, int? TargetEnemyId, float Damage,
+    float ShieldBefore, float ShieldAfter, Vector3 Position) : SimulationEvent;
+public sealed record ShieldDepleted(WeaponOwner TargetOwner, int? TargetEnemyId, Vector3 Position) : SimulationEvent;
+public sealed record PowerAllocationChanged(float Propulsion, float Weapons, float Shields) : SimulationEvent;

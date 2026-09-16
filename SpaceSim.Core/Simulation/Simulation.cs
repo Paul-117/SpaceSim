@@ -5,6 +5,7 @@ using SpaceSim.Core.Weapons;
 using SpaceSim.Core.Navigation;
 using SpaceSim.Core.Combat;
 using SpaceSim.Core.AI;
+using SpaceSim.Core.Power;
 
 namespace SpaceSim.Core.Simulation;
 
@@ -32,13 +33,7 @@ public sealed class Simulation
             new EncounterState(2, "Encounter 2", Settings.EncounterTwoTargetCount),
             new EncounterState(3, "Encounter 3", Settings.EncounterThreeTargetCount)
         };
-        World = new WorldState(new ShipState(Settings.ShipMassKg, Settings.YawMomentOfInertia)
-        {
-            Position = initialShip.Position,
-            Velocity = initialShip.Velocity,
-            Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, initialShip.YawRadians),
-            AngularVelocity = Vector3.UnitY * initialShip.YawRateRadiansPerSecond
-        }, encounters);
+        World = new WorldState(CreateShip(initialShip), encounters);
         World.WarpDrive.RemainingSeconds = Settings.WarpChargeSeconds;
         var targets = new TargetSystem(Settings, randomSeed);
         targets.Initialize(encounters[0], initialShip.Position, _events, initialTargets);
@@ -62,20 +57,27 @@ public sealed class Simulation
         }
     }
 
-    public void Step(ShipCommand command, NavigationCommand navigation = default)
+    public void Step(ShipCommand command, NavigationCommand navigation = default,
+        PowerAllocationCommand powerAllocation = default)
     {
         _events.Clear();
         if (World.GameState == GameState.GameOver) return;
 
-        LanceSystem.Charge(World.Lance, Settings);
+        if (PowerDistributionSystem.TryApply(World.Ship.Power, powerAllocation))
+            _events.Add(new PowerAllocationChanged(World.Ship.Power.PropulsionAllocation,
+                World.Ship.Power.WeaponsAllocation, World.Ship.Power.ShieldsAllocation));
+        ShieldSystem.Recharge(World.Ship.Shield, World.Ship.Power.ShieldsPowerFactor, Settings.Shield);
+        LanceSystem.Charge(World.Lance, Settings, World.Ship.Power.WeaponsPowerFactor);
         EnemyShipState[] enemies = World.CurrentEnemies.ToArray();
         var enemyCommands = new Dictionary<int, ShipCommand>(enemies.Length);
         foreach (EnemyShipState enemy in enemies)
         {
-            LanceSystem.Charge(enemy.Lance, Settings);
             EnemyAiController? ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
             enemyCommands[enemy.EnemyId] = ai?.Tick(enemy, World.Ship, World.Lance,
                 Settings.LanceRangeMeters, World.GameState) ?? default;
+            if (ai is not null) PowerDistributionSystem.ApplyProfile(enemy.Ship.Power, ai.CurrentPowerProfile);
+            ShieldSystem.Recharge(enemy.Ship.Shield, enemy.Ship.Power.ShieldsPowerFactor, Settings.Shield);
+            LanceSystem.Charge(enemy.Lance, Settings, enemy.Ship.Power.WeaponsPowerFactor);
         }
         ShipPhysics.Step(World.Ship, command, Settings);
         foreach (EnemyShipState enemy in enemies)
@@ -97,7 +99,8 @@ public sealed class Simulation
         World.Tick++;
     }
 
-    private ShipState CreateShip(ShipInitialState initial) => new(Settings.ShipMassKg, Settings.YawMomentOfInertia)
+    private ShipState CreateShip(ShipInitialState initial) => new(Settings.ShipMassKg, Settings.YawMomentOfInertia,
+        PowerDistributionSystem.Create(Settings.Power), ShieldSystem.Create(Settings.Shield))
     {
         Position = initial.Position,
         Velocity = initial.Velocity,
@@ -108,7 +111,8 @@ public sealed class Simulation
     private void AddEnemy(EncounterState encounter, int enemyId, ShipInitialState initial, int seed)
     {
         ValidateInitial(initial);
-        encounter.AddEnemy(new EnemyShipState(enemyId, CreateShip(initial)), new EnemyAiController(Settings.EnemyAi, seed));
+        encounter.AddEnemy(new EnemyShipState(enemyId, CreateShip(initial)),
+            new EnemyAiController(Settings.EnemyAi, Settings.Power, seed));
     }
 
     private static void ValidateInitial(ShipInitialState initial)

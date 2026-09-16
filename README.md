@@ -1,10 +1,33 @@
-# SpaceSim 1.2
+# SpaceSim 1.3
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Trägheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und drei über eine
 Sternenkarte verbundene Encounter. Encounter 1 startet mit 10 Zielen, Encounter 2
 mit einem Gegner und Encounter 3 mit zwei Gegnern. Es gibt keinen Respawn. Grafik
 und HUD entstehen aus geometrischen Formen; externe Assets sind nicht erforderlich.
+
+## Energieverteilung und Schilde
+
+Jedes Schiff besitzt einen vereinfachten Reaktor mit konstanten **100 Power Units**.
+Der Core verteilt diese Leistung auf Antrieb, Waffen und Schilde. Der Standardwert
+ist 35 / 35 / 30. Negative oder zu hohe Zuweisungen werden atomar abgewiesen.
+Der Reaktor ist absichtlich nur ein Platzhalter; Wärme, Brennstoff, Reaktortypen,
+Kopplungsstufen und Overdrive existieren noch nicht.
+
+Die Wirkung ist linear: Antriebsleistung skaliert Haupt-, Rückwärts- und
+Yaw-Schub, Waffenleistung bestimmt die Ladegeschwindigkeit der Lanze und
+Schildleistung bestimmt die Regeneration. Bereits vorhandene Bewegung,
+Lanzenladung und Schildstärke bleiben beim Umverteilen erhalten.
+
+Das HUD bietet rechts **POWER DISTRIBUTION** mit -/+ Buttons in 5-Power-Unit-
+Schritten. Erhöhungen ohne freie Leistung werden abgewiesen. Die Anzeige enthält
+auch die Schildstärke und den aktuellen Status.
+
+Jeder Schild besitzt 100 Punkte; die Lanze verursacht 100 Schaden. Ein voller
+Schild absorbiert einen Treffer, jeder Restschaden zerstört das Schiff, weil
+V1.3 noch keine Hüllenpunkte besitzt. Nach einem Schildtreffer gilt ein
+dreisekündiger Recharge Delay. Danach regeneriert der Schild mit bis zu 20
+Punkten pro Sekunde, abhängig von der Schildleistung.
 
 ## Schnellstart unter Windows
 
@@ -85,10 +108,16 @@ Spielerladung und einem Spieler-Zielfehler unter 10° weicht sie präventiv aus.
 Die reproduzierbar gewählte Ausweichrichtung bleibt während des Manövers stabil.
 EVADE dauert mindestens 1,0 und höchstens 2,5 Sekunden.
 
-Ein Spielertreffer zerstört den Gegner sofort. Ein Gegnertreffer versetzt den
-Core in `GameOver`: Zeit, Physik, KI, Waffen und Navigation bleiben stehen und
-Commands werden ignoriert. Godot zeigt „GAME OVER / SCHIFF ZERSTÖRT“. Der
-Neustart-Button beginnt eine neue Sitzung in Encounter 1.
+Spieler und Gegner besitzen dieselben Energie- und Schildzustände. Ein voller
+Schild absorbiert einen Lanzentreffer; erst Restschaden zerstört das jeweilige
+Schiff. Beim Spieler führt das zu `GameOver`: Zeit, Physik, KI, Waffen und
+Navigation bleiben stehen und Commands werden ignoriert. Godot zeigt GAME OVER /
+SCHIFF ZERSTÖRT. Der Neustart-Button beginnt eine neue Sitzung in Encounter 1.
+
+Die Gegner-KI verwendet zentrale Profile: ATTACK verteilt 20 / 60 / 20, EVADE
+60 / 10 / 30, REPOSITION 55 / 20 / 25 und DEFEND 20 / 20 / 60. Bei stark
+beschädigtem Schild erhält DEFEND Vorrang. Die Profile setzen dieselben realen
+PowerState-Werte wie die Spielerbedienung; Gegner erhalten keine kostenlose Energie.
 
 Die zentralen Startwerte stehen vollständig in `EnemyAiSettings`:
 
@@ -245,7 +274,7 @@ Start.cmd        Start per Doppelklick
   Release gebaut. `scripts/Build.ps1 -Configuration ExportRelease` erstellt die
   optimierten Assemblies. Ein eigenständiger Spiel-Export ist noch nicht enthalten.
 - **3D-Daten, planare Regel:** Position, Geschwindigkeit und Winkelgeschwindigkeit
-  sind Vector3; Orientierung ist ein Quaternion. Version 1.2 hält Y = 0 und dreht
+  sind Vector3; Orientierung ist ein Quaternion. Version 1.3 hält Y = 0 und dreht
   nur um Y. Die Nase zeigt lokal nach -Z; positives Y-Drehmoment dreht nach links.
   Godot projiziert X/Z auf Bildschirm-X/Y. Für vollständiges 3D müssen Integrator,
   Trägheitsmodell und Commands erweitert werden, nicht das Zustandsformat ersetzt.
@@ -286,7 +315,7 @@ Start.cmd        Start per Doppelklick
   Schiffen. `WeaponFired` kennzeichnet Schützen und Trefferart.
 - **Deterministische FSM:** Sämtliche Schwellen, Hysteresen und PD-Werte stehen in
   `EnemyAiSettings`. Zufall wird nur beim Eintritt in EVADE verwendet und ist
-  über den Simulationsseed reproduzierbar. V1.2 verwendet den exakten
+  über den Simulationsseed reproduzierbar. V1.3 verwendet den exakten
   Spielerzustand; eine Sensorabstraktion ist noch nicht vorhanden.
 - **Treffer unabhängig von Grafik:** Der Core schneidet einen vorwärtsgerichteten,
   reichweitenbegrenzten Ray mit den Zielkugeln. Godot verwendet nur das resultierende
@@ -301,7 +330,7 @@ Start.cmd        Start per Doppelklick
 
 ## Testumfang
 
-Die 36 Core-Tests prüfen unter anderem:
+Die 46 Core-Tests prüfen unter anderem:
 
 - Geschwindigkeit ohne Schub, Beschleunigung in gedrehter Schiffsausrichtung,
   Weiterflug nach Loslassen, Rückschub und fehlendes Geschwindigkeitslimit.
@@ -326,6 +355,10 @@ Die 36 Core-Tests prüfen unter anderem:
 - Gemeinsame physikalische Grenzen für KI-Bewegung, normale Lanzenladung,
   Spieler- und Gegnerzerstörung, deaktivierte DESTROYED-KI und vollständiges
   Einfrieren aller Systeme nach Game Over.
+- Gültige und abgewiesene Power-Zuweisungen, linearen Schub und Drehmoment bei
+  halber oder fehlender Antriebsleistung sowie Waffenladezeit und erhaltene Ladung.
+- Schildabsorption, Restschaden, Recharge Delay, Regeneration, fehlende
+  Schildenergie und reale EVADE-Power-Profile der Gegner.
 - Zurückweisen ungültiger physikalischer Parameter.
 
 ## Aktuelle Einschränkungen
@@ -372,6 +405,9 @@ Version **1.2.0** erweitert das Spiel um Gegner-FSM, Game Over und drei
 Sprungpunkte: zehn Ziele in Encounter 1, einen Gegner in Encounter 2 und zwei
 Gegner in Encounter 3. Der Stand ist mit dem annotierten Git-Tag **`v1.2`**
 gesichert; die Details stehen in [SpaceSim_v1.2_Changelog.txt](SpaceSim_v1.2_Changelog.txt).
+
+Der aktuelle Arbeitsstand ist **1.3.0** mit Energieverteilung und Schilden. Er ist
+für den Tag `v1.3` vorbereitet, wird aber erst auf ausdrückliche Anweisung getaggt.
 
 ```powershell
 git status             # Änderungen seit dem letzten Commit anzeigen

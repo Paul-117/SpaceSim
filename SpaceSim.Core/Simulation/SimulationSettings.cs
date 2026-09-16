@@ -1,6 +1,8 @@
 namespace SpaceSim.Core.Simulation;
 
 using SpaceSim.Core.AI;
+using SpaceSim.Core.Combat;
+using SpaceSim.Core.Power;
 
 /// <summary>All simulation values are SI units; presentation uses its own scale.</summary>
 public sealed record SimulationSettings
@@ -23,6 +25,8 @@ public sealed record SimulationSettings
     public float SpawnMinDistanceMeters { get; init; } = 180f;
     public float SpawnMaxDistanceMeters { get; init; } = 750f;
     public EnemyAiSettings EnemyAi { get; init; } = new();
+    public PowerSettings Power { get; init; } = new();
+    public ShieldSettings Shield { get; init; } = new();
 
     internal void Validate()
     {
@@ -38,7 +42,11 @@ public sealed record SimulationSettings
         Positive(SpawnMinDistanceMeters, nameof(SpawnMinDistanceMeters));
         Positive(SpawnMaxDistanceMeters, nameof(SpawnMaxDistanceMeters));
         ArgumentNullException.ThrowIfNull(EnemyAi);
+        ArgumentNullException.ThrowIfNull(Power);
+        ArgumentNullException.ThrowIfNull(Shield);
         EnemyAi.Validate();
+        Power.Validate();
+        Shield.Validate();
         if (TargetCount < 0 || TargetCount > 256)
             throw new ArgumentOutOfRangeException(nameof(TargetCount));
         if (EncounterTwoTargetCount < 0 || EncounterTwoTargetCount > 256)

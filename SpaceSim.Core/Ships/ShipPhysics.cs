@@ -8,11 +8,12 @@ internal static class ShipPhysics
     public static void Step(ShipState ship, ShipCommand command, SimulationSettings settings)
     {
         const float dt = SimulationSettings.FixedDeltaSeconds;
-        float force = (command.MainThrust ? settings.MainThrustNewtons : 0f)
-                    - (command.ReverseThrust ? settings.ReverseThrustNewtons : 0f);
+        float powerFactor = ship.Power.PropulsionPowerFactor;
+        float force = (command.MainThrust ? settings.MainThrustNewtons * powerFactor : 0f)
+                    - (command.ReverseThrust ? settings.ReverseThrustNewtons * powerFactor : 0f);
         // Positive rotation about +Y turns the nose (-Z) left in the X/Z view.
         float torque = ((command.YawLeft ? 1f : 0f) - (command.YawRight ? 1f : 0f))
-                       * settings.YawTorqueNewtonMeters;
+                       * settings.YawTorqueNewtonMeters * powerFactor;
         Vector3 acceleration = ship.Forward * (force / ship.MassKg);
         ship.Velocity += acceleration * dt;
         ship.AngularVelocity += Vector3.UnitY * (torque / ship.YawMomentOfInertia * dt);

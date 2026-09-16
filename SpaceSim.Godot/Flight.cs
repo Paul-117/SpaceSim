@@ -2,6 +2,7 @@ using Godot;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Simulation;
 using SpaceSim.Core.Navigation;
+using SpaceSim.Core.Power;
 using SpaceSim.GodotClient.Input;
 using SpaceSim.GodotClient.Rendering;
 using SpaceSim.GodotClient.UI;
@@ -20,9 +21,11 @@ public partial class Flight : Node
     private readonly Camera2D _camera = new();
     private readonly Starfield _stars = new();
     private readonly FlightHud _hud = new();
+    private readonly PowerDistributionPanel _powerPanel = new();
     private readonly StarMap _starMap = new();
     private readonly GameOverOverlay _gameOver = new();
     private NavigationCommand _pendingNavigation;
+    private PowerAllocationCommand _pendingPower;
     private NVector3 _previousPosition;
     private NQuaternion _previousRotation;
     private ShipCommand _lastCommand;
@@ -34,6 +37,7 @@ public partial class Flight : Node
     private WarpSmokeScenario? _warpScenario;
     private bool _smokeSawShot;
     private bool _smokeSawHit;
+    private bool _powerSmokeAdjusted;
     private float _visualTime;
     private string? _capturePath;
     private bool _capturing;
@@ -50,6 +54,7 @@ public partial class Flight : Node
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
         _hud.WarpMapRequested += () => _starMap.Open();
+        _powerPanel.AdjustmentRequested += command => _pendingPower = _pendingPower.Combine(command);
         _starMap.JumpRequested += id => _pendingNavigation = new NavigationCommand(id);
         _gameOver.RestartRequested += RestartGame;
         var backdrop = new CanvasLayer { Layer = -10 };
@@ -63,10 +68,11 @@ public partial class Flight : Node
         var cockpit = new CanvasLayer { Layer = 10 };
         AddChild(cockpit);
         cockpit.AddChild(_hud);
+        cockpit.AddChild(_powerPanel);
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.2 | Core 60 Hz | enemies in Encounters 2 and 3 | Warp Drive: star map");
+        GD.Print("SpaceSim 1.3 | Core 60 Hz | power distribution, shields and combat encounters");
     }
 
     private Simulation CreateSimulation()
@@ -86,6 +92,7 @@ public partial class Flight : Node
     {
         _arena.World = _simulation.World;
         _hud.World = _simulation.World;
+        _powerPanel.World = _simulation.World;
         _starMap.World = _simulation.World;
     }
 
@@ -135,17 +142,29 @@ public partial class Flight : Node
         }
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
+        if (_smokeTest)
+        {
+            if (_simulation.World.Tick == 0) _powerPanel.PropulsionMinus.EmitSignal(Button.SignalName.Pressed);
+            if (_simulation.World.Tick == 1) _powerPanel.WeaponsPlus.EmitSignal(Button.SignalName.Pressed);
+            if (_simulation.World.Tick == 3)
+            {
+                var power = _simulation.World.Ship.Power;
+                _powerSmokeAdjusted = power.PropulsionAllocation == 30f && power.WeaponsAllocation == 40f &&
+                                      power.ShieldsAllocation == 30f;
+            }
+        }
         if (_warpScenario is null) _lastCommand = _smokeTest
-            ? new ShipCommand(MainThrust: _simulation.World.Tick >= 181, YawLeft: _simulation.World.Tick >= 200,
-                FireLance: _simulation.World.Tick == 180)
+            ? new ShipCommand(MainThrust: _simulation.World.Tick >= 181, YawLeft: _simulation.World.Tick >= 451,
+                FireLance: _simulation.World.Tick == 450)
             : _keyboard.ReadCommand();
         if (_enemySmokeTest)
         {
             _lastCommand = default;
             if (_simulation.World.Tick == 600) _pendingNavigation = new NavigationCommand(2);
         }
-        _simulation.Step(_lastCommand, _pendingNavigation);
+        _simulation.Step(_lastCommand, _pendingNavigation, _pendingPower);
         _pendingNavigation = default;
+        _pendingPower = default;
         if (_simulation.Events.OfType<EncounterChanged>().Any())
         {
             // Do not interpolate across different local coordinate systems.
@@ -182,13 +201,13 @@ public partial class Flight : Node
         {
             _smokeSawShot |= _simulation.Events.OfType<WeaponFired>().Any();
             _smokeSawHit |= _simulation.Events.OfType<TargetHit>().Any();
-            if (_simulation.World.Tick >= 240)
+            if (_simulation.World.Tick >= 510)
             {
                 bool passed = _smokeSawShot && _smokeSawHit && _simulation.World.HitCount == 1 &&
                               _simulation.World.Ship.Velocity.Length() > 1f &&
                               _simulation.World.Ship.AngularVelocity.Y > 0f;
-                passed &= _simulation.World.Targets.Count == 0;
-                GD.Print(passed ? "SMOKE PASS: scene, fixed ticks, thrust, rotation, lance, hit, no respawn." : "SMOKE FAIL");
+                passed &= _simulation.World.Targets.Count == 0 && _powerSmokeAdjusted && _powerPanel.GetChildCount() > 0;
+                GD.Print(passed ? "SMOKE PASS: power UI, shields, fixed ticks, thrust, rotation, lance, hit, no respawn." : "SMOKE FAIL");
                 GetTree().Quit(passed ? 0 : 1);
             }
         }
@@ -202,10 +221,12 @@ public partial class Flight : Node
         _previousRotation = _simulation.World.Ship.Rotation;
         _lastCommand = default;
         _pendingNavigation = default;
+        _pendingPower = default;
         _arena.ResetVisuals();
         _starMap.Close();
         _gameOver.Hide();
         _enemyGameOverFrames = 0;
+        _powerSmokeAdjusted = false;
         if (_enemySmokeTest) _enemySmokeRestarted = true;
     }
 
@@ -229,7 +250,7 @@ public partial class Flight : Node
         _hud.IsFocused = _keyboard.IsFocused;
         bool captureReady = _enemySmokeTest
             ? _simulation.World.GameState == SpaceSim.Core.Combat.GameState.GameOver
-            : _simulation.World.Tick >= (_warpSmokeTest ? 580 : 182);
+            : _simulation.World.Tick >= (_warpSmokeTest ? 580 : 452);
         if (_capturePath is not null && !_capturing && captureReady)
         {
             _capturing = true;

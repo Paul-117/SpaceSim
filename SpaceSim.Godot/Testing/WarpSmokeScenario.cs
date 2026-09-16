@@ -38,7 +38,7 @@ internal sealed class WarpSmokeScenario(WorldState world, FlightHud hud, StarMap
                 Check(map.SelectedEncounterId is null, "Reopening requires selecting a destination again.");
                 Click(map.DestinationButton(2));
                 break;
-            case 240:
+            case 570:
                 Check(world.Targets.Count == 9 && world.HitCount == 1, "Hit through the live map must not respawn.");
                 _survivingIds = world.Targets.Select(t => t.Id).ToArray();
                 _driftStart = world.Ship.Position;
@@ -46,7 +46,8 @@ internal sealed class WarpSmokeScenario(WorldState world, FlightHud hud, StarMap
             case 600:
                 Check(map.Visible && world.WarpDrive.IsReady, "Map must stay open while warp charges.");
                 Check(NVector3.Distance(_driftStart, world.Ship.Position) > 1, "Flight must continue behind the map.");
-                Check(world.Ship.AngularVelocity.Y > 0 && world.Lance.IsReady, "Rotation and lance must keep running.");
+                Check(world.Ship.AngularVelocity.Y > 0 && world.Lance.ChargeFraction > 0f,
+                    "Rotation and lance charging must keep running.");
                 Check(!map.JumpButton.Disabled, "Jump must become enabled after ten seconds.");
                 Click(map.JumpButton);
                 break;
@@ -74,7 +75,7 @@ internal sealed class WarpSmokeScenario(WorldState world, FlightHud hud, StarMap
                 break;
         }
         return new ShipCommand(MainThrust: world.Tick is >= 181 and < 210,
-            YawLeft: world.Tick is >= 200 and < 210, FireLance: world.Tick == 180);
+            YawLeft: world.Tick is >= 571 and < 581, FireLance: world.Tick == 540);
     }
 
     private void Click(Button button)

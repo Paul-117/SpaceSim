@@ -1,0 +1,158 @@
+SPACESIM V1.3 - IMPLEMENTIERUNGSUEBERSICHT
+==========================================
+
+Projektversion: 1.3.0
+Vorgaengerversion: v1.2 (Commit 8b469b0)
+Git-Status: Arbeitsstand fuer v1.3 vorbereitet; kein Git-Tag wurde automatisch erstellt.
+Datum: 16.09.2026
+
+ZWECK
+
+V1.3 fuehrt eine einfache, taktisch relevante Energieverteilung und gemeinsame
+Schilde fuer Spieler und Gegner ein. Der Core bleibt autoritativ; Godot sendet
+nur Commands und stellt den Zustand dar.
+
+NEUE DATEIEN
+
+SpaceSim.Core/Power/PowerState.cs
+- PowerState gehoert zu einem ShipState.
+- AvailablePower, NominalSystemPower und die drei Zuweisungen fuer Propulsion,
+  Weapons und Shields.
+- Leistungsfaktoren sind Allocation / NominalSystemPower und werden auf 0..1
+  begrenzt.
+- PowerProfile beschreibt komplette, zentral konfigurierte Verteilungen.
+- PowerAllocationCommand ist ein neutraler, atomarer Delta-Command fuer die UI.
+
+SpaceSim.Core/Power/PowerSettings.cs
+- Konstante Reaktorleistung: 100 Power Units.
+- Standardverteilung: 35 Propulsion, 35 Weapons, 30 Shields.
+- Schrittweite: 5 Power Units.
+- AI-Profile: ATTACK 20/60/20, DEFEND 20/20/60, EVADE 60/10/30,
+  REPOSITION 55/20/25.
+- Zentraler Schwellenwert fuer DEFEND und Mindestdauer eines Profils.
+
+SpaceSim.Core/Power/PowerDistributionSystem.cs
+- Erstellt PowerState und uebernimmt nur gueltige atomare Commands.
+- Negative Zuweisungen oder Summen ueber AvailablePower werden verworfen,
+  ohne den vorherigen Zustand zu veraendern.
+- Profile werden vom Core auf Gegner angewandt.
+
+SpaceSim.Core/Combat/ShieldState.cs
+- CurrentShield, MaximumShield und RechargeDelayRemaining pro Schiff.
+
+SpaceSim.Core/Combat/ShieldSettings.cs
+- MaximumShield 100, LanceDamage 100, RechargePerSecond 20 und
+  RechargeDelaySeconds 3 als zentrale Startwerte.
+
+SpaceSim.Core/Combat/ShieldSystem.cs
+- Schildregeneration, Delay und Lanzenschaden im Core.
+
+SpaceSim.Godot/UI/PowerDistributionPanel.cs
+- Funktionale Entwicklungsoberflaeche mit sechs -/+ Buttons.
+- Zeigt die drei Power-Werte, Gesamtleistung, Schildwert und Schildstatus.
+
+POWER DISTRIBUTION
+
+- Die Zuweisung erfuellt immer Propulsion + Weapons + Shields <= AvailablePower.
+- Standard ist 35 / 35 / 30 beim Erstellen jedes Schiffs.
+- Beim erfolgreichen Warp wird die Verteilung des Spielerschiffs wieder auf
+  den Standard gesetzt. Schildstaerke und Lanzenladung bleiben dabei erhalten.
+- Godot besitzt keine Energie-Werte. Die Buttons liefern PowerAllocationCommand;
+  Simulation.Step prueft ihn mit PowerDistributionSystem und erzeugt bei Erfolg
+  PowerAllocationChanged.
+- Nicht zugewiesene Leistung ist erlaubt. Es erfolgt niemals eine automatische
+  Umverteilung aus einem anderen Pool.
+
+AUSWIRKUNGEN AUF SCHIFFSSYSTEME
+
+Propulsion:
+- Hauptschub, Rueckschub und Yaw-Drehmoment werden linear mit dem
+  PropulsionPowerFactor multipliziert.
+- Bei 0 Leistung gibt es keine neue Beschleunigung und kein neues Drehmoment.
+  Bereits vorhandene lineare und Winkelgeschwindigkeit bleibt wegen Traegheit.
+
+Weapons:
+- Die Lanze laedt pro Tick mit WeaponsPowerFactor / 60 ihrer bisherigen Rate.
+- 100 Weapons-Power ergibt die bekannte Ladezeit von drei Sekunden.
+- 50 Weapons-Power ergibt sechs Sekunden; 0 stoppt die Aufladung.
+- Eine vorhandene Ladung bleibt erhalten. Eine bereits volle Lanze kann auch
+  ohne aktuelle Weapons-Power abgefeuert werden.
+
+Shields:
+- Schildleistung veraendert nur die Regenerationsrate, niemals MaximumShield.
+- Nach einem absorbierten Treffer laeuft drei Sekunden kein Recharge.
+- Danach gilt RechargePerSecond * ShieldsPowerFactor, begrenzt auf MaximumShield.
+
+TREFFERREGELN
+
+- Ein LanceHit verursacht 100 Schaden.
+- Zuerst absorbiert CurrentShield bis zu seinem aktuellen Wert.
+- Reicht der Schild vollstaendig, lebt das Schiff weiter und der Schild startet
+  seinen Recharge Delay.
+- Bleibt Restschaden, wird der Gegner zerstoert bzw. der Spieler erhaelt
+  PlayerDestroyed und GameOver. Ein Hull-/HP-System existiert noch nicht.
+- Neuer SimulationEvent ShieldHit enthaelt Zielseite, Gegner-ID, Schaden,
+  Schildstand davor/danach und Position.
+- ShieldDepleted wird beim Uebergang von Schild > 0 auf Schild 0 erzeugt.
+- ArenaView visualisiert ShieldHit als kurzen Ring. Der Effekt entscheidet
+  niemals ueber Treffer oder Schaden.
+
+GEGNER UND POWER PROFILE
+
+- EnemyShipState verwendet ueber ShipState exakt dieselben PowerState- und
+  ShieldState-Typen wie der Spieler.
+- EnemyAiController setzt keine physikalischen Werte. Er erzeugt weiterhin nur
+  ShipCommand; Simulation wendet sein gewuenschtes PowerProfile zentral an.
+- ATTACK priorisiert Waffen, EVADE priorisiert Antrieb, REPOSITION priorisiert
+  kontrollierte Bewegung. DEFEND hat bei Schildstand <= 35 Prozent Vorrang.
+- Ein Profilwechsel wird mindestens eine Sekunde gehalten, ausser DEFEND muss
+  wegen eines niedrigen Schilds sofort aktiviert werden.
+- Keine kostenlose Gegnerenergie, keine neue Utility-AI und keine Teamtaktik.
+
+GEAENDERTE DATEIEN
+
+- ShipState besitzt nun Power und Shield.
+- Simulation, ShipPhysics, LanceSystem und WarpDriveSystem verwenden die neuen
+  Core-Systeme.
+- SimulationEvent enthaelt ShieldHit, ShieldDepleted und PowerAllocationChanged.
+- EnemyAiController verwaltet sein PowerProfile.
+- Flight, FlightHud, ArenaView und WarpSmokeScenario wurden fuer Power-UI,
+  Schildvisualisierung und die energieabhaengige Waffenladezeit aktualisiert.
+- Directory.Build.props und Godot project.godot verwenden 1.3.0.
+- README.md dokumentiert V1.3.
+
+TESTS UND VALIDIERUNG
+
+- 46/46 automatisierte Core-Tests bestanden.
+- Power-Tests pruefen Ueberbuchung, negative Zuweisung, atomare gueltige
+  Verteilung, linearen Schub und Drehmoment sowie Traegheit ohne Energie.
+- Waffen-Tests pruefen 50-Prozent-Ladezeit, keine Ladung bei 0 Leistung,
+  erhaltene Ladung und Feuern einer zuvor vollen Lanze ohne Weapons-Power.
+- Schild-Tests pruefen volle und teilweise Absorption, Restschaden,
+  Recharge Delay, Regeneration, fehlende Schildenergie und Maximalbegrenzung.
+- Gegner-Tests pruefen Spieler- und Gegnerschild sowie die reale Anwendung des
+  EVADE-Power-Profils.
+- Debug-Build: erfolgreich, 0 Warnungen, 0 Fehler.
+- Godot-Smoke: erfolgreich. Der Standard-Smoke verwendet die echten Power-Buttons
+  und prueft die geaenderte Verteilung. Warp- und Gegner-Smoke bestehen ebenfalls.
+
+BEKANNTE EINSCHRAENKUNGEN UND ABWEICHUNGEN
+
+- Der Reaktor liefert nur eine konstante abstrakte Leistung; keine Waerme,
+  Effizienz, Brennstoff, Reaktortypen, Kopplungsstufen oder Overdrive.
+- Keine Hull-Punkte: Jeder Restschaden zerstoert sofort.
+- Es gibt einen gemeinsamen Schiffsschild, keine Richtungssegmente.
+- AI-Power-Profile sind fest und zustandsbasiert; sie planen keine
+  Umverteilung aus Vorhersagen oder Teamtaktik.
+- Der Spielerwert wird beim Sprung auf die Standardverteilung gesetzt. Gegner
+  behalten ihre pro Encounter laufenden AI-Profile, wenn der Encounter pausiert.
+- Keine Systemschaden-, Reparatur-, Warpenergie-, Sensorenergie- oder
+  Zusatzwaffensysteme.
+
+SINNVOLLE NAECHSTE SCHRITTE FUER V1.4
+
+1. Hull-/Schadensmodell hinter Restschaden einfuehren.
+2. Reaktoroutput von einem einfachen Reaktorobjekt statt der Konstante beziehen.
+3. Systemschaden als Begrenzung der akzeptierten Leistung ergaenzen.
+4. Schildsegmente oder weitere Energieverbraucher erst nach klaren UI- und
+   Sensoranforderungen entwickeln.

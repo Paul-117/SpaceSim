@@ -2,6 +2,7 @@ using System.Numerics;
 using SpaceSim.Core.Combat;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Weapons;
+using SpaceSim.Core.Power;
 
 namespace SpaceSim.Core.AI;
 
@@ -9,17 +10,22 @@ namespace SpaceSim.Core.AI;
 public sealed class EnemyAiController
 {
     private readonly EnemyAiSettings _settings;
+    private readonly PowerSettings _powerSettings;
     private readonly Random _random;
     public EnemyAiState CurrentState { get; private set; } = EnemyAiState.Acquire;
     public float TimeInState { get; private set; }
     public EvadeDirection? CurrentEvadeDirection { get; private set; }
     public EnemyAiContext LastContext { get; private set; }
     public ShipCommand LastCommand { get; private set; }
+    public PowerProfile CurrentPowerProfile { get; private set; }
+    public float TimeInPowerProfile { get; private set; }
 
-    internal EnemyAiController(EnemyAiSettings settings, int seed)
+    internal EnemyAiController(EnemyAiSettings settings, PowerSettings powerSettings, int seed)
     {
         _settings = settings;
+        _powerSettings = powerSettings;
         _random = new Random(seed);
+        CurrentPowerProfile = powerSettings.DefaultProfile;
     }
 
     internal ShipCommand Tick(EnemyShipState enemy, ShipState player, LanceState playerLance,
@@ -43,6 +49,8 @@ public sealed class EnemyAiController
             ChangeState(EnemyAiState.Evade);
         else
             EvaluateTransitions(threatened);
+
+        UpdatePowerProfile(enemy);
 
         return LastCommand = CurrentState switch
         {
@@ -164,5 +172,22 @@ public sealed class EnemyAiController
         CurrentEvadeDirection = state == EnemyAiState.Evade
             ? (_random.Next(2) == 0 ? EvadeDirection.Left : EvadeDirection.Right)
             : null;
+    }
+
+    private void UpdatePowerProfile(EnemyShipState enemy)
+    {
+        TimeInPowerProfile += 1f / SpaceSim.Core.Simulation.SimulationSettings.TickRate;
+        bool defend = enemy.Ship.Shield.CurrentShield / enemy.Ship.Shield.MaximumShield <=
+                      _powerSettings.DefendShieldThresholdFraction;
+        PowerProfile desired = defend ? _powerSettings.DefendProfile : CurrentState switch
+        {
+            EnemyAiState.Attack => _powerSettings.AttackProfile,
+            EnemyAiState.Evade => _powerSettings.EvadeProfile,
+            EnemyAiState.Approach or EnemyAiState.Reposition => _powerSettings.RepositionProfile,
+            _ => _powerSettings.DefaultProfile
+        };
+        if (desired == CurrentPowerProfile || (!defend && TimeInPowerProfile < _powerSettings.MinimumProfileDuration)) return;
+        CurrentPowerProfile = desired;
+        TimeInPowerProfile = 0f;
     }
 }

@@ -1,5 +1,6 @@
 using System.Numerics;
 using SpaceSim.Core.Simulation;
+using SpaceSim.Core.Power;
 
 namespace SpaceSim.Core.Navigation;
 
@@ -29,6 +30,7 @@ internal static class WarpDriveSystem
         world.Ship.Velocity = Vector3.Zero;
         world.Ship.Rotation = Quaternion.Identity;
         world.Ship.AngularVelocity = Vector3.Zero;
+        PowerDistributionSystem.ApplyProfile(world.Ship.Power, settings.Power.DefaultProfile);
         drive.ChargedSeconds = 0;
         drive.ChargeFraction = 0;
         drive.RemainingSeconds = settings.WarpChargeSeconds;
