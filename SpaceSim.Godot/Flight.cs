@@ -21,12 +21,16 @@ public partial class Flight : Node
     private readonly Starfield _stars = new();
     private readonly FlightHud _hud = new();
     private readonly StarMap _starMap = new();
+    private readonly GameOverOverlay _gameOver = new();
     private NavigationCommand _pendingNavigation;
     private NVector3 _previousPosition;
     private NQuaternion _previousRotation;
     private ShipCommand _lastCommand;
     private bool _smokeTest;
     private bool _warpSmokeTest;
+    private bool _enemySmokeTest;
+    private int _enemyGameOverFrames;
+    private bool _enemySmokeRestarted;
     private WarpSmokeScenario? _warpScenario;
     private bool _smokeSawShot;
     private bool _smokeSawHit;
@@ -39,20 +43,15 @@ public partial class Flight : Node
         Engine.PhysicsTicksPerSecond = SimulationSettings.TickRate;
         _smokeTest = OS.GetCmdlineUserArgs().Contains("--smoke-test");
         _warpSmokeTest = OS.GetCmdlineUserArgs().Contains("--warp-smoke-test");
+        _enemySmokeTest = OS.GetCmdlineUserArgs().Contains("--enemy-smoke-test");
         _capturePath = OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith("--capture="))?[10..];
-        int testTargetCount = _warpSmokeTest ? 10 : 1;
-        _simulation = _smokeTest || _warpSmokeTest
-            ? new Simulation(new SimulationSettings { TargetCount = testTargetCount },
-                initialTargets: Enumerable.Range(0, testTargetCount).Select(i =>
-                    i == 0 ? new NVector3(0, 0, -300) : new NVector3(200 + 40 * i, 0, 200)))
-            : new Simulation();
+        _simulation = CreateSimulation();
+        BindWorld();
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
-        _arena.World = _simulation.World;
-        _hud.World = _simulation.World;
-        _starMap.World = _simulation.World;
         _hud.WarpMapRequested += () => _starMap.Open();
         _starMap.JumpRequested += id => _pendingNavigation = new NavigationCommand(id);
+        _gameOver.RestartRequested += RestartGame;
         var backdrop = new CanvasLayer { Layer = -10 };
         AddChild(backdrop);
         backdrop.AddChild(_stars);
@@ -65,12 +64,34 @@ public partial class Flight : Node
         AddChild(cockpit);
         cockpit.AddChild(_hud);
         cockpit.AddChild(_starMap);
+        cockpit.AddChild(_gameOver);
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.1 | Core 60 Hz | W/S thrust, A/D torque, Space lance | Warp Drive: star map");
+        GD.Print("SpaceSim 1.2 | Core 60 Hz | enemies in Encounters 2 and 3 | Warp Drive: star map");
+    }
+
+    private Simulation CreateSimulation()
+    {
+        if (_enemySmokeTest)
+            return new Simulation(new SimulationSettings { TargetCount = 0, EncounterTwoTargetCount = 0 },
+                enemyInitial: new ShipInitialState(new NVector3(900, 0, 0), YawRadians: MathF.PI / 2));
+        int testTargetCount = _warpSmokeTest ? 10 : 1;
+        return _smokeTest || _warpSmokeTest
+            ? new Simulation(new SimulationSettings { TargetCount = testTargetCount },
+                initialTargets: Enumerable.Range(0, testTargetCount).Select(i =>
+                    i == 0 ? new NVector3(0, 0, -300) : new NVector3(200 + 40 * i, 0, 200)), spawnEnemy: false)
+            : new Simulation();
+    }
+
+    private void BindWorld()
+    {
+        _arena.World = _simulation.World;
+        _hud.World = _simulation.World;
+        _starMap.World = _simulation.World;
     }
 
     public override void _Input(InputEvent input)
     {
+        if (_gameOver.Visible) return;
         if (_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
         {
             _starMap.Close();
@@ -91,6 +112,16 @@ public partial class Flight : Node
 
     public override void _PhysicsProcess(double delta)
     {
+        if (_enemySmokeRestarted)
+        {
+            bool passed = _simulation.World.GameState == SpaceSim.Core.Combat.GameState.Running &&
+                          _simulation.World.CurrentEncounter.Id == 1 && !_gameOver.Visible;
+            GD.Print(passed
+                ? "ENEMY SMOKE PASS: AI lance, Game Over overlay, frozen simulation and restart."
+                : "ENEMY SMOKE FAIL: restart state is invalid.");
+            GetTree().Quit(passed ? 0 : 1);
+            return;
+        }
         if (_warpScenario is not null)
         {
             try { _lastCommand = _warpScenario.BeforeTick(); }
@@ -108,6 +139,11 @@ public partial class Flight : Node
             ? new ShipCommand(MainThrust: _simulation.World.Tick >= 181, YawLeft: _simulation.World.Tick >= 200,
                 FireLance: _simulation.World.Tick == 180)
             : _keyboard.ReadCommand();
+        if (_enemySmokeTest)
+        {
+            _lastCommand = default;
+            if (_simulation.World.Tick == 600) _pendingNavigation = new NavigationCommand(2);
+        }
         _simulation.Step(_lastCommand, _pendingNavigation);
         _pendingNavigation = default;
         if (_simulation.Events.OfType<EncounterChanged>().Any())
@@ -118,6 +154,25 @@ public partial class Flight : Node
             _starMap.Close();
         }
         _arena.ShowEvents(_simulation.Events);
+        if (_simulation.Events.OfType<PlayerDestroyed>().Any())
+        {
+            _starMap.Close();
+            _gameOver.Show();
+        }
+        if (_enemySmokeTest && _simulation.World.GameState == SpaceSim.Core.Combat.GameState.GameOver)
+        {
+            _enemyGameOverFrames++;
+            if (_enemyGameOverFrames >= 20)
+            {
+                if (!_gameOver.Visible)
+                {
+                    GD.Print("ENEMY SMOKE FAIL: Game Over overlay is hidden.");
+                    GetTree().Quit(1);
+                    return;
+                }
+                _gameOver.RestartButton.EmitSignal(Button.SignalName.Pressed);
+            }
+        }
         if (_warpSmokeTest && _simulation.World.Tick >= 1205)
         {
             GD.Print("WARP SMOKE PASS: mouse controls, live map, charge gate, jumps both ways, persistent targets.");
@@ -139,6 +194,21 @@ public partial class Flight : Node
         }
     }
 
+    private void RestartGame()
+    {
+        _simulation = CreateSimulation();
+        BindWorld();
+        _previousPosition = _simulation.World.Ship.Position;
+        _previousRotation = _simulation.World.Ship.Rotation;
+        _lastCommand = default;
+        _pendingNavigation = default;
+        _arena.ResetVisuals();
+        _starMap.Close();
+        _gameOver.Hide();
+        _enemyGameOverFrames = 0;
+        if (_enemySmokeTest) _enemySmokeRestarted = true;
+    }
+
     public override void _Process(double delta)
     {
         _visualTime += (float)delta;
@@ -157,7 +227,10 @@ public partial class Flight : Node
         _arena.ShipForward = new Vector2(forward.X, forward.Z).Normalized();
         _hud.Command = _lastCommand;
         _hud.IsFocused = _keyboard.IsFocused;
-        if (_capturePath is not null && !_capturing && _simulation.World.Tick >= (_warpSmokeTest ? 580 : 182))
+        bool captureReady = _enemySmokeTest
+            ? _simulation.World.GameState == SpaceSim.Core.Combat.GameState.GameOver
+            : _simulation.World.Tick >= (_warpSmokeTest ? 580 : 182);
+        if (_capturePath is not null && !_capturing && captureReady)
         {
             _capturing = true;
             CaptureFrame();
@@ -170,6 +243,7 @@ public partial class Flight : Node
         using var image = GetViewport().GetTexture().GetImage();
         Error result = image.SavePng(_capturePath!);
         GD.Print($"CAPTURE {result}: {_capturePath}");
-        if ((!_smokeTest && !_warpSmokeTest) || result != Error.Ok) GetTree().Quit(result == Error.Ok ? 0 : 1);
+        if ((!_smokeTest && !_warpSmokeTest && !_enemySmokeTest) || result != Error.Ok)
+            GetTree().Quit(result == Error.Ok ? 0 : 1);
     }
 }

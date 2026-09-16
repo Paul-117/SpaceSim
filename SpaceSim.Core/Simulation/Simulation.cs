@@ -3,6 +3,8 @@ using SpaceSim.Core.Ships;
 using SpaceSim.Core.Targets;
 using SpaceSim.Core.Weapons;
 using SpaceSim.Core.Navigation;
+using SpaceSim.Core.Combat;
+using SpaceSim.Core.AI;
 
 namespace SpaceSim.Core.Simulation;
 
@@ -16,7 +18,9 @@ public sealed class Simulation
     public IReadOnlyList<SimulationEvent> Events { get; }
 
     public Simulation(SimulationSettings? settings = null, ShipInitialState initialShip = default,
-        int randomSeed = 42, IEnumerable<Vector3>? initialTargets = null)
+        int randomSeed = 42, IEnumerable<Vector3>? initialTargets = null,
+        ShipInitialState? enemyInitial = null, IEnumerable<ShipInitialState>? encounterThreeEnemies = null,
+        bool spawnEnemy = true)
     {
         Settings = settings ?? new SimulationSettings();
         Settings.Validate();
@@ -25,7 +29,8 @@ public sealed class Simulation
         var encounters = new[]
         {
             new EncounterState(1, "Encounter 1", Settings.TargetCount),
-            new EncounterState(2, "Encounter 2", Settings.EncounterTwoTargetCount)
+            new EncounterState(2, "Encounter 2", Settings.EncounterTwoTargetCount),
+            new EncounterState(3, "Encounter 3", Settings.EncounterThreeTargetCount)
         };
         World = new WorldState(new ShipState(Settings.ShipMassKg, Settings.YawMomentOfInertia)
         {
@@ -38,15 +43,72 @@ public sealed class Simulation
         var targets = new TargetSystem(Settings, randomSeed);
         targets.Initialize(encounters[0], initialShip.Position, _events, initialTargets);
         targets.Initialize(encounters[1], Vector3.Zero, _events);
+        targets.Initialize(encounters[2], Vector3.Zero, _events);
+        if (spawnEnemy)
+        {
+            ShipInitialState enemyStart = enemyInitial ?? new ShipInitialState(
+                Position: new Vector3(0, 0, -1_000), YawRadians: MathF.PI);
+            AddEnemy(encounters[1], 1, enemyStart, randomSeed + 10_007);
+
+            var thirdStarts = encounterThreeEnemies?.ToArray() ??
+            [
+                new ShipInitialState(Position: new Vector3(-480, 0, -950), YawRadians: -0.47f),
+                new ShipInitialState(Position: new Vector3(480, 0, -950), YawRadians: 0.47f)
+            ];
+            if (thirdStarts.Length != 2)
+                throw new ArgumentException("Encounter 3 requires exactly two enemies.", nameof(encounterThreeEnemies));
+            for (int index = 0; index < thirdStarts.Length; index++)
+                AddEnemy(encounters[2], index + 2, thirdStarts[index], randomSeed + 10_008 + index);
+        }
     }
 
     public void Step(ShipCommand command, NavigationCommand navigation = default)
     {
         _events.Clear();
+        if (World.GameState == GameState.GameOver) return;
+
+        LanceSystem.Charge(World.Lance, Settings);
+        EnemyShipState[] enemies = World.CurrentEnemies.ToArray();
+        var enemyCommands = new Dictionary<int, ShipCommand>(enemies.Length);
+        foreach (EnemyShipState enemy in enemies)
+        {
+            LanceSystem.Charge(enemy.Lance, Settings);
+            EnemyAiController? ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
+            enemyCommands[enemy.EnemyId] = ai?.Tick(enemy, World.Ship, World.Lance,
+                Settings.LanceRangeMeters, World.GameState) ?? default;
+        }
         ShipPhysics.Step(World.Ship, command, Settings);
-        LanceSystem.Step(World, command.FireLance, Settings, _events);
+        foreach (EnemyShipState enemy in enemies)
+            ShipPhysics.Step(enemy.Ship, enemyCommands[enemy.EnemyId], Settings);
+        LanceSystem.FirePlayer(World, command.FireLance, Settings, _events);
+        foreach (EnemyShipState enemy in enemies.Where(enemy => enemy.IsDestroyed))
+            World.CurrentEncounter.GetEnemyAi(enemy.EnemyId)?.MarkDestroyed();
+        foreach (EnemyShipState enemy in enemies.Where(enemy => !enemy.IsDestroyed))
+        {
+            LanceSystem.FireEnemy(World, enemy, enemyCommands[enemy.EnemyId].FireLance, Settings, _events);
+            if (World.GameState == GameState.GameOver) break;
+        }
+        if (World.GameState == GameState.GameOver)
+        {
+            World.Tick++;
+            return;
+        }
         WarpDriveSystem.Step(World, navigation, Settings, _events);
         World.Tick++;
+    }
+
+    private ShipState CreateShip(ShipInitialState initial) => new(Settings.ShipMassKg, Settings.YawMomentOfInertia)
+    {
+        Position = initial.Position,
+        Velocity = initial.Velocity,
+        Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, initial.YawRadians),
+        AngularVelocity = Vector3.UnitY * initial.YawRateRadiansPerSecond
+    };
+
+    private void AddEnemy(EncounterState encounter, int enemyId, ShipInitialState initial, int seed)
+    {
+        ValidateInitial(initial);
+        encounter.AddEnemy(new EnemyShipState(enemyId, CreateShip(initial)), new EnemyAiController(Settings.EnemyAi, seed));
     }
 
     private static void ValidateInitial(ShipInitialState initial)

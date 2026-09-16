@@ -6,7 +6,7 @@ namespace SpaceSim.GodotClient.Rendering;
 
 public partial class ArenaView : Node2D
 {
-    private sealed record Beam(Vector2 Origin, Vector2 End) { public float Age; }
+    private sealed record Beam(Vector2 Origin, Vector2 End, WeaponOwner Owner) { public float Age; }
     private sealed record Impact(Vector2 Position) { public float Age; }
     private readonly List<Beam> _beams = new();
     private readonly List<Impact> _impacts = new();
@@ -24,9 +24,11 @@ public partial class ArenaView : Node2D
                 _impacts.Clear();
             }
             if (item is WeaponFired shot)
-                _beams.Add(new Beam(ViewSettings.Project(shot.Origin), ViewSettings.Project(shot.End)));
+                _beams.Add(new Beam(ViewSettings.Project(shot.Origin), ViewSettings.Project(shot.End), shot.Owner));
             if (item is TargetHit hit)
                 _impacts.Add(new Impact(ViewSettings.Project(hit.Position)));
+            if (item is EnemyDestroyed destroyed)
+                _impacts.Add(new Impact(ViewSettings.Project(destroyed.Position)));
         }
     }
 
@@ -43,6 +45,8 @@ public partial class ArenaView : Node2D
     {
         if (World is null) return;
         DrawAimAndDrift();
+        DrawEnemy();
+        DrawEnemyIndicator();
         foreach (var target in World.Targets)
         {
             Vector2 center = ViewSettings.Project(target.Position);
@@ -62,8 +66,9 @@ public partial class ArenaView : Node2D
         foreach (var beam in _beams)
         {
             float alpha = 1f - beam.Age / ViewSettings.BeamDurationSeconds;
-            DrawLine(beam.Origin, beam.End, ViewSettings.Alpha(ViewSettings.Cyan, alpha * 0.12f), 14, true);
-            DrawLine(beam.Origin, beam.End, ViewSettings.Alpha(ViewSettings.Cyan, alpha * 0.55f), 5, true);
+            Color beamColor = beam.Owner == WeaponOwner.Enemy ? new Color("ff6577") : ViewSettings.Cyan;
+            DrawLine(beam.Origin, beam.End, ViewSettings.Alpha(beamColor, alpha * 0.12f), 14, true);
+            DrawLine(beam.Origin, beam.End, ViewSettings.Alpha(beamColor, alpha * 0.55f), 5, true);
             DrawLine(beam.Origin, beam.End, new Color(0.9f, 1f, 1f, alpha), 1.8f, true);
         }
         foreach (var impact in _impacts)
@@ -72,6 +77,67 @@ public partial class ArenaView : Node2D
             DrawArc(impact.Position, 14 + 35 * progress, 0, MathF.Tau, 40,
                 ViewSettings.Alpha(ViewSettings.Amber, 1f - progress), 2, true);
         }
+    }
+
+    public void ResetVisuals()
+    {
+        _beams.Clear();
+        _impacts.Clear();
+    }
+
+    private void DrawEnemy()
+    {
+        foreach (var enemy in World.CurrentEnemies)
+            DrawEnemy(enemy);
+    }
+
+    private void DrawEnemy(SpaceSim.Core.Combat.EnemyShipState enemy)
+    {
+        Vector2 center = ViewSettings.Project(enemy.Ship.Position);
+        Vector2 forward = new(enemy.Ship.Forward.X, enemy.Ship.Forward.Z);
+        Vector2 right = new(-forward.Y, forward.X);
+        Vector2[] hull =
+        {
+            center + forward * 23,
+            center - forward * 14 + right * 14,
+            center - forward * 8,
+            center - forward * 14 - right * 14,
+            center + forward * 23
+        };
+        Color enemyColor = new("ff6577");
+        DrawColoredPolygon(hull[..^1], new Color("3c1722"));
+        DrawPolyline(hull, enemyColor, 1.8f, true);
+        DrawLine(center, center + forward * 18, enemyColor, 2, true);
+        var ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
+        if (ai?.LastCommand.MainThrust == true)
+            DrawLine(center - forward * 15, center - forward * 32, new Color("ffb15c"), 4, true);
+        DrawString(ThemeDB.FallbackFont, center + right * 25 + new Vector2(4, 4),
+            $"ENEMY {enemy.EnemyId}  {ai?.CurrentState.ToString().ToUpperInvariant()}  LANCE {enemy.Lance.ChargeFraction * 100:0}%",
+            fontSize: 12, modulate: enemyColor);
+    }
+
+    private void DrawEnemyIndicator()
+    {
+        foreach (var enemy in World.CurrentEnemies)
+            DrawEnemyIndicator(enemy);
+    }
+
+    private void DrawEnemyIndicator(SpaceSim.Core.Combat.EnemyShipState enemy)
+    {
+        Vector2 delta = ViewSettings.Project(enemy.Ship.Position) - ShipPosition;
+        Vector2 half = GetViewportRect().Size / 2f - new Vector2(80, 170);
+        if (MathF.Abs(delta.X) <= half.X && MathF.Abs(delta.Y) <= half.Y) return;
+        float scale = MathF.Min(half.X / MathF.Max(1, MathF.Abs(delta.X)),
+            half.Y / MathF.Max(1, MathF.Abs(delta.Y)));
+        Vector2 tip = ShipPosition + delta * scale;
+        Vector2 direction = delta.Normalized();
+        Color color = new("ff6577");
+        DrawPolyline(new[] { tip - direction.Rotated(0.5f) * 14, tip,
+            tip - direction.Rotated(-0.5f) * 14 }, color, 2.5f, true);
+        float distance = NVector3.Distance(enemy.Ship.Position, World.Ship.Position);
+        Vector2 labelOffset = tip.X >= ShipPosition.X ? new Vector2(-145, 4) : new Vector2(12, 4);
+        DrawString(ThemeDB.FallbackFont, tip + labelOffset, $"ENEMY  {distance:0} m",
+            fontSize: 12, modulate: color);
     }
 
     private void DrawAimAndDrift()

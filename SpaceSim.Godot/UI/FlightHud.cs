@@ -47,7 +47,7 @@ public partial class FlightHud : Control
         DrawRect(new Rect2(0, height - 129, width, 129), new Color(0.0196f, 0.0314f, 0.0549f, 0.96f));
         Text(new Vector2(30, 35), "SPACESIM", 23, ViewSettings.Text);
         Text(new Vector2(165, 34), $"/  {World.CurrentEncounter.Name.ToUpperInvariant()}", 13, ViewSettings.Muted);
-        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.1", 12, ViewSettings.Cyan);
+        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.2", 12, ViewSettings.Cyan);
         DrawLine(new Vector2(30, 49), new Vector2(width - 30, 49), ViewSettings.Line, 1);
 
         float column = (width - 60) / 4;
@@ -77,6 +77,14 @@ public partial class FlightHud : Control
         Text(new Vector2(width - 220, height - 21), World.WarpDrive.IsReady ? "WARP 100% · READY" :
             $"WARP {World.WarpDrive.ChargeFraction * 100:0}% · {World.WarpDrive.RemainingSeconds:0.0} s",
             12, World.WarpDrive.IsReady ? ViewSettings.Cyan : ViewSettings.Amber);
+        var enemies = World.CurrentEnemies.ToArray();
+        if (enemies.FirstOrDefault() is { } enemy)
+        {
+            string state = World.CurrentEncounter.EnemyAi?.CurrentState.ToString().ToUpperInvariant() ?? "—";
+            Text(new Vector2(width / 2 - 180, height - 107),
+                $"GEGNER {enemies.Length}  ·  E{enemy.EnemyId} {state}  ·  LANCE {enemy.Lance.ChargeFraction * 100:0}%",
+                12, new Color("ff6577"));
+        }
         if (!IsFocused)
             Text(new Vector2(width / 2 - 160, height / 2 + 70), "FENSTER INAKTIV  ·  Eingabe aus", 14, ViewSettings.Amber);
     }

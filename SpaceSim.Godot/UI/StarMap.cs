@@ -64,9 +64,13 @@ public partial class StarMap : Control
             var button = _destinations[encounter.Id];
             bool current = encounter.Id == World.CurrentEncounter.Id;
             button.Disabled = current;
+            int activeEnemies = encounter.Enemies.Count(enemy => !enemy.IsDestroyed);
+            string enemyStatus = encounter.Enemies.Count == 0 ? string.Empty :
+                activeEnemies == 0 ? "\nGegner zerstÃ¶rt" : $"\n{activeEnemies} GEGNER AKTIV";
             button.Text = $"{encounter.Name}\n{encounter.Targets.Count} / {encounter.InitialTargetCount} Ziele"
+                + enemyStatus
                 + (current ? "\nAKTUELL" : SelectedEncounterId == encounter.Id ? "\nAUSGEWÄHLT" : "\nSprungpunkt wählen");
-            button.Size = new Vector2(230, 105);
+            button.Size = new Vector2(230, 125);
             button.Position = PointPosition(index++) + new Vector2(-115, 36);
         }
         JumpButton.Disabled = !World.WarpDrive.IsReady || SelectedEncounterId is null ||
@@ -90,9 +94,8 @@ public partial class StarMap : Control
         Text(origin + new Vector2(_panel.Size.X - 240, 37), "LIVE  /  SIMULATION LÄUFT", 12, ViewSettings.Cyan);
         Text(origin + new Vector2(_panel.Size.X - 240, 61), $"{World.CurrentEncounter.Name}  ·  {World.TimeSeconds:0.0} s", 13, ViewSettings.Muted);
 
-        Vector2 first = PointPosition(0);
-        Vector2 second = PointPosition(1);
-        DrawLine(first, second, ViewSettings.Line, 1, true);
+        for (int i = 1; i < World.Encounters.Count; i++)
+            DrawLine(PointPosition(i - 1), PointPosition(i), ViewSettings.Line, 1, true);
         for (int i = 0; i < 20; i++)
         {
             Vector2 star = origin + new Vector2(30 + (i * 137 % (int)(_panel.Size.X - 60)), 100 + i * 43 % 165);
@@ -122,7 +125,12 @@ public partial class StarMap : Control
         Text(origin + new Vector2(290, _panel.Size.Y - 44), "Fortschritt bleibt erhalten.", 13, ViewSettings.Muted);
     }
 
-    private Vector2 PointPosition(int index) => _panel.Position + new Vector2(_panel.Size.X * (index == 0 ? 0.27f : 0.73f), 158);
+    private Vector2 PointPosition(int index)
+    {
+        int count = Math.Max(1, World.Encounters.Count);
+        float fraction = (index + 1f) / (count + 1f);
+        return _panel.Position + new Vector2(_panel.Size.X * fraction, 158);
+    }
     private void Text(Vector2 position, string value, int size, Color color) =>
         DrawString(ThemeDB.FallbackFont, position, value, fontSize: size, modulate: color);
 }

@@ -1,5 +1,7 @@
 namespace SpaceSim.Core.Simulation;
 
+using SpaceSim.Core.AI;
+
 /// <summary>All simulation values are SI units; presentation uses its own scale.</summary>
 public sealed record SimulationSettings
 {
@@ -15,10 +17,12 @@ public sealed record SimulationSettings
     public float LanceRangeMeters { get; init; } = 1_600f;
     public float WarpChargeSeconds { get; init; } = 10f;
     public int TargetCount { get; init; } = 10;
-    public int EncounterTwoTargetCount { get; init; } = 15;
+    public int EncounterTwoTargetCount { get; init; }
+    public int EncounterThreeTargetCount { get; init; }
     public float TargetRadiusMeters { get; init; } = 14f;
     public float SpawnMinDistanceMeters { get; init; } = 180f;
     public float SpawnMaxDistanceMeters { get; init; } = 750f;
+    public EnemyAiSettings EnemyAi { get; init; } = new();
 
     internal void Validate()
     {
@@ -33,10 +37,14 @@ public sealed record SimulationSettings
         Positive(TargetRadiusMeters, nameof(TargetRadiusMeters));
         Positive(SpawnMinDistanceMeters, nameof(SpawnMinDistanceMeters));
         Positive(SpawnMaxDistanceMeters, nameof(SpawnMaxDistanceMeters));
+        ArgumentNullException.ThrowIfNull(EnemyAi);
+        EnemyAi.Validate();
         if (TargetCount < 0 || TargetCount > 256)
             throw new ArgumentOutOfRangeException(nameof(TargetCount));
         if (EncounterTwoTargetCount < 0 || EncounterTwoTargetCount > 256)
             throw new ArgumentOutOfRangeException(nameof(EncounterTwoTargetCount));
+        if (EncounterThreeTargetCount < 0 || EncounterThreeTargetCount > 256)
+            throw new ArgumentOutOfRangeException(nameof(EncounterThreeTargetCount));
         if (SpawnMinDistanceMeters <= TargetRadiusMeters ||
             SpawnMaxDistanceMeters <= SpawnMinDistanceMeters)
             throw new ArgumentException("Target spawn distances must describe a safe annulus.");

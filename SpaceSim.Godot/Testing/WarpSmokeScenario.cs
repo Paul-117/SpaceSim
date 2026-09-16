@@ -51,7 +51,7 @@ internal sealed class WarpSmokeScenario(WorldState world, FlightHud hud, StarMap
                 Click(map.JumpButton);
                 break;
             case 601:
-                Check(world.CurrentEncounter.Id == 2 && world.Targets.Count == 15, "Jump must enter encounter 2.");
+                Check(world.CurrentEncounter.Id == 2 && world.Targets.Count == 0, "Jump must enter encounter 2.");
                 Check(!map.Visible, "Successful Jump must close the map.");
                 Check(world.Ship.Position == NVector3.Zero && world.Ship.Velocity == NVector3.Zero &&
                     world.Ship.AngularVelocity == NVector3.Zero, "Arrival must stop the ship at the origin.");

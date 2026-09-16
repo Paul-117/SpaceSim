@@ -1,0 +1,94 @@
+SPACESIM V1.2 - CHANGELOG
+=========================
+
+Version: 1.2.0
+Git-Tag: v1.2
+Vorgaengerversion: v1.1 (Commit 4a7467e)
+Datum: 16.09.2026
+
+Dieses Dokument beschreibt die Aenderungen gegenueber v1.1. Es ist als
+Kontextdatei fuer weitere Entwicklung oder eine andere KI gedacht und wird
+zusammen mit dem Release-Commit versioniert.
+
+1. GEGNER-KI UND GEMEINSAME PHYSIK
+
+- Gegner verwenden denselben ShipState und dieselbe ShipPhysics wie der Spieler:
+  Position, Geschwindigkeit, Rotation, Winkelgeschwindigkeit, Masse und
+  Traegheitsmoment werden ausschliesslich durch normale Physikschritte geaendert.
+- Die KI erzeugt nur ShipCommand mit MainThrust, ReverseThrust, YawLeft,
+  YawRight und FireLance. Sie setzt keine physikalischen Werte direkt.
+- Jeder Gegner besitzt dieselbe automatisch ladende Lanze wie der Spieler:
+  drei Sekunden Ladezeit, 1.600 m Reichweite und sofortiger Raycast.
+- EnemyAiContext berechnet einmal pro Tick Distanz, Richtung zum Spieler,
+  Relativgeschwindigkeit, Annaherungsgeschwindigkeit sowie Zielwinkel beider
+  Schiffe.
+- EnemyAiSettings fasst alle Kampf-, Hysterese-, Bedrohungs- und PD-Reglerwerte
+  zentral zusammen.
+
+2. DETERMINISTISCHE FINITE STATE MACHINE
+
+- Jeder Gegner besitzt einen eigenen EnemyAiController mit ACQUIRE, APPROACH,
+  ATTACK, EVADE, REPOSITION und dem deaktivierten Zustand DESTROYED.
+- ACQUIRE uebernimmt den exakten Spielerzustand und wechselt unmittelbar nach
+  APPROACH.
+- APPROACH steuert kontrolliert auf die konfigurierbare Kampfentfernung zu und
+  bremst bei zu hoher Annaherungsgeschwindigkeit.
+- ATTACK richtet die Nase mit einem PD-Regler aus und feuert nur mit voller
+  Lanze, innerhalb der Reichweite und bei maximal drei Grad Zielfehler.
+- EVADE erkennt eine voraussichtliche Spielerlanze anhand von Ladung,
+  Reichweite und Spielerzielwinkel. Die Ausweichrichtung wird beim Eintritt
+  mit reproduzierbarem Seed einmal gewaehlt und bleibt fuer 1,0 bis 2,5 Sekunden
+  stabil.
+- REPOSITION priorisiert Entfernung und Relativgeschwindigkeit, auch wenn das
+  Schiff zum Bremsen vom Spieler wegschauen muss.
+
+3. DREI SPRUNGPUNKTE
+
+- Encounter 1 ist der Uebungsbereich mit genau zehn statischen Zielen und
+  keinem Gegner.
+- Encounter 2 besitzt keine Ziele und genau einen KI-Gegner.
+- Encounter 3 besitzt keine Ziele und zwei unabhaengige KI-Gegner.
+- Ziele und Gegnerfortschritt bleiben pro Encounter fuer die laufende Sitzung
+  erhalten. Beim Verlassen eines Encounters pausieren dessen Gegner.
+- Die Sternenkarte erzeugt ihre Sprungpunkte aus der Encounter-Liste, zeigt
+  drei Punkte und nennt fuer jeden Punkt die Anzahl aktiver Gegner.
+- Arena, Randindikatoren und HUD koennen mehrere Gegner gleichzeitig darstellen.
+
+4. TREFFER UND GAME OVER
+
+- Der Spielerstrahl prueft Ziele und alle aktiven Gegner; das naechste Objekt auf
+  dem Strahl wird getroffen.
+- Ein Spielertreffer zerstoert einen Gegner mit einem Treffer, erzeugt ein
+  EnemyDestroyed-Ereignis und deaktiviert dessen KI.
+- Ein gegnerischer Lanzentreffer erzeugt PlayerDestroyed und versetzt den Core
+  in GameOver.
+- Im Zustand GameOver bleiben Physik, Waffen, KI, Navigation und Simulationszeit
+  stehen. Godot zeigt GAME OVER / SCHIFF ZERSTOERT mit Neustart-Button.
+
+5. TECHNISCHE STRUKTUR
+
+- Neue Core-Bereiche: SpaceSim.Core/AI und SpaceSim.Core/Combat.
+- EncounterState verwaltet eine Gegnerliste und einen Controller je EnemyId.
+- WorldState liefert CurrentEnemies fuer die aktiven, nicht zerstoerten Gegner.
+- Simulation verarbeitet pro Tick alle aktiven Gegner mit getrennten Commands,
+  aber derselben Physik und denselben Waffenregeln.
+- WeaponFired enthaelt Waffenbesitzer und Trefferart fuer Spieler- und
+  Gegnerstrahlen.
+- Die Projektversion in Directory.Build.props und Godot project.godot ist 1.2.0.
+
+6. TESTS UND VALIDIERUNG
+
+- 37 automatisierte Core-Tests bestanden.
+- Neue Tests pruefen die Belegung aller drei Encounter und zwei getrennte
+  KI-Controller im dritten Encounter.
+- Debug-Build erfolgreich ohne Warnungen oder Fehler.
+- Godot-Smoke-Tests erfolgreich: Flug mit Zieltreffer, Warp-Karte mit
+  Fortschrittserhalt sowie Gegner-KI, Game Over und Neustart.
+
+7. GIT
+
+- Dieser Stand wird als Commit "Release SpaceSim 1.2: enemy AI and combat
+  encounters" gespeichert und mit dem annotierten Tag v1.2 markiert.
+- Die vorhandenen Tags v1.0 und v1.1 bleiben unveraendert.
+- Das Repository besitzt beim Erstellen dieses Releases keinen Git-Remote;
+  daher gibt es kein externes Push-Ziel.

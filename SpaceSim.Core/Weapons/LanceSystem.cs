@@ -1,24 +1,29 @@
 using System.Numerics;
 using SpaceSim.Core.Simulation;
 using SpaceSim.Core.Targets;
+using SpaceSim.Core.Combat;
 
 namespace SpaceSim.Core.Weapons;
 
 internal static class LanceSystem
 {
-    public static void Step(WorldState world, bool fire, SimulationSettings settings, List<SimulationEvent> events)
+    public static void Charge(LanceState lance, SimulationSettings settings)
     {
-        var lance = world.Lance;
         lance.ChargedSeconds = Math.Min(settings.LanceChargeSeconds,
             lance.ChargedSeconds + 1.0 / SimulationSettings.TickRate);
         // Eliminate rounding residue at exact tick-aligned charge durations.
         if (lance.ChargedSeconds + 1e-10 >= settings.LanceChargeSeconds)
             lance.ChargedSeconds = settings.LanceChargeSeconds;
         lance.ChargeFraction = (float)(lance.ChargedSeconds / settings.LanceChargeSeconds);
+    }
+
+    public static void FirePlayer(WorldState world, bool fire, SimulationSettings settings,
+        List<SimulationEvent> events)
+    {
+        var lance = world.Lance;
         if (!fire || !lance.IsReady) return;
 
-        lance.ChargedSeconds = 0;
-        lance.ChargeFraction = 0f;
+        Discharge(lance);
         Vector3 origin = world.Ship.Position;
         Vector3 direction = Vector3.Normalize(world.Ship.Forward);
         float nearestDistance = settings.LanceRangeMeters;
@@ -30,17 +35,63 @@ internal static class LanceSystem
             nearestDistance = value;
             hit = target;
         }
-        events.Add(new WeaponFired(origin, origin + direction * nearestDistance, hit?.Id));
-        if (hit is null) return;
-        world.MutableTargets.Remove(hit);
-        world.HitCount++;
-        events.Add(new TargetHit(hit.Id, hit.Position));
+        EnemyShipState? enemyHit = null;
+        foreach (EnemyShipState enemy in world.CurrentEnemies)
+        {
+            float? distance = RaySphere(origin, direction, enemy.Ship.Position, settings.EnemyAi.ShipHitRadiusMeters);
+            if (distance is not { } value || value > nearestDistance) continue;
+            nearestDistance = value;
+            hit = null;
+            enemyHit = enemy;
+        }
+        WeaponHitKind kind = enemyHit is not null ? WeaponHitKind.Enemy :
+            hit is not null ? WeaponHitKind.Target : WeaponHitKind.None;
+        int? hitId = enemyHit?.EnemyId ?? hit?.Id;
+        events.Add(new WeaponFired(origin, origin + direction * nearestDistance, hitId, WeaponOwner.Player, kind));
+        if (enemyHit is not null)
+        {
+            enemyHit.IsDestroyed = true;
+            world.HitCount++;
+            events.Add(new EnemyDestroyed(enemyHit.EnemyId, enemyHit.Ship.Position));
+        }
+        else if (hit is not null)
+        {
+            world.MutableTargets.Remove(hit);
+            world.HitCount++;
+            events.Add(new TargetHit(hit.Id, hit.Position));
+        }
     }
 
-    private static float? RaySphere(Vector3 origin, Vector3 direction, TargetState target)
+    public static void FireEnemy(WorldState world, EnemyShipState enemy, bool fire,
+        SimulationSettings settings, List<SimulationEvent> events)
     {
-        Vector3 offset = target.Position - origin;
-        float radiusSquared = target.RadiusMeters * target.RadiusMeters;
+        if (!fire || !enemy.Lance.IsReady || enemy.IsDestroyed) return;
+        Discharge(enemy.Lance);
+        Vector3 origin = enemy.Ship.Position;
+        Vector3 direction = Vector3.Normalize(enemy.Ship.Forward);
+        float? hitDistance = RaySphere(origin, direction, world.Ship.Position, settings.EnemyAi.ShipHitRadiusMeters);
+        bool hit = hitDistance is { } value && value <= settings.LanceRangeMeters;
+        float distance = hit ? hitDistance!.Value : settings.LanceRangeMeters;
+        events.Add(new WeaponFired(origin, origin + direction * distance, null,
+            WeaponOwner.Enemy, hit ? WeaponHitKind.Player : WeaponHitKind.None));
+        if (!hit) return;
+        world.GameState = GameState.GameOver;
+        events.Add(new PlayerDestroyed(enemy.EnemyId, world.Ship.Position));
+    }
+
+    private static void Discharge(LanceState lance)
+    {
+        lance.ChargedSeconds = 0;
+        lance.ChargeFraction = 0f;
+    }
+
+    private static float? RaySphere(Vector3 origin, Vector3 direction, TargetState target) =>
+        RaySphere(origin, direction, target.Position, target.RadiusMeters);
+
+    internal static float? RaySphere(Vector3 origin, Vector3 direction, Vector3 center, float radius)
+    {
+        Vector3 offset = center - origin;
+        float radiusSquared = radius * radius;
         if (offset.LengthSquared() <= radiusSquared) return 0f;
         float alongRay = Vector3.Dot(offset, direction);
         if (alongRay < 0f) return null;

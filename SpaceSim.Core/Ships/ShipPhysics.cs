@@ -22,7 +22,7 @@ internal static class ShipPhysics
         ship.Rotation = Quaternion.Normalize(
             Quaternion.CreateFromAxisAngle(Vector3.UnitY, ship.AngularVelocity.Y * dt) * ship.Rotation);
 
-        // Version 1.0 planar rule, not a restriction of ShipState's data model.
+        // Current planar rule, not a restriction of ShipState's data model.
         ship.Position = new Vector3(ship.Position.X, 0f, ship.Position.Z);
         ship.Velocity = new Vector3(ship.Velocity.X, 0f, ship.Velocity.Z);
         ship.AngularVelocity = new Vector3(0f, ship.AngularVelocity.Y, 0f);

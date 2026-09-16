@@ -1,10 +1,10 @@
-# SpaceSim 1.1
+# SpaceSim 1.2
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Trägheitsflug,
-statische Ziele, eine automatisch ladende Energielanze und zwei über eine
+statische Ziele, eine automatisch ladende Energielanze und drei über eine
 Sternenkarte verbundene Encounter. Encounter 1 startet mit 10 Zielen, Encounter 2
-mit 15. Es gibt keinen Respawn. Grafik und HUD entstehen aus geometrischen
-Formen; externe Assets sind nicht erforderlich.
+mit einem Gegner und Encounter 3 mit zwei Gegnern. Es gibt keinen Respawn. Grafik
+und HUD entstehen aus geometrischen Formen; externe Assets sind nicht erforderlich.
 
 ## Schnellstart unter Windows
 
@@ -63,6 +63,51 @@ innerhalb von 1.600 m stoppt den Strahl. Ein Treffer zählt sofort und entfernt 
 Ziel dauerhaft für diese Sitzung. Der sichtbare Strahl bleibt nur 0,16 Sekunden
 bestehen. Auch beim Wegfliegen oder Zurückspringen werden keine Ziele ersetzt.
 
+## Gegner und Game Over
+
+Encounter 1 bleibt ein Übungsbereich mit zehn Zielen. Encounter 2 enthält einen
+Gegner, Encounter 3 enthält zwei Gegner. Jeder besitzt dieselbe Masse, Trägheit,
+Schubleistung und Lanze wie der Spieler. Kein Gegner teleportiert oder verändert
+Position,
+Geschwindigkeit oder Rotation nicht direkt. Seine KI erzeugt ausschließlich
+normale `ShipCommand`-Befehle, die durch dieselbe Schiffsphysik laufen.
+
+Die Zustandsmaschine verwendet `ACQUIRE`, `APPROACH`, `ATTACK`, `EVADE` und
+`REPOSITION`. Nach der Zerstörung wird sie als `DESTROYED` deaktiviert. Die KI
+berechnet pro Tick Entfernung, relative Geschwindigkeit,
+Annäherungsgeschwindigkeit sowie die Zielwinkel beider Schiffe. Ein PD-artiger
+Rotationsregler berücksichtigt die Winkelgeschwindigkeit.
+
+Die KI nähert sich kontrolliert einer bevorzugten Distanz von 800 m, bremst bei
+zu hoher relativer Geschwindigkeit und feuert nur mit vollständig geladener
+Lanze innerhalb der Reichweite und einer Zieltoleranz von 3°. Ab 80 %
+Spielerladung und einem Spieler-Zielfehler unter 10° weicht sie präventiv aus.
+Die reproduzierbar gewählte Ausweichrichtung bleibt während des Manövers stabil.
+EVADE dauert mindestens 1,0 und höchstens 2,5 Sekunden.
+
+Ein Spielertreffer zerstört den Gegner sofort. Ein Gegnertreffer versetzt den
+Core in `GameOver`: Zeit, Physik, KI, Waffen und Navigation bleiben stehen und
+Commands werden ignoriert. Godot zeigt „GAME OVER / SCHIFF ZERSTÖRT“. Der
+Neustart-Button beginnt eine neue Sitzung in Encounter 1.
+
+Die zentralen Startwerte stehen vollständig in `EnemyAiSettings`:
+
+| Parameter | Wert |
+| --- | ---: |
+| Bevorzugte Kampfdistanz | 800 m |
+| Minimale Kampfdistanz | 600 m |
+| ATTACK-Eintritt / Entfernungsaustritt | 1.000 / 1.200 m |
+| Maximale gewünschte Annäherung | 55 m/s |
+| Maximale relative Geschwindigkeit | 70 m/s |
+| Relative Geschwindigkeit für ATTACK-Eintritt | 38 m/s |
+| Zielgeschwindigkeit beim REPOSITION | 26 m/s |
+| Feuerwinkel | 3° |
+| Bedrohungswinkel Eintritt / Austritt | 10° / 16° |
+| Bedrohungsschwelle der Spielerlanze | 80 % |
+| EVADE-Dauer | 1,0–2,5 s |
+| PD-Regler Kp / Kd | 2,4 / 2,8 |
+| Schiff-Trefferradius | 16 m |
+
 ## Sternenkarte und Warp Drive
 
 Der Warp Drive lädt beim Spielstart und nach jedem Sprung automatisch in
@@ -79,8 +124,8 @@ Warp-Ladung laufen weiter. W/S, A/D und Leertaste bleiben bedienbar. Die Buttons
 Nach einem Sprung schließt sich die Karte. Das Schiff startet am lokalen
 Einstiegspunkt `(0, 0, 0)`, mit Standardausrichtung und ohne lineare oder
 Winkelgeschwindigkeit. Lanzenladung und Gesamttrefferzahl bleiben erhalten.
-Beide Encounter behalten ihre verbliebenen Ziele und Treffer auch bei späteren
-Besuchen. Nach dem letzten Treffer bleibt ein Encounter leer und weiter
+Alle Encounter behalten ihre verbliebenen Ziele, Gegner und Treffer auch bei
+späteren Besuchen. Nach dem letzten Treffer bleibt ein Encounter leer und weiter
 besuchbar; ein Sprung erfordert nicht, vorher alle Ziele zu zerstören.
 Dieser Fortschritt gilt für die laufende Sitzung; ein Savegame existiert nicht.
 
@@ -118,7 +163,9 @@ Karte während des Ladens öffnen, Ziel wählen, gesperrten Jump prüfen, bei la
 Flug laden, nach Encounter 2 und wieder zurück springen, Fortschritt prüfen.
 Er dauert 1.205 Ticks, also etwa 20 Simulationssekunden.
 Beide beenden sich automatisch mit Exitcode 0 und `SMOKE PASS` bzw.
-`WARP SMOKE PASS`, wenn die Prüfungen bestehen. Das Skript prüft zusätzlich die
+`WARP SMOKE PASS`, wenn die Prüfungen bestehen. Ein dritter Test springt zu
+Encounter 2, lässt die Gegner-KI mit ihrer Lanze gewinnen und prüft Game Over,
+Stillstand und Neustart. Das Skript prüft zusätzlich die
 Godot-Logs auf Fehler. Logs liegen in
 `.artifacts/`. Ohne `-GodotSmoke` werden nur Build und Core-Tests ausgeführt;
 `-SkipBuild` verwendet den bestehenden Debug-Build.
@@ -144,7 +191,8 @@ KeyboardShipControl : IShipControl     StarMap: Ziel wählen + Jump
         +------------------+--------------+
                            v
 Simulation.Step()                  <-- fester Takt: 60 Hz
-  ShipPhysics -> LanceSystem -> WarpDriveSystem
+  Lance laden -> AI/FSM erzeugt ShipCommand
+  -> gemeinsame ShipPhysics -> LanceSystem -> WarpDriveSystem
         |                          |
         v                          v
   WorldState                  SimulationEvent-Liste
@@ -169,6 +217,8 @@ SpaceSim.Core/
   Weapons/       Lanzenladung und Ray/Sphere-Trefferberechnung
   Targets/       Statische Ziele und einmalige zufällige Platzierung
   Navigation/    Encounter-Zustand, Sprungbefehl und Warp Drive
+  Combat/        Gegnerzustand und globaler Spielzustand
+  AI/            Kontext, zentrale Parameter und deterministische FSM
 SpaceSim.Core.Tests/
   Program.cs     Automatisierte Physik-, Waffen- und Zieltests
 SpaceSim.Godot/
@@ -178,8 +228,8 @@ SpaceSim.Godot/
   Scenes/        Direkt startende Flight-Szene
   Input/         Tastaturadapter
   Rendering/     Schiff, Ziele, Strahl, Sternenhimmel, Darstellungskonstanten
-  UI/            Cockpit-HUD und Sternenkarte
-  Testing/       Automatischer Maus-/Warp-Integrationstest
+  UI/            Cockpit-HUD, Sternenkarte und Game-Over-Overlay
+  Testing/       Automatisierte Godot-Integrationstests
 scripts/         Build-, Test- und Startskripte
 Start.cmd        Start per Doppelklick
 ```
@@ -195,7 +245,7 @@ Start.cmd        Start per Doppelklick
   Release gebaut. `scripts/Build.ps1 -Configuration ExportRelease` erstellt die
   optimierten Assemblies. Ein eigenständiger Spiel-Export ist noch nicht enthalten.
 - **3D-Daten, planare Regel:** Position, Geschwindigkeit und Winkelgeschwindigkeit
-  sind Vector3; Orientierung ist ein Quaternion. Version 1.1 hält Y = 0 und dreht
+  sind Vector3; Orientierung ist ein Quaternion. Version 1.2 hält Y = 0 und dreht
   nur um Y. Die Nase zeigt lokal nach -Z; positives Y-Drehmoment dreht nach links.
   Godot projiziert X/Z auf Bildschirm-X/Y. Für vollständiges 3D müssen Integrator,
   Trägheitsmodell und Commands erweitert werden, nicht das Zustandsformat ersetzt.
@@ -206,16 +256,18 @@ Start.cmd        Start per Doppelklick
 - **Neutrale Eingabe:** Ein `IShipControl` liefert einen `ShipCommand`. Ein anderer
   Adapter kann später Hardware, Netzwerk oder Autopilot übersetzen. Tastenzustände
   werden ausschließlich im Godot-Adapter gelesen. `FireLance` ist ein Impuls.
-- **Einfache Events:** `WeaponFired`, `TargetHit`, `TargetSpawned` und
-  `EncounterChanged` sind unveränderliche C#-Records. `Simulation.Events` gilt für
+- **Einfache Events:** `WeaponFired`, `TargetHit`, `TargetSpawned`,
+  `EncounterChanged`, `EnemyDestroyed` und `PlayerDestroyed` sind unveränderliche
+  C#-Records. `Simulation.Events` gilt für
   den gerade abgeschlossenen Tick und muss vor dem nächsten Step verarbeitet
   werden. Direkt nach dem Konstruktor enthält es die initialen Spawnereignisse
-  beider Encounter, jeweils mit Encounter-ID.
+  des Ziel-Encounters, jeweils mit Encounter-ID.
   Dies ist eine lokale Ausgabe ohne Event-Bus oder Netzwerkgarantien.
-- **Zwei persistente Encounter:** Beim Erstellen der Simulation werden einmalig
-  10 bzw. 15 statische Ziele im Ring zwischen 180 und 750 m erzeugt. Beide
-  Encounter besitzen eigene Ziellisten in lokalen Koordinaten. Treffer entfernen
-  Ziele nur aus dem aktiven Encounter. Es gibt weder Respawn noch Recycling.
+- **Drei persistente Encounter:** Encounter 1 erzeugt einmalig zehn statische
+  Ziele im Ring zwischen 180 und 750 m. Encounter 2 besitzt einen Gegner,
+  Encounter 3 zwei Gegner; alle Encounter haben eigene lokale Zustände. Treffer
+  entfernen Ziele oder Gegner nur aus dem aktiven Encounter. Es gibt weder
+  Respawn noch Recycling.
   Ein fester, konfigurierbarer Seed macht Testläufe reproduzierbar.
 - **Warp im Core:** Der unabhängige `WarpDriveState` lädt mit dem festen Takt.
   `NavigationCommand` enthält einen einmaligen Sprungwunsch. Der Core prüft
@@ -224,6 +276,18 @@ Start.cmd        Start per Doppelklick
   Ansicht alte Effekte verwerfen und verhindert Interpolation zwischen Encountern.
 - **Karte als Overlay:** Auswahl und Sichtbarkeit sind reine UI-Zustände.
   Es gibt keinen Szenenwechsel und kein Pausieren des SceneTree beim Öffnen.
+- **Eine Physik für alle Schiffe:** Spieler und Gegner enthalten denselben
+  `ShipState`; beide werden durch `ShipPhysics.Step` integriert. Der
+  `EnemyAiController` besitzt FSM-Zeit, Ausweichrichtung, abgeleiteten Kontext
+  und den letzten `ShipCommand`. Er besitzt keine Schnittstelle zum direkten
+  Setzen physikalischer Zustände.
+- **Eine Waffe für beide Seiten:** Beide besitzen einen `LanceState`. Dieselben
+  Funktionen laden und entladen die Lanze und schneiden ihren sofortigen Ray mit
+  Schiffen. `WeaponFired` kennzeichnet Schützen und Trefferart.
+- **Deterministische FSM:** Sämtliche Schwellen, Hysteresen und PD-Werte stehen in
+  `EnemyAiSettings`. Zufall wird nur beim Eintritt in EVADE verwendet und ist
+  über den Simulationsseed reproduzierbar. V1.2 verwendet den exakten
+  Spielerzustand; eine Sensorabstraktion ist noch nicht vorhanden.
 - **Treffer unabhängig von Grafik:** Der Core schneidet einen vorwärtsgerichteten,
   reichweitenbegrenzten Ray mit den Zielkugeln. Godot verwendet nur das resultierende
   Ereignis für Strahl und Trefferring. Es gibt keine Godot-Physik-Kollisionen.
@@ -237,7 +301,7 @@ Start.cmd        Start per Doppelklick
 
 ## Testumfang
 
-Die 26 Core-Tests prüfen unter anderem:
+Die 36 Core-Tests prüfen unter anderem:
 
 - Geschwindigkeit ohne Schub, Beschleunigung in gedrehter Schiffsausrichtung,
   Weiterflug nach Loslassen, Rückschub und fehlendes Geschwindigkeitslimit.
@@ -248,17 +312,31 @@ Die 26 Core-Tests prüfen unter anderem:
 - Sofortigen Treffer, Fehlschuss, nächstes Ziel, Reichweite, Ziele hinter dem
   Schiff und gedrehte Waffenrichtung.
 - Trefferzähler, fehlenden Respawn, sichere und reproduzierbare Platzierung,
-  statische Zielpositionen auch bei großer Entfernung und 10/15 Anfangsziele.
+  statische Zielpositionen auch bei großer Entfernung sowie zehn Ziele nur in
+  Encounter 1.
 - Zehn Sekunden Warp-Ladezeit, verworfene frühe und ungültige Sprungbefehle,
   Entladung nach dem Sprung, Ankunft im Stillstand, erhaltene Lanzenladung
   und Fortschritt nach Hin- und Rücksprung.
 - Weiterlaufenden Flug und unabhängige Waffenladung während des Warp-Ladens.
+- Gegnerplatzierung mit einem Gegner in Encounter 2 und zwei Gegnern in
+  Encounter 3, ACQUIRE→APPROACH, vollständigen
+  `EnemyAiContext`, PD-Gegendrehmoment und Bremsen bei hoher Annäherung.
+- Bedrohungsbedingungen aus Ladung, Reichweite und Spielerzielwinkel sowie eine
+  reproduzierbare, während EVADE stabile Ausweichrichtung und Mindestdauer.
+- Gemeinsame physikalische Grenzen für KI-Bewegung, normale Lanzenladung,
+  Spieler- und Gegnerzerstörung, deaktivierte DESTROYED-KI und vollständiges
+  Einfrieren aller Systeme nach Game Over.
 - Zurückweisen ungültiger physikalischer Parameter.
 
 ## Aktuelle Einschränkungen
 
-- Nur X/Z-Bewegung und Yaw; keine Kollisionen, Gegner, Schäden, Sensoranalyse,
+- Nur X/Z-Bewegung und Yaw; keine Kollisionen, Schäden, Sensoranalyse,
   Energieversorgung, Hardwarekommunikation, Netzwerk, Audio oder Speicherung.
+- Ein Gegner in Encounter 2 und zwei unabhängige Gegner in Encounter 3; keine
+  Gruppenkoordination, Formationen, Kollisions- oder Hindernisvermeidung, Schilde,
+  Trefferpunkte oder Teilsystemschäden.
+- Die KI kennt den exakten Spielerzustand. Sensorfehler, Stealth, ECM,
+  Kontaktverlust, Lernverfahren und Schwierigkeitsgrade fehlen bewusst.
 - Single-Precision-Koordinaten ohne Origin-Rebasing. Sehr große Entfernungen und
   extrem hohe Geschwindigkeiten verschlechtern numerische und grafische Präzision.
 - Eine konstante Masse und ein Yaw-Trägheitsmoment; kein vollständiger 3D-Tensor.
@@ -272,7 +350,8 @@ Die 26 Core-Tests prüfen unter anderem:
 ## Kurze Roadmap
 
 1. Fluggefühl und physikalische Parameter im Testgefecht abstimmen.
-2. Encounter-Inhalte erweitern und ein vollständiges 3D-Bewegungsmodell ergänzen.
+2. Encounter-Inhalte und Gegnerverhalten erweitern und ein vollständiges
+   3D-Bewegungsmodell ergänzen.
 3. Stationsspezifische Systemausgaben entwerfen, anschließend einen ersten
    Hardware- oder Netzwerkadapter anbinden.
 4. Sensoren, Energie und Schäden einzeln als testbare Core-Systeme entwickeln.
@@ -289,11 +368,17 @@ Der bestehende Tag `v1.0` bleibt unverändert und enthält weiterhin die
 ursprüngliche Version ohne Warp Drive. `SpaceSim_v1.0_Uebersicht.txt`
 dokumentiert diesen historischen Stand.
 
+Version **1.2.0** erweitert das Spiel um Gegner-FSM, Game Over und drei
+Sprungpunkte: zehn Ziele in Encounter 1, einen Gegner in Encounter 2 und zwei
+Gegner in Encounter 3. Der Stand ist mit dem annotierten Git-Tag **`v1.2`**
+gesichert; die Details stehen in [SpaceSim_v1.2_Changelog.txt](SpaceSim_v1.2_Changelog.txt).
+
 ```powershell
 git status             # Änderungen seit dem letzten Commit anzeigen
 git log --oneline      # Gespeicherte Entwicklungsstände anzeigen
 git show v1.0 --stat   # Den gespeicherten Stand von Version 1.0 anzeigen
 git show v1.1 --stat   # Den gespeicherten Stand von Version 1.1 anzeigen
+git show v1.2 --stat   # Den gespeicherten Stand von Version 1.2 anzeigen
 ```
 
 Für weitere Arbeit empfiehlt sich ein eigener Branch, zum Beispiel
