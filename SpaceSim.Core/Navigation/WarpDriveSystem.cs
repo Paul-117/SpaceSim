@@ -31,6 +31,10 @@ internal static class WarpDriveSystem
         world.Ship.Rotation = Quaternion.Identity;
         world.Ship.AngularVelocity = Vector3.Zero;
         PowerDistributionSystem.ApplyProfile(world.Ship.Power, settings.Power.DefaultProfile);
+        world.Ship.Systems.Repair();
+        world.Ship.Shield.CurrentShield = world.Ship.Shield.MaximumShield;
+        world.Ship.Shield.RechargeDelayRemaining = 0f;
+        events.Add(new SystemsRepaired(WeaponOwner.Player, null, world.Ship.Position));
         drive.ChargedSeconds = 0;
         drive.ChargeFraction = 0;
         drive.RemainingSeconds = settings.WarpChargeSeconds;

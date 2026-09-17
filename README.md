@@ -1,11 +1,11 @@
-# SpaceSim 1.3
+# SpaceSim 1.6
 
-Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Trägheitsflug,
-statische Ziele, eine automatisch ladende Energielanze und drei über eine
+Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
+statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
 Sternenkarte verbundene Encounter. Encounter 1 startet mit 10 Zielen, Encounter 2
-mit einem Gegner und Encounter 3 mit zwei Gegnern. Es gibt keinen Respawn. Grafik
-und HUD entstehen aus geometrischen Formen; externe Assets sind nicht erforderlich.
-
+mit einem Easy-Gegner, Encounter 3 mit einem Medium-Gegner und Encounter 4 mit
+einem Hard-Gegner. Es gibt keinen Respawn. Grafik und HUD entstehen aus
+geometrischen Formen; externe Assets sind nicht erforderlich.
 ## Energieverteilung und Schilde
 
 Jedes Schiff besitzt einen vereinfachten Reaktor mit konstanten **100 Power Units**.
@@ -29,10 +29,34 @@ V1.3 noch keine Hüllenpunkte besitzt. Nach einem Schildtreffer gilt ein
 dreisekündiger Recharge Delay. Danach regeneriert der Schild mit bis zu 20
 Punkten pro Sekunde, abhängig von der Schildleistung.
 
+## Hull, Systemschaden und Speed Limit
+
+Jedes Schiff besitzt nun **3 Hull Integrity**. Vollständig absorbierte
+Schildtreffer verändern die Hülle nicht. Jeder Restschaden entfernt genau einen
+Hull-Punkt und beschädigt mit reproduzierbarem Zufall eines von drei Subsystemen:
+Propulsion, Weapons oder Shields. Der Zustand sinkt pro Treffer um 50 Prozent;
+bei 0 Prozent ist das System ausgefallen. Hull 0 zerstört Spieler oder Gegner.
+
+Die effektive Leistung jedes Systems lautet **Power Factor x Condition**.
+Antriebsschaden skaliert Schub und Drehmoment, Waffenschaden die Laderate und
+Schildschaden die Regeneration. Bereits geladene Lanze und bestehende Schildstärke
+bleiben unverändert.
+
+Ein erfolgreicher Warp repariert alle drei Subsysteme und füllt den Schild auf,
+repariert aber keine Hull Integrity. Das Speed Limit ist gameplaybedingt:
+`500 m/s x PropulsionPowerFactor x PropulsionCondition`. Es begrenzt nur weitere
+beschleunigende Hauptschubimpulse. Eine bereits höhere Geschwindigkeit bleibt
+dank Traegheit erhalten, wird als OVERSPEED gezeigt und kann mit Rueckschub
+abgebaut werden.
+
 ## Schnellstart unter Windows
 
 **`Start.cmd` doppelklicken.** Das Skript baut das Projekt und startet das Spiel.
 Alternativ im Workspace:
+
+Der aktuelle Arbeitsstand ist **1.6.0**: Hull, Subsystemschaden, Speed Limit,
+taktischer Zoom, health-aware Combat AI und Sound Effects sind integriert. Er ist
+fuer `v1.6` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1
@@ -68,6 +92,7 @@ Godot-Projekt und die Pfade in den Skripten gemeinsam anpassen.
 | S | Rückwärtsschub relativ zur Schiffsausrichtung, halbe Hauptschubkraft |
 | A | Drehmoment nach links |
 | D | Drehmoment nach rechts |
+| Mausrad hoch / runter | Taktische Ansicht hinein- / herauszoomen |
 | Leertaste | Lanze einmal abfeuern, wenn bereit |
 | Button „Warp Drive“ | Sternenkarte jederzeit öffnen |
 | Klick auf einen anderen Encounter | Sprungpunkt auswählen |
@@ -77,7 +102,7 @@ Godot-Projekt und die Pfade in den Skripten gemeinsam anpassen.
 **Loslassen bremst nicht.** Lineare und Winkelgeschwindigkeit bleiben erhalten.
 Zum Bremsen passend gegensteuern. Rückwärtsschub bremst nur dann die gesamte
 Bewegung, wenn die Schiffsnase zur Bewegungsrichtung ausgerichtet ist. Es gibt
-weder Reibung noch ein Geschwindigkeitslimit und keine automatische Stabilisierung.
+weder Reibung noch automatische Stabilisierung. Der aktive Antrieb begrenzt weitere Beschleunigung am aktuellen Speed Limit; bestehende Traegheit bleibt erhalten.
 
 Die Lanze startet ungeladen, lädt in drei Simulationssekunden und schießt entlang
 der gestrichelten Visierlinie. Ein zu früher Tastendruck wird verworfen; Halten
@@ -88,54 +113,59 @@ bestehen. Auch beim Wegfliegen oder Zurückspringen werden keine Ziele ersetzt.
 
 ## Gegner und Game Over
 
-Encounter 1 bleibt ein Übungsbereich mit zehn Zielen. Encounter 2 enthält einen
-Gegner, Encounter 3 enthält zwei Gegner. Jeder besitzt dieselbe Masse, Trägheit,
-Schubleistung und Lanze wie der Spieler. Kein Gegner teleportiert oder verändert
-Position,
-Geschwindigkeit oder Rotation nicht direkt. Seine KI erzeugt ausschließlich
-normale `ShipCommand`-Befehle, die durch dieselbe Schiffsphysik laufen.
+Encounter 1 bleibt ein Uebungsbereich mit zehn Zielen. Encounter 2 enthaelt einen
+Easy-Gegner, Encounter 3 einen Medium-Gegner und Encounter 4 einen Hard-Gegner.
+Alle Gegner verwenden dieselbe Masse, Traegheit, Schub-, Energie-, Schild-, Hull-
+und Subsystemregeln wie der Spieler. Die KI erzeugt ausschliesslich normale
+`ShipCommand`-Befehle; sie setzt Position, Geschwindigkeit und Rotation nie direkt.
 
 Die Zustandsmaschine verwendet `ACQUIRE`, `APPROACH`, `ATTACK`, `EVADE` und
-`REPOSITION`. Nach der Zerstörung wird sie als `DESTROYED` deaktiviert. Die KI
-berechnet pro Tick Entfernung, relative Geschwindigkeit,
-Annäherungsgeschwindigkeit sowie die Zielwinkel beider Schiffe. Ein PD-artiger
-Rotationsregler berücksichtigt die Winkelgeschwindigkeit.
+`REPOSITION`. Der Health-aware Risk Level bestimmt die Vorsicht innerhalb dieser
+States: gesunde Gegner greifen aggressiv an, beschaedigte Gegner weichen bei
+konkreter Lanzenbedrohung kurz aus und kehren danach wieder in den Kampf zurueck.
 
-Die KI nähert sich kontrolliert einer bevorzugten Distanz von 800 m, bremst bei
-zu hoher relativer Geschwindigkeit und feuert nur mit vollständig geladener
-Lanze innerhalb der Reichweite und einer Zieltoleranz von 3°. Ab 80 %
-Spielerladung und einem Spieler-Zielfehler unter 10° weicht sie präventiv aus.
-Die reproduzierbar gewählte Ausweichrichtung bleibt während des Manövers stabil.
-EVADE dauert mindestens 1,0 und höchstens 2,5 Sekunden.
+Ein voller Schild absorbiert einen Lanzentreffer. Restschaden reduziert die Hull,
+beschaedigt ein Subsystem und zerstoert das Schiff erst bei Hull 0. Beim Spieler
+loest das `GameOver` aus; Zeit, Physik, KI, Waffen und Navigation halten an.
+## Sound Effects (V1.6)
 
-Spieler und Gegner besitzen dieselben Energie- und Schildzustände. Ein voller
-Schild absorbiert einen Lanzentreffer; erst Restschaden zerstört das jeweilige
-Schiff. Beim Spieler führt das zu `GameOver`: Zeit, Physik, KI, Waffen und
-Navigation bleiben stehen und Commands werden ignoriert. Godot zeigt GAME OVER /
-SCHIFF ZERSTÖRT. Der Neustart-Button beginnt eine neue Sitzung in Encounter 1.
+Godot spielt die Soundeffekte ausschliesslich als Darstellung von Core-Events
+oder dem lokalen Spielerzustand. Der Core bleibt damit frei von Audioabhaengigkeiten.
+`Booster` loopt waehrend Haupt- oder Rueckschub aktiv ist. `Lance_ready` spielt
+einmal beim Erreichen von 100 Prozent, `Lance_shot` beim Spielerschuss.
+`shield_charge` spielt einmal drei Sekunden vor dem voraussichtlichen Volladen
+des Spielerschilds, damit sein Ende den vollen Schild signalisiert. Schildtreffer, Schilddepletion,
+Hull-Schaden und erfolgreiche Warp-Spruenge loesen jeweils `shield_hit`,
+`shield_depleted`, `Ship_Damage` und `Warp_jump` aus. `shield_low` liegt bereits
+im Projekt, bleibt aber bis zu einer mehrstufigen Schildmechanik ohne Ausloeser.
 
-Die Gegner-KI verwendet zentrale Profile: ATTACK verteilt 20 / 60 / 20, EVADE
-60 / 10 / 30, REPOSITION 55 / 20 / 25 und DEFEND 20 / 20 / 60. Bei stark
-beschädigtem Schild erhält DEFEND Vorrang. Die Profile setzen dieselben realen
-PowerState-Werte wie die Spielerbedienung; Gegner erhalten keine kostenlose Energie.
+## Tactical Zoom und Health-Aware Combat AI (V1.5)
 
-Die zentralen Startwerte stehen vollständig in `EnemyAiSettings`:
+Die Flight-Kamera bleibt immer auf dem Spielerschiff zentriert. Das Mausrad setzt
+nur ihren Zoom: hoch vergroessert die taktische Ansicht, runter verkleinert sie.
+Die zentralen Grenzen liegen bei **0,45 bis 1,80** mit einer Schrittweite von
+**0,10**. HUD, Sternenkarte und Randindikatoren liegen weiterhin in eigenen
+Canvas-Ebenen und behalten deshalb ihre Bildschirmgroesse.
 
-| Parameter | Wert |
-| --- | ---: |
-| Bevorzugte Kampfdistanz | 800 m |
-| Minimale Kampfdistanz | 600 m |
-| ATTACK-Eintritt / Entfernungsaustritt | 1.000 / 1.200 m |
-| Maximale gewünschte Annäherung | 55 m/s |
-| Maximale relative Geschwindigkeit | 70 m/s |
-| Relative Geschwindigkeit für ATTACK-Eintritt | 38 m/s |
-| Zielgeschwindigkeit beim REPOSITION | 26 m/s |
-| Feuerwinkel | 3° |
-| Bedrohungswinkel Eintritt / Austritt | 10° / 16° |
-| Bedrohungsschwelle der Spielerlanze | 80 % |
-| EVADE-Dauer | 1,0–2,5 s |
-| PD-Regler Kp / Kd | 2,4 / 2,8 |
-| Schiff-Trefferradius | 16 m |
+Jeder Gegner besitzt vollstaendig dasselbe Hull-, Shield- und Subsystemmodell
+wie der Spieler. Die bestehende FSM bleibt erhalten und erhaelt eine getrennte,
+deterministische Risikostufe: `AGGRESSIVE`, `NORMAL`, `DEFENSIVE` oder
+`CRITICAL`. Sie bewertet Hull, aktuellen Schild und die drei System-Conditions.
+Voller Hull und Schild bedeuten AGGRESSIVE; ein Schild unter 70 Prozent NORMAL,
+unter 30 Prozent DEFENSIVE. Hull-Schaden oder schwere Systemschaden erhoehen die
+Vorsicht weiter; bei einem Hull-Punkt oder einer System-Condition bis 25 Prozent
+ist der Gegner CRITICAL.
+
+Der gesunde Gegner bevorzugt etwa **450 m** Abstand; die risikobezogenen Ziele
+liegen bei 450 / 475 / 525 / 550 m. ATTACK wird im Bereich **250--700 m**
+bevorzugt und verlaesst ihn erst oberhalb von **850 m**. Ein voller Gegner weicht
+einer lediglich bereiten Lanze nicht aus. Die Bedrohungsschwellen fuer
+AGGRESSIVE / NORMAL / DEFENSIVE / CRITICAL sind jeweils 100 / 90 / 80 / 75
+Prozent Waffenladung und 2 / 4 / 6 / 8 Grad Zielfehler. EVADE dauert 0,45 bis
+0,90 Sekunden und aktiviert danach einen risikobezogenen Cooldown von 3,5 / 3 /
+2,5 / 2 Sekunden. Danach kehrt die FSM bevorzugt zu ATTACK zurueck; es gibt
+keinen FLEE-State. Die Debug-Zeile im HUD zeigt State, Risk, Hull, Shield und
+Subsystem-Conditions des ersten aktiven Gegners.
 
 ## Sternenkarte und Warp Drive
 
@@ -292,12 +322,12 @@ Start.cmd        Start per Doppelklick
   werden. Direkt nach dem Konstruktor enthält es die initialen Spawnereignisse
   des Ziel-Encounters, jeweils mit Encounter-ID.
   Dies ist eine lokale Ausgabe ohne Event-Bus oder Netzwerkgarantien.
-- **Drei persistente Encounter:** Encounter 1 erzeugt einmalig zehn statische
-  Ziele im Ring zwischen 180 und 750 m. Encounter 2 besitzt einen Gegner,
-  Encounter 3 zwei Gegner; alle Encounter haben eigene lokale Zustände. Treffer
-  entfernen Ziele oder Gegner nur aus dem aktiven Encounter. Es gibt weder
-  Respawn noch Recycling.
-  Ein fester, konfigurierbarer Seed macht Testläufe reproduzierbar.
+- **Vier persistente Encounter:** Encounter 1 erzeugt einmalig zehn statische
+  Ziele im Ring zwischen 180 und 750 m. Encounter 2 besitzt einen Easy-Gegner,
+  Encounter 3 einen Medium-Gegner und Encounter 4 einen Hard-Gegner. Alle
+  Encounter haben eigene lokale Zustaende. Treffer entfernen Ziele oder Gegner nur
+  aus dem aktiven Encounter. Es gibt weder Respawn noch Recycling.
+  Ein fester, konfigurierbarer Seed macht Testlaeufe reproduzierbar.
 - **Warp im Core:** Der unabhängige `WarpDriveState` lädt mit dem festen Takt.
   `NavigationCommand` enthält einen einmaligen Sprungwunsch. Der Core prüft
   Ladung und Ziel selbst, wechselt den aktiven Encounter und setzt den
@@ -330,7 +360,7 @@ Start.cmd        Start per Doppelklick
 
 ## Testumfang
 
-Die 46 Core-Tests prüfen unter anderem:
+Die 50 Core-Tests prüfen unter anderem:
 
 - Geschwindigkeit ohne Schub, Beschleunigung in gedrehter Schiffsausrichtung,
   Weiterflug nach Loslassen, Rückschub und fehlendes Geschwindigkeitslimit.
@@ -347,8 +377,8 @@ Die 46 Core-Tests prüfen unter anderem:
   Entladung nach dem Sprung, Ankunft im Stillstand, erhaltene Lanzenladung
   und Fortschritt nach Hin- und Rücksprung.
 - Weiterlaufenden Flug und unabhängige Waffenladung während des Warp-Ladens.
-- Gegnerplatzierung mit einem Gegner in Encounter 2 und zwei Gegnern in
-  Encounter 3, ACQUIRE→APPROACH, vollständigen
+- Gegnerplatzierung: Encounter 2 mit Easy-, Encounter 3 mit Medium- und
+  Encounter 4 mit Hard-Gegner, ACQUIRE→APPROACH, vollständigen
   `EnemyAiContext`, PD-Gegendrehmoment und Bremsen bei hoher Annäherung.
 - Bedrohungsbedingungen aus Ladung, Reichweite und Spielerzielwinkel sowie eine
   reproduzierbare, während EVADE stabile Ausweichrichtung und Mindestdauer.
@@ -365,7 +395,7 @@ Die 46 Core-Tests prüfen unter anderem:
 
 - Nur X/Z-Bewegung und Yaw; keine Kollisionen, Schäden, Sensoranalyse,
   Energieversorgung, Hardwarekommunikation, Netzwerk, Audio oder Speicherung.
-- Ein Gegner in Encounter 2 und zwei unabhängige Gegner in Encounter 3; keine
+- Ein Easy-Gegner in Encounter 2, ein Medium-Gegner in Encounter 3 und ein Hard-Gegner in Encounter 4; keine
   Gruppenkoordination, Formationen, Kollisions- oder Hindernisvermeidung, Schilde,
   Trefferpunkte oder Teilsystemschäden.
 - Die KI kennt den exakten Spielerzustand. Sensorfehler, Stealth, ECM,
@@ -406,8 +436,10 @@ Sprungpunkte: zehn Ziele in Encounter 1, einen Gegner in Encounter 2 und zwei
 Gegner in Encounter 3. Der Stand ist mit dem annotierten Git-Tag **`v1.2`**
 gesichert; die Details stehen in [SpaceSim_v1.2_Changelog.txt](SpaceSim_v1.2_Changelog.txt).
 
-Der aktuelle Arbeitsstand ist **1.3.0** mit Energieverteilung und Schilden. Er ist
-für den Tag `v1.3` vorbereitet, wird aber erst auf ausdrückliche Anweisung getaggt.
+Version **1.3.0** ist als Commit gespeichert und erweitert das Spiel um
+Energieverteilung und Schilde. Der aktuelle Arbeitsstand ist **1.4.0** mit Hull,
+Subsystemschaden und Speed Limit; er ist für den Tag `v1.4` vorbereitet und wird
+erst auf ausdrückliche Anweisung getaggt.
 
 ```powershell
 git status             # Änderungen seit dem letzten Commit anzeigen

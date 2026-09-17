@@ -1,5 +1,6 @@
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Weapons;
+using SpaceSim.Core.AI;
 
 namespace SpaceSim.Core.Combat;
 
@@ -7,14 +8,15 @@ namespace SpaceSim.Core.Combat;
 public sealed class EnemyShipState
 {
     public int EnemyId { get; }
+    public EnemyDifficulty Difficulty { get; }
     public ShipState Ship { get; }
     public LanceState Lance { get; } = new();
     public bool IsDestroyed { get; internal set; }
 
-    internal EnemyShipState(int enemyId, ShipState ship)
+    internal EnemyShipState(int enemyId, ShipState ship, EnemyDifficulty difficulty)
     {
         EnemyId = enemyId;
         Ship = ship;
+        Difficulty = difficulty;
     }
 }
-

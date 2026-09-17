@@ -17,7 +17,7 @@ internal static class LanceSystem
         lance.ChargeFraction = (float)(lance.ChargedSeconds / settings.LanceChargeSeconds);
     }
 
-    public static void FirePlayer(WorldState world, bool fire, SimulationSettings settings,
+    public static void FirePlayer(WorldState world, bool fire, SimulationSettings settings, Random random,
         List<SimulationEvent> events)
     {
         var lance = world.Lance;
@@ -51,7 +51,9 @@ internal static class LanceSystem
         if (enemyHit is not null)
         {
             if (ShieldSystem.ApplyLanceDamage(enemyHit.Ship.Shield, WeaponOwner.Enemy, enemyHit.EnemyId,
-                enemyHit.Ship.Position, settings.Shield, events))
+                enemyHit.Ship.Position, settings.Shield, events) && HullSystem.ApplyHit(enemyHit.Ship.Hull,
+                enemyHit.Ship.Systems, WeaponOwner.Enemy, enemyHit.EnemyId, enemyHit.Ship.Position,
+                settings.Hull, random, events))
             {
                 enemyHit.IsDestroyed = true;
                 world.HitCount++;
@@ -67,7 +69,7 @@ internal static class LanceSystem
     }
 
     public static void FireEnemy(WorldState world, EnemyShipState enemy, bool fire,
-        SimulationSettings settings, List<SimulationEvent> events)
+        SimulationSettings settings, Random random, List<SimulationEvent> events)
     {
         if (!fire || !enemy.Lance.IsReady || enemy.IsDestroyed) return;
         Discharge(enemy.Lance);
@@ -80,7 +82,8 @@ internal static class LanceSystem
             WeaponOwner.Enemy, hit ? WeaponHitKind.Player : WeaponHitKind.None));
         if (!hit) return;
         if (!ShieldSystem.ApplyLanceDamage(world.Ship.Shield, WeaponOwner.Player, null,
-            world.Ship.Position, settings.Shield, events)) return;
+            world.Ship.Position, settings.Shield, events) || !HullSystem.ApplyHit(world.Ship.Hull,
+            world.Ship.Systems, WeaponOwner.Player, null, world.Ship.Position, settings.Hull, random, events)) return;
         world.GameState = GameState.GameOver;
         events.Add(new PlayerDestroyed(enemy.EnemyId, world.Ship.Position));
     }

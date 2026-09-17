@@ -1,0 +1,107 @@
+SPACESIM V1.5 - IMPLEMENTIERUNGSUEBERSICHT
+==========================================
+
+Version: 1.5.0
+Basis: V1.4-Arbeitsstand mit Hull, Subsystemschaden und Speed Limit.
+Git: fuer v1.5 bereit, kein Tag automatisch erstellt.
+
+ZIEL
+
+V1.5 erweitert den bestehenden Prototypen gezielt um taktischen Kamera-Zoom und
+eine gesundheitsbewusste Gegner-KI. Die gemeinsame Core-Physik, ShipCommand-
+Schnittstelle, Waffen-, Schild-, Hull- und Warpregeln blieben erhalten.
+
+NEUE DATEIEN
+
+- AI/EnemyRiskLevel.cs: EnemyRiskLevel und die zentrale, reine
+  EnemyRiskAssessment-Berechnung.
+- Rendering/TacticalCameraSettings.cs: zentrale Godot-Zoom-Grenzen und Schrittweite.
+
+GEAENDERTE DATEIEN
+
+- AI/EnemyAiSettings.cs: alle V1.5-Distanzen, Risikoschwellen, EVADE-Dauern und
+  Cooldowns zentral konfiguriert.
+- AI/EnemyAiController.cs: Risikobewertung pro Tick, health-aware Bedrohungsmodell,
+  kurzer EVADE mit Cooldown und ATTACK-orientierte Rueckkehrlogik.
+- UI/FlightHud.cs und Flight.cs: Mausrad-Zoom und kompakte Gegner-Debuganzeige.
+- Program.cs: angepasste vorhandene Combat-Tests und neuer Risikobewertungstest.
+- README.md, project.godot und Directory.Build.props: V1.5-Dokumentation und Version.
+
+TACTICAL ZOOM
+
+Die Camera2D bleibt an der sichtbaren Spielerposition. WheelUp erhoeht und
+WheelDown verringert den Zoom in Schritten von 0.10. Der Wert wird auf 0.45 bis
+1.80 begrenzt. Nur die World-Kamera wird veraendert: HUD und StarMap verbleiben
+als Canvas-UI in konstanter Bildschirmgroesse. Randindikatoren berechnen ihre
+sichtbare World-Grenze mit dem aktuellen CameraZoom und folgen daher dem Zoom.
+
+BESTAETIGTES ENEMY DAMAGE MODEL
+
+EnemyShipState nutzt einen normalen ShipState und besitzt daher dieselben Werte
+wie der Spieler: PowerState, ShieldState, HullState und SubsystemState fuer
+Propulsion, Weapons und Shields. Restschaden reduziert Hull und schadet einem
+Subsystem; Power x Condition beeinflusst beide Schiffe gleich. Hull 0 setzt
+IsDestroyed und deaktiviert die AI. Es gibt keine Gegner-Sonderregeln.
+
+RISK-LEVEL-MODELL
+
+EnemyRiskAssessment ist deterministisch und verwendet Hull, Schildanteil sowie
+die niedrigste Subsystem-Condition.
+
+- AGGRESSIVE: voller Hull, Schild mindestens 70 Prozent, gesunde Systeme.
+- NORMAL: Schild unter 70 Prozent.
+- DEFENSIVE: Hull nicht voll, Schild unter 30 Prozent oder ein System unter 60 Prozent.
+- CRITICAL: Hull 1 oder ein System bei hoechstens 25 Prozent.
+
+Die Risikostufe ersetzt die FSM nicht. Jede Stufe kann APPROACH, ATTACK, EVADE
+oder REPOSITION verwenden. Sie bestimmt bevorzugte Distanz, Bedrohungsschwelle
+und Cooldown.
+
+KAMPF-TUNING
+
+PreferredCombatDistance: 450 / 475 / 525 / 550 m fuer Aggressive bis Critical.
+MinimumCombatDistance: 250 m. ATTACK wird bis 700 m betreten und erst ueber
+850 m wegen Distanz verlassen. ATTACK bleibt nach einem Schuss aktiv; ein Schuss
+erzwingt kein REPOSITION mehr. APPROACH akzeptiert kontrollierte
+Traegheitsgeschwindigkeit, damit der Gegner die nahe Kampfposition erreicht.
+REPOSITION ist nur fuer grosse Distanz, zu kleine Distanz, sehr hohe relative
+Geschwindigkeit oder schlechte Geometrie vorgesehen.
+
+EVADE
+
+Ein gesunder Gegner mit vollem Schild ignoriert eine nur bereite Spielerlanze.
+Nach Schildverlust gelten pro Risk-Level diese Charge-/Aim-Schwellen:
+AGGRESSIVE 100%/2 Grad, NORMAL 90%/4 Grad, DEFENSIVE 80%/6 Grad,
+CRITICAL 75%/8 Grad. EVADE haelt seine per Seed gewaehlte Seite fuer 0.45 bis
+0.90 Sekunden. Beim Verlassen beginnt ein Cooldown: 3.5 / 3.0 / 2.5 / 2.0 s.
+Danach bevorzugt der Controller ATTACK, sofern Distanz und Bewegung dies zulassen.
+Es gibt keinen FLEE-State.
+
+HUD
+
+Die vorhandene Gegner-Debugzeile zeigt State, Hull, Shield, Lance und zusaetzlich
+Risk sowie Propulsion/Weapons/Shields-Condition des ersten aktiven Gegners.
+
+TESTS UND VALIDIERUNG
+
+- 50/50 automatisierte Core-Tests bestanden.
+- Risk-Test deckt AGGRESSIVE, NORMAL, DEFENSIVE und CRITICAL sowie schweren
+  Subsystemschaden und Determinismus ab.
+- Combat-Tests pruefen aggressives Verhalten mit vollem Schild, health-aware
+  EVADE, feste Ausweichrichtung, kurze Dauer und Evade-Cooldown.
+- Debug-Build: ohne Warnungen und Fehler.
+- Godot-Smoke-Tests bestanden: normaler Flug, Power-UI, Warp, Gegner-KI,
+  Game Over und Neustart. Der getrennte Gegner-Test meldete ENEMY SMOKE PASS.
+
+ABWEICHUNGEN UND EINSCHRAENKUNGEN
+
+Kein neuer Kamera-Modus, kein Panning, keine Minimap und kein FLEE-State.
+Die Risikostufe ist absichtlich eine kleine deterministische Regelmenge und keine
+Utility-AI. Ein grafischer, interaktiver Wheel-Test wird durch den Godot-Smoke-
+Start und die getrennte Canvas-Architektur ergaenzt; keine neue UI-Testinfrastruktur.
+
+NAECHSTE SCHRITTE
+
+V1.6 kann die Risikostufe mit Sensoren, mehreren Gegnern oder differenzierten
+Power-Profilen verbinden. Reparatur-Gameplay, neue Waffen und Reaktormechanik
+bleiben bewusst ausserhalb von V1.5.

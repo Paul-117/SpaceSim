@@ -21,12 +21,15 @@ public sealed record SimulationSettings
     public int TargetCount { get; init; } = 10;
     public int EncounterTwoTargetCount { get; init; }
     public int EncounterThreeTargetCount { get; init; }
+    public int EncounterFourTargetCount { get; init; }
     public float TargetRadiusMeters { get; init; } = 14f;
     public float SpawnMinDistanceMeters { get; init; } = 180f;
     public float SpawnMaxDistanceMeters { get; init; } = 750f;
     public EnemyAiSettings EnemyAi { get; init; } = new();
     public PowerSettings Power { get; init; } = new();
     public ShieldSettings Shield { get; init; } = new();
+    public HullSettings Hull { get; init; } = new();
+    public float MaximumNominalSpeedMetersPerSecond { get; init; } = 500f;
 
     internal void Validate()
     {
@@ -44,15 +47,20 @@ public sealed record SimulationSettings
         ArgumentNullException.ThrowIfNull(EnemyAi);
         ArgumentNullException.ThrowIfNull(Power);
         ArgumentNullException.ThrowIfNull(Shield);
+        ArgumentNullException.ThrowIfNull(Hull);
         EnemyAi.Validate();
         Power.Validate();
         Shield.Validate();
+        Hull.Validate();
+        Positive(MaximumNominalSpeedMetersPerSecond, nameof(MaximumNominalSpeedMetersPerSecond));
         if (TargetCount < 0 || TargetCount > 256)
             throw new ArgumentOutOfRangeException(nameof(TargetCount));
         if (EncounterTwoTargetCount < 0 || EncounterTwoTargetCount > 256)
             throw new ArgumentOutOfRangeException(nameof(EncounterTwoTargetCount));
         if (EncounterThreeTargetCount < 0 || EncounterThreeTargetCount > 256)
             throw new ArgumentOutOfRangeException(nameof(EncounterThreeTargetCount));
+        if (EncounterFourTargetCount < 0 || EncounterFourTargetCount > 256)
+            throw new ArgumentOutOfRangeException(nameof(EncounterFourTargetCount));
         if (SpawnMinDistanceMeters <= TargetRadiusMeters ||
             SpawnMaxDistanceMeters <= SpawnMinDistanceMeters)
             throw new ArgumentException("Target spawn distances must describe a safe annulus.");

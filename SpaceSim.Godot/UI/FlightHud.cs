@@ -8,6 +8,7 @@ namespace SpaceSim.GodotClient.UI;
 public partial class FlightHud : Control
 {
     public WorldState World { get; set; } = null!;
+    public SimulationSettings Settings { get; set; } = null!;
     public ShipCommand Command { get; set; }
     public bool IsFocused { get; set; } = true;
     public Button WarpButton { get; } = CockpitButton.Create("Warp Drive");
@@ -47,7 +48,7 @@ public partial class FlightHud : Control
         DrawRect(new Rect2(0, height - 129, width, 129), new Color(0.0196f, 0.0314f, 0.0549f, 0.96f));
         Text(new Vector2(30, 35), "SPACESIM", 23, ViewSettings.Text);
         Text(new Vector2(165, 34), $"/  {World.CurrentEncounter.Name.ToUpperInvariant()}", 13, ViewSettings.Muted);
-        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.3", 12, ViewSettings.Cyan);
+        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.6", 12, ViewSettings.Cyan);
         DrawLine(new Vector2(30, 49), new Vector2(width - 30, 49), ViewSettings.Line, 1);
 
         float column = (width - 60) / 4;
@@ -66,6 +67,11 @@ public partial class FlightHud : Control
 
         float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(World.Ship.Forward.X, -World.Ship.Forward.Z)), 360);
         Text(new Vector2(30, height - 107), $"POS  X {World.Ship.Position.X,9:0.0}   Z {World.Ship.Position.Z,9:0.0} m", 12, ViewSettings.Muted);
+        float speedLimit = Settings.MaximumNominalSpeedMetersPerSecond * World.Ship.Power.PropulsionPowerFactor * World.Ship.Systems.PropulsionCondition;
+        string overspeed = World.Ship.Velocity.Length() > speedLimit + 0.1f ? "  OVERSPEED" : string.Empty;
+        Text(new Vector2(30, height - 88), $"HULL {World.Ship.Hull.CurrentHull}/{World.Ship.Hull.MaximumHull}  SYS ENG {World.Ship.Systems.PropulsionCondition * 100:0}% WPN {World.Ship.Systems.WeaponsCondition * 100:0}% SHD {World.Ship.Systems.ShieldsCondition * 100:0}%", 11, ViewSettings.Muted);
+        Text(new Vector2(width / 2 - 145, height - 88), $"SPEED {World.Ship.Velocity.Length():0}/{speedLimit:0} m/s{overspeed}", 11,
+            overspeed.Length > 0 ? ViewSettings.Amber : ViewSettings.Cyan);
         Text(new Vector2(width - 242, height - 107), $"KURS {heading:000.0}°    SIM {World.TimeSeconds:0.0}s", 12, ViewSettings.Muted);
         DrawLine(new Vector2(30, height - 92), new Vector2(width - 30, height - 92), ViewSettings.Line, 1);
 
@@ -84,6 +90,10 @@ public partial class FlightHud : Control
             Text(new Vector2(width / 2 - 180, height - 107),
                 $"GEGNER {enemies.Length}  ·  E{enemy.EnemyId} {state}  ·  LANCE {enemy.Lance.ChargeFraction * 100:0}%",
                 12, new Color("ff6577"));
+            var ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
+            Text(new Vector2(width / 2 - 180, height - 91),
+                $"{enemy.Difficulty.ToString().ToUpperInvariant()}  HULL {enemy.Ship.Hull.CurrentHull}/{enemy.Ship.Hull.MaximumHull}  SHD {enemy.Ship.Shield.CurrentShield:0}  SYS {enemy.Ship.Systems.PropulsionCondition * 100:0}/{enemy.Ship.Systems.WeaponsCondition * 100:0}/{enemy.Ship.Systems.ShieldsCondition * 100:0}  RISK {ai?.CurrentRiskLevel.ToString().ToUpperInvariant()}",
+                10, new Color("ff6577"));
         }
         if (!IsFocused)
             Text(new Vector2(width / 2 - 160, height / 2 + 70), "FENSTER INAKTIV  ·  Eingabe aus", 14, ViewSettings.Amber);

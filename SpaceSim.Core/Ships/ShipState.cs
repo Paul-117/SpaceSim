@@ -15,14 +15,19 @@ public sealed class ShipState
     public float YawMomentOfInertia { get; }
     public PowerState Power { get; }
     public ShieldState Shield { get; }
+    public HullState Hull { get; }
+    public SubsystemState Systems { get; }
     public Vector3 Forward => Vector3.Transform(-Vector3.UnitZ, Rotation);
 
-    internal ShipState(float massKg, float yawMomentOfInertia, PowerState power, ShieldState shield)
+    internal ShipState(float massKg, float yawMomentOfInertia, PowerState power, ShieldState shield,
+        HullState hull, SubsystemState systems)
     {
         MassKg = massKg;
         YawMomentOfInertia = yawMomentOfInertia;
         Power = power;
         Shield = shield;
+        Hull = hull;
+        Systems = systems;
     }
 }
 

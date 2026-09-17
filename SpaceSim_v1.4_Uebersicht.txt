@@ -1,0 +1,77 @@
+SPACESIM V1.4 - IMPLEMENTIERUNGSUEBERSICHT
+==========================================
+
+Version: 1.4.0
+Basis: V1.3 (Commit 608dc5c)
+Git: fuer v1.4 bereit, kein Tag automatisch erstellt.
+
+NEUE DATEIEN
+
+- Combat/HullState.cs: HullState mit CurrentHull/MaximumHull (Standard 3),
+  SubsystemState und ShipSubsystem (Propulsion, Weapons, Shields).
+- Combat/HullSettings.cs: MaximumHull 3 und SubsystemDamagePerHullHit 0.50.
+- Combat/HullSystem.cs: deterministischer Hull- und Subsystemschaden.
+
+MODELL
+
+Jeder ShipState besitzt neben Power und Shield nun Hull und Systems. Ein
+vollstaendig absorbierter Treffer verursacht keinen Hull-Schaden. Verbleibender
+Lanzenschaden entfernt genau einen Hull-Punkt und waehlt ueber den
+Simulationsseed ein noch funktionierendes Subsystem. Dessen Condition sinkt
+um 0.5, nie unter 0. Hull 0 zerstoert das Schiff.
+
+EFFEKTIVE LEISTUNG
+
+- Propulsion: PowerFactor x PropulsionCondition fuer Hauptschub, Rueckschub,
+  Drehmoment und Speed Limit.
+- Weapons: WeaponsPowerFactor x WeaponsCondition fuer die Laderate.
+- Shields: ShieldsPowerFactor x ShieldsCondition fuer die Regeneration.
+- Geladene Lanze und vorhandene Schildstaerke bleiben durch Subsystemschaden
+  unveraendert.
+
+WARP
+
+Nur ein erfolgreicher Sprung repariert alle Conditions auf 1.0 und fuellt den
+Spielerschild inklusive Reset des Recharge Delay. Hull wird nicht repariert.
+Abgebrochene Spruenge und das Oeffnen der Karte veraendern nichts.
+
+SPEED LIMIT
+
+MaximumNominalSpeedMetersPerSecond ist zentral auf 500 gesetzt.
+EffectiveSpeedLimit = 500 x PropulsionPowerFactor x PropulsionCondition.
+Bei Erreichen des Limits wird nur weiterer beschleunigender MainThrust blockiert.
+Velocity wird niemals gekappt; Overspeed coasts weiter und ReverseThrust bremst.
+Das Limit nutzt den Betrag der gesamten linearen Geschwindigkeit und gilt auch
+fuer Gegner.
+
+EVENTS UND HUD
+
+Neu: HullDamaged, SubsystemDamaged, SubsystemDisabled und SystemsRepaired.
+Das HUD zeigt Hull, alle drei Conditions sowie SPEED aktuell/Limit und OVERSPEED.
+ShieldHit bleibt ein visueller Ring in ArenaView. Godot entscheidet keinen Schaden.
+
+GEAENDERTE KERNDATEIEN
+
+ShipState, ShipPhysics, Simulation, SimulationSettings, LanceSystem,
+WarpDriveSystem, SimulationEvent, Flight und FlightHud. Versiondateien und README
+sind auf 1.4.0 aktualisiert.
+
+TESTS UND VALIDIERUNG
+
+- 49/49 Core-Tests bestanden.
+- Neue Tests pruefen Hull-Verlust, genau einen Subsystemtreffer, Warp-Reparatur,
+  Hull-Erhalt, Speed Limit, nicht gekappte Overspeed-Traegheit und ReverseThrust.
+- Debug-Build ohne Warnungen oder Fehler.
+- Godot-Smoke-Tests bestanden: Power-UI, Flug, Warp, Gegner, Game Over und Neustart.
+
+EINSCHRAENKUNGEN
+
+Keine Hull-Punkte pro Schadensmenge, keine Trefferzonen, Reparatur-Gameplay,
+Reaktor-, Warpdrive- oder Sensor-Schaden. Ein gemeinsamer Schild pro Schiff,
+keine lokalen Segmente. AI nutzt die bestehenden Commands und umgeht das Limit
+nicht, hat aber keine neue Schadensstrategie.
+
+NAECHSTE SCHRITTE
+
+Hull-Schaden zu einem echten HP-Modell erweitern, Reparaturen als Gameplay
+implementieren und erst danach weitere Subsysteme oder Reaktoroutput ergaenzen.

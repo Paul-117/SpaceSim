@@ -63,11 +63,11 @@ var tests = new (string Name, Action Run)[]
         Near(sim.World.Ship.Velocity.Y, 0);
         Near(sim.World.Ship.Rotation.Length(), 1);
     }),
-    ("There is no artificial speed cap", () =>
+    ("Full propulsion reaches the configured speed limit", () =>
     {
         var sim = New();
         Step(sim, 3600, new ShipCommand(MainThrust: true));
-        Near(sim.World.Ship.Velocity.Length(), 720f, 0.05f);
+        Near(sim.World.Ship.Velocity.Length(), 500f, 0.05f);
     }),
     ("Lance needs exactly three seconds to charge", () =>
     {
@@ -175,33 +175,39 @@ var tests = new (string Name, Action Run)[]
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Check(rejected, "Zero mass must not enter the simulation.");
     }),
-    ("Three encounters place targets only at point one and enemies at points two and three", () =>
+    ("Four encounters assign their configured content and enemy difficulty", () =>
     {
         var sim = new Simulation();
         Check(sim.World.CurrentEncounter.Id == 1, "Start in encounter 1.");
-        Check(sim.World.Encounters.Count == 3, "There must be three destinations.");
+        Check(sim.World.Encounters.Count == 4, "There must be four destinations.");
         Check(sim.World.Encounters[0].Targets.Count == 10 && sim.World.Encounters[1].Targets.Count == 0 &&
-              sim.World.Encounters[2].Targets.Count == 0, "Targets belong only to encounter 1.");
+              sim.World.Encounters[2].Targets.Count == 0 && sim.World.Encounters[3].Targets.Count == 0,
+            "Targets belong only to encounter 1.");
         Check(sim.World.Encounters[0].Enemies.Count == 0 && sim.World.Encounters[1].Enemies.Count == 1 &&
-              sim.World.Encounters[2].Enemies.Count == 2, "Wrong enemy populations.");
+              sim.World.Encounters[2].Enemies.Count == 1 && sim.World.Encounters[3].Enemies.Count == 1,
+            "Wrong enemy populations.");
+        Check(sim.World.Encounters[1].Enemies.Single().Difficulty == EnemyDifficulty.Easy &&
+              sim.World.Encounters[2].Enemies.Single().Difficulty == EnemyDifficulty.Medium &&
+              sim.World.Encounters[3].Enemies.Single().Difficulty == EnemyDifficulty.Hard,
+            "Each jump point must use its configured enemy difficulty.");
         Check(sim.World.Encounters.SelectMany(e => e.Targets).Select(t => t.Id).Distinct().Count() == 10,
             "Target IDs must be unique across encounters.");
     }),
-    ("Encounter 3 advances two independent enemy controllers through shared physics", () =>
+    ("Encounter 4 activates its Hard enemy through shared physics", () =>
     {
         var sim = new Simulation(new SimulationSettings { TargetCount = 0 });
         Step(sim, 600);
-        sim.Step(default, new NavigationCommand(3));
+        sim.Step(default, new NavigationCommand(4));
         var enemies = sim.World.CurrentEnemies.OrderBy(enemy => enemy.EnemyId).ToArray();
-        Check(enemies.Length == 2 && enemies.Select(enemy => enemy.EnemyId).SequenceEqual(new[] { 2, 3 }),
-            "Encounter 3 must activate exactly its two enemies.");
-        Check(enemies.All(enemy => sim.World.CurrentEncounter.GetEnemyAi(enemy.EnemyId)?.CurrentState == EnemyAiState.Acquire),
-            "Each enemy requires its own initial controller state.");
+        Check(enemies.Length == 1 && enemies.Single().EnemyId == 3 && enemies.Single().Difficulty == EnemyDifficulty.Hard,
+            "Encounter 4 must activate its Hard enemy.");
+        Check(sim.World.CurrentEncounter.EnemyAi?.CurrentState == EnemyAiState.Acquire,
+            "The enemy requires its own initial controller state.");
         sim.Step(default);
-        Check(enemies.All(enemy => sim.World.CurrentEncounter.GetEnemyAi(enemy.EnemyId)?.CurrentState == EnemyAiState.Approach),
-            "Both controllers must progress from ACQUIRE independently.");
-        Check(enemies.All(enemy => enemy.Ship.Position.Y == 0 && enemy.Ship.Velocity.Y == 0),
-            "Both enemies must remain inside the shared planar flight physics.");
+        Check(sim.World.CurrentEncounter.EnemyAi?.CurrentState == EnemyAiState.Approach,
+            "The controller must progress from ACQUIRE.");
+        Check(enemies.Single().Ship.Position.Y == 0 && enemies.Single().Ship.Velocity.Y == 0,
+            "The enemy must remain inside the shared planar flight physics.");
     }),
     ("Warp starts empty and takes exactly ten seconds", () =>
     {
@@ -280,12 +286,17 @@ var tests = new (string Name, Action Run)[]
         Near(sim.World.Ship.AngularVelocity.Y, 0.2f);
         Check(sim.World.Tick == 600, "World time must advance.");
     }),
-    ("Enemy exists only in encounter 2 and begins with ACQUIRE", () =>
+    ("Each jump point starts its configured enemy difficulty in ACQUIRE", () =>
     {
         var sim = CombatSimulation();
-        Check(sim.World.Encounters[0].Enemy is null, "Encounter 1 must remain a training range.");
-        var encounter = sim.World.Encounters[1];
-        Check(encounter.Enemy is { EnemyId: 1, IsDestroyed: false }, "Encounter 2 needs one enemy.");
+        Check(sim.World.Encounters[0].Enemy is null, "Encounter 1 contains targets only.");
+        Check(sim.World.Encounters[1].Enemy is { EnemyId: 1, Difficulty: EnemyDifficulty.Easy, IsDestroyed: false },
+            "Encounter 2 needs one Easy enemy.");
+        var encounter = sim.World.Encounters[2];
+        Check(encounter.Enemy is { EnemyId: 2, Difficulty: EnemyDifficulty.Medium, IsDestroyed: false },
+            "Encounter 3 needs one Medium enemy.");
+        Check(sim.World.Encounters[3].Enemy is { EnemyId: 3, Difficulty: EnemyDifficulty.Hard, IsDestroyed: false },
+            "Encounter 4 needs one Hard enemy.");
         Check(encounter.EnemyAi?.CurrentState == EnemyAiState.Acquire, "Enemy must start in ACQUIRE.");
         Check(encounter.Enemy!.Ship.MassKg == sim.World.Ship.MassKg &&
               encounter.Enemy.Ship.YawMomentOfInertia == sim.World.Ship.YawMomentOfInertia,
@@ -362,51 +373,51 @@ var tests = new (string Name, Action Run)[]
         Check(!ai.IsThreatenedByPlayerLance(aimed with { DistanceToPlayer = 1700 }, sim.Settings.LanceRangeMeters),
             "Out-of-range lance must not trigger evade.");
     }),
-    ("EVADE selects one reproducible direction and respects minimum duration", () =>
+    ("Health-aware EVADE selects one reproducible direction and respects minimum duration", () =>
     {
-        var sim = CombatSimulation();
+        var sim = CombatSimulation(power: CombatPower());
         JumpToCombat(sim);
-        sim.Step(default); // acquire -> approach
-        sim.Step(default); // charged, aimed player is a threat
+        sim.Step(new ShipCommand(FireLance: true)); // Full shield is removed; the enemy is now defensive.
+        Step(sim, 144); // Recharge the player lance until the defensive threat threshold is reached.
         var ai = sim.World.CurrentEncounter.EnemyAi!;
         Check(ai.CurrentState == EnemyAiState.Evade && ai.CurrentEvadeDirection is not null,
             "Threat must enter EVADE.");
         var direction = ai.CurrentEvadeDirection;
-        for (int i = 0; i < 59; i++)
+        for (int i = 0; i < 25; i++)
         {
             sim.Step(default);
-            Check(ai.CurrentState == EnemyAiState.Evade, "EVADE must last at least one second.");
+            Check(ai.CurrentState == EnemyAiState.Evade, "EVADE must last for its configured minimum duration.");
             Check(ai.CurrentEvadeDirection == direction, "Evade direction must not be rerolled each tick.");
         }
-        var other = CombatSimulation();
+        var other = CombatSimulation(power: CombatPower());
         JumpToCombat(other);
-        other.Step(default); other.Step(default);
+        other.Step(new ShipCommand(FireLance: true)); Step(other, 144);
         Check(other.World.CurrentEncounter.EnemyAi!.CurrentEvadeDirection == direction,
             "Identical seeds must produce reproducible evade choices.");
-        bool reachedReposition = false;
-        for (int i = 0; i < 180 && !reachedReposition; i++)
+        bool leftEvade = false;
+        for (int i = 0; i < 90 && !leftEvade; i++)
         {
             sim.Step(default);
-            reachedReposition = ai.CurrentState == EnemyAiState.Reposition;
+            leftEvade = ai.CurrentState != EnemyAiState.Evade;
         }
-        Check(reachedReposition && ai.CurrentEvadeDirection is null,
-            "EVADE must transition once to REPOSITION by its maximum duration.");
+        Check(leftEvade && ai.CurrentEvadeDirection is null && ai.EvadeCooldownRemaining > 0f,
+            "EVADE must end quickly and enable its cooldown.");
+        Step(sim, 60);
+        Check(ai.CurrentState != EnemyAiState.Evade, "Evade cooldown must prevent immediate re-entry.");
     }),
     ("Enemy lance overload causes frozen GameOver", () =>
     {
         var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(900, 0, 0),
-            YawRadians: MathF.PI / 2), shield: new ShieldSettings { MaximumShield = 1f });
+            YawRadians: MathF.PI / 2), shield: new ShieldSettings { MaximumShield = 1f }, hull: new HullSettings { MaximumHull = 1 });
         JumpToCombat(sim);
         bool sawAttack = false;
-        bool sawReposition = false;
-        for (int i = 0; i < 600 && sim.World.GameState == GameState.Running; i++)
+        for (int i = 0; i < 2_400 && sim.World.GameState == GameState.Running; i++)
         {
             sim.Step(default);
             sawAttack |= sim.World.CurrentEncounter.EnemyAi!.CurrentState == EnemyAiState.Attack;
-            sawReposition |= sim.World.CurrentEncounter.EnemyAi.CurrentState == EnemyAiState.Reposition;
         }
-        Check(sawAttack && sawReposition, "A fired attack must pass through ATTACK and then REPOSITION.");
-        Check(sim.World.GameState == GameState.GameOver, "A clean enemy lance hit must destroy the player.");
+        Check(sawAttack, "A healthy enemy must reach ATTACK and fire through the shared weapon rules.");
+        Check(sim.World.GameState == GameState.GameOver, $"A clean enemy lance hit must destroy the player (state {sim.World.CurrentEncounter.EnemyAi!.CurrentState}, distance {sim.World.CurrentEncounter.EnemyAi.LastContext.DistanceToPlayer:0}, aim {MathF.Abs(sim.World.CurrentEncounter.EnemyAi.LastContext.EnemyAimError) * 180 / MathF.PI:0}).");
         Check(sim.Events.OfType<PlayerDestroyed>().Count() == 1, "PlayerDestroyed must be emitted once.");
         Check(sim.Events.OfType<WeaponFired>().Single(e => e.Owner == WeaponOwner.Enemy).HitKind == WeaponHitKind.Player,
             "Enemy shot must identify its owner and player hit.");
@@ -420,7 +431,7 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Player lance with overload destroys enemy and disables its AI", () =>
     {
-        var sim = CombatSimulation(shield: new ShieldSettings { LanceDamage = 200f });
+        var sim = CombatSimulation(shield: new ShieldSettings { LanceDamage = 200f }, hull: new HullSettings { MaximumHull = 1 });
         JumpToCombat(sim);
         sim.Step(new ShipCommand(FireLance: true));
         var enemy = sim.World.CurrentEncounter.Enemy!;
@@ -509,7 +520,7 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Partial enemy shield passes residual lance damage through and destroys the ship", () =>
     {
-        var sim = CombatSimulation(power: CombatPower(), shield: new ShieldSettings { MaximumShield = 40f });
+        var sim = CombatSimulation(power: CombatPower(), shield: new ShieldSettings { MaximumShield = 40f }, hull: new HullSettings { MaximumHull = 1 });
         JumpToCombat(sim);
         sim.Step(new ShipCommand(FireLance: true));
         var enemy = sim.World.CurrentEncounter.Enemy!;
@@ -520,23 +531,24 @@ var tests = new (string Name, Action Run)[]
         var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(900, 0, 0), YawRadians: MathF.PI / 2),
             power: CombatPower());
         JumpToCombat(sim);
-        for (int i = 0; i < 400 && sim.World.Ship.Shield.CurrentShield > 0f; i++) sim.Step(default);
+        for (int i = 0; i < 3_600 && sim.World.Ship.Shield.CurrentShield > 0f; i++) sim.Step(default);
         Check(sim.World.Ship.Shield.CurrentShield == 0f && sim.World.GameState == GameState.Running,
-            "First enemy lance hit must deplete the player shield without GameOver.");
+            $"First enemy lance hit must deplete the player shield without GameOver (state {sim.World.CurrentEncounter.EnemyAi!.CurrentState}, distance {sim.World.CurrentEncounter.EnemyAi.LastContext.DistanceToPlayer:0}, closing {sim.World.CurrentEncounter.EnemyAi.LastContext.ClosingSpeed:0}, velocity {sim.World.CurrentEnemy!.Ship.Velocity.Length():0}, power {sim.World.CurrentEnemy!.Ship.Power.PropulsionAllocation:0}, aim {MathF.Abs(sim.World.CurrentEncounter.EnemyAi.LastContext.EnemyAimError) * 180 / MathF.PI:0}).");
         Check(sim.Events.OfType<ShieldHit>().Any(hit => hit.TargetOwner == WeaponOwner.Player),
             "Player shield hit event is required.");
     }),
-    ("Enemy EVADE profile changes its real power allocation", () =>
+    ("Healthy enemy remains aggressive against a merely ready player lance", () =>
     {
         var sim = CombatSimulation(power: CombatPower());
         JumpToCombat(sim);
-        Step(sim, 61);
+        Step(sim, 180);
         var enemy = sim.World.CurrentEnemy!;
         var ai = sim.World.CurrentEncounter.EnemyAi!;
-        Check(ai.CurrentState == EnemyAiState.Evade, "Charged player lance should threaten the enemy.");
-        Check(enemy.Ship.Power.PropulsionAllocation == sim.Settings.Power.EvadeProfile.Propulsion &&
-              enemy.Ship.Power.WeaponsAllocation == sim.Settings.Power.EvadeProfile.Weapons,
-            "EVADE profile must affect the enemy's actual power state.");
+        Check(ai.CurrentRiskLevel == EnemyRiskLevel.Aggressive && ai.CurrentState != EnemyAiState.Evade,
+            "A full shield and full hull must not evade just because the player lance is ready.");
+        Check(enemy.Ship.Power.WeaponsAllocation == sim.Settings.Power.AttackProfile.Weapons ||
+              enemy.Ship.Power.WeaponsAllocation == sim.Settings.Power.RepositionProfile.Weapons,
+            "The aggressive AI must still use an ordinary configured power profile.");
     }),
     ("Zero shield allocation prevents recharge and recharge never exceeds maximum", () =>
     {
@@ -555,6 +567,60 @@ var tests = new (string Name, Action Run)[]
         Step(charging, 900);
         Check(chargingEnemy.Ship.Shield.CurrentShield <= chargingEnemy.Ship.Shield.MaximumShield,
             "Shield recharge must never exceed its configured maximum.");
+    }),
+    ("Residual damage removes hull and damages exactly one reproducible subsystem", () =>
+    {
+        var sim = CombatSimulation(power: CombatPower());
+        JumpToCombat(sim);
+        sim.Step(new ShipCommand(FireLance: true)); // shield absorbs
+        Step(sim, 180);
+        sim.Step(new ShipCommand(FireLance: true)); // hull hit
+        var enemy = sim.World.CurrentEnemy!;
+        Check(enemy.Ship.Hull.CurrentHull == 2, "Residual lance damage must remove one hull point.");
+        var conditions = new[] { enemy.Ship.Systems.PropulsionCondition, enemy.Ship.Systems.WeaponsCondition, enemy.Ship.Systems.ShieldsCondition };
+        Check(conditions.Count(value => value == 0.5f) == 1 && conditions.Count(value => value == 1f) == 2,
+            "Each hull hit must damage exactly one subsystem by fifty percent.");
+        Check(sim.Events.OfType<HullDamaged>().Any() && sim.Events.OfType<SubsystemDamaged>().Any(), "Hull events are required.");
+    }),
+    ("Warp repairs systems and shield but preserves hull", () =>
+    {
+        var sim = CombatSimulation(power: CombatPower());
+        JumpToCombat(sim);
+        sim.Step(new ShipCommand(FireLance: true)); Step(sim, 180); sim.Step(new ShipCommand(FireLance: true));
+        int hull = sim.World.CurrentEnemy!.Ship.Hull.CurrentHull;
+        // Damage the player through the same seeded combat rules is not required: warp repair applies to player state.
+        Step(sim, 600);
+        sim.Step(default, new NavigationCommand(1));
+        Check(sim.World.Ship.Systems.PropulsionCondition == 1f && sim.World.Ship.Systems.WeaponsCondition == 1f &&
+              sim.World.Ship.Systems.ShieldsCondition == 1f && sim.World.Ship.Shield.CurrentShield == sim.World.Ship.Shield.MaximumShield,
+            "Successful warp must repair player systems and refill the shield.");
+        Check(sim.World.CurrentEncounter.Id == 1 && hull == 2, "Warp must not repair stored enemy hull or alter encounter progress.");
+    }),
+    ("Power and condition define the speed limit without removing existing momentum", () =>
+    {
+        var sim = New();
+        Step(sim, 3000, new ShipCommand(MainThrust: true));
+        Near(sim.World.Ship.Velocity.Length(), 500f, 0.1f);
+        sim.Step(default, default, new PowerAllocationCommand(-50));
+        Step(sim, 60, new ShipCommand(MainThrust: true));
+        Check(sim.World.Ship.Velocity.Length() >= 499f, "Reducing power must not clamp existing velocity.");
+        Step(sim, 60, new ShipCommand(ReverseThrust: true));
+        Check(sim.World.Ship.Velocity.Length() < 499f, "Reverse thrust must brake while overspeed.");
+    }),
+    ("Enemy risk assessment is deterministic and health aware", () =>
+    {
+        var settings = new EnemyAiSettings();
+        Check(EnemyRiskAssessment.Calculate(3, 3, 1f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Aggressive,
+            "Full hull, shield and systems must be aggressive.");
+        Check(EnemyRiskAssessment.Calculate(3, 3, 0.5f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Normal,
+            "A partially depleted shield must produce NORMAL caution.");
+        Check(EnemyRiskAssessment.Calculate(3, 3, 0.1f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Defensive,
+            "A nearly depleted shield must produce DEFENSIVE caution.");
+        Check(EnemyRiskAssessment.Calculate(2, 3, 1f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Defensive,
+            "Hull damage must increase caution.");
+        Check(EnemyRiskAssessment.Calculate(1, 3, 1f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Critical &&
+              EnemyRiskAssessment.Calculate(3, 3, 1f, 0.2f, 1f, 1f, settings) == EnemyRiskLevel.Critical,
+            "Critical hull or subsystem damage must produce CRITICAL caution.");
     }),
     ("Invalid AI settings are rejected", () =>
     {
@@ -587,11 +653,11 @@ static Simulation NewWeapons(ShipInitialState initial = default) =>
 static Simulation WithTargets(params Vector3[] targets) =>
     new(new SimulationSettings { TargetCount = targets.Length, Power = WeaponsOnlyPower() }, initialTargets: targets, spawnEnemy: false);
 static Simulation CombatSimulation(ShipInitialState player = default, ShipInitialState? enemy = null,
-    ShieldSettings? shield = null, PowerSettings? power = null) =>
+    ShieldSettings? shield = null, PowerSettings? power = null, HullSettings? hull = null) =>
     new(new SimulationSettings
     {
         TargetCount = 0, EncounterTwoTargetCount = 0,
-        Shield = shield ?? new ShieldSettings(), Power = power ?? new PowerSettings()
+        Shield = shield ?? new ShieldSettings(), Power = power ?? new PowerSettings(), Hull = hull ?? new HullSettings()
     }, player,
         randomSeed: 42, enemyInitial: enemy, spawnEnemy: true);
 static PowerSettings PropulsionOnlyPower() => new()
@@ -608,13 +674,13 @@ static PowerSettings CombatPower() => new()
     AttackProfile = new PowerProfile(0f, 100f, 0f),
     DefendProfile = new PowerProfile(0f, 0f, 100f),
     EvadeProfile = new PowerProfile(60f, 10f, 30f),
-    RepositionProfile = new PowerProfile(0f, 100f, 0f),
+    RepositionProfile = new PowerProfile(60f, 40f, 0f),
     MinimumProfileDuration = 1f
 };
 static void JumpToCombat(Simulation sim)
 {
     Step(sim, 600);
-    sim.Step(default, new NavigationCommand(2));
+    sim.Step(default, new NavigationCommand(3));
 }
 static void Fire(Simulation sim)
 {

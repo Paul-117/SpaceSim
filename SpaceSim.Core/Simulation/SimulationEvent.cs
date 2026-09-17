@@ -1,4 +1,5 @@
 using System.Numerics;
+using SpaceSim.Core.Combat;
 
 namespace SpaceSim.Core.Simulation;
 
@@ -16,3 +17,8 @@ public sealed record ShieldHit(WeaponOwner TargetOwner, int? TargetEnemyId, floa
     float ShieldBefore, float ShieldAfter, Vector3 Position) : SimulationEvent;
 public sealed record ShieldDepleted(WeaponOwner TargetOwner, int? TargetEnemyId, Vector3 Position) : SimulationEvent;
 public sealed record PowerAllocationChanged(float Propulsion, float Weapons, float Shields) : SimulationEvent;
+public sealed record HullDamaged(WeaponOwner TargetOwner, int? TargetEnemyId, int HullBefore, int HullAfter, Vector3 Position) : SimulationEvent;
+public sealed record SubsystemDamaged(WeaponOwner TargetOwner, int? TargetEnemyId, ShipSubsystem Subsystem,
+    float ConditionBefore, float ConditionAfter, Vector3 Position) : SimulationEvent;
+public sealed record SubsystemDisabled(WeaponOwner TargetOwner, int? TargetEnemyId, ShipSubsystem Subsystem, Vector3 Position) : SimulationEvent;
+public sealed record SystemsRepaired(WeaponOwner TargetOwner, int? TargetEnemyId, Vector3 Position) : SimulationEvent;

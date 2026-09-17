@@ -1,0 +1,174 @@
+SPACESIM V1.6 - SOUND EFFECTS
+==============================
+
+Version: 1.6.0
+Basis: V1.5 mit Tactical Zoom und Health-Aware Combat AI.
+Git: fuer v1.6 bereit, kein Tag automatisch erstellt.
+
+ZIEL
+
+V1.6 bindet die bereitgestellten SFX als reine Godot-Praesentation ein. Der
+SpaceSim.Core bleibt Eigentumer von Physik, Waffen, Schilden, Schaden und Warp.
+SoundEffects liest nur WorldState, ShipCommand und SimulationEvents.
+
+ASSETS
+
+Alle bereitgestellten Dateien liegen unter SpaceSim.Godot/Assets/Sfx:
+Booster.wav, Lance_ready.mp3, Lance_shot.wav, shield_charge.wav,
+shield_depleted.wav, shield_hit.wav, shield_low.wav, Ship_Damage.mp3 und
+Warp_jump.wav. Godot hat alle neun Dateien erfolgreich importiert.
+
+SOUND-ZUORDNUNG
+
+- Booster: Loop, solange MainThrust oder ReverseThrust des Spielers aktiv ist.
+- Lance_ready: einmal beim Uebergang der Spielerlanze zu 100 Prozent.
+- Lance_shot: bei WeaponFired des Spielers.
+- shield_charge: einmaliger Start drei Sekunden vor dem voraussichtlichen Volladen
+  des Spielerschilds. Das Ende signalisiert den vollen Schild; ein weiterer
+  Schildtreffer setzt die Planung zurueck.
+- shield_hit: bei ShieldHit auf dem Spielerschiff.
+- shield_depleted: bei ShieldDepleted auf dem Spielerschiff.
+- Ship_Damage: bei HullDamaged auf dem Spielerschiff.
+- Warp_jump: bei erfolgreichem EncounterChanged-Event, also nur beim echten Jump.
+- shield_low: vorhanden, bewusst noch ohne Ausloeser.
+
+IMPLEMENTIERUNG
+
+Neu ist Godot/Audio/SoundEffects.cs. Es verwaltet getrennte AudioStreamPlayer
+fuer den Booster-Loop und die One-Shots. AudioSettings legt die drei Sekunden
+Vorlauf fuer den Schildabschluss zentral fest. Flight ruft den Controller nach
+jedem Simulation.Step mit Settings und Events des gerade abgeschlossenen Ticks auf.
+
+GEAENDERTE DATEIEN
+
+Flight.cs, FlightHud.cs, Directory.Build.props, project.godot und README.md.
+Die SFX wurden nach SpaceSim.Godot/Assets/Sfx kopiert. Keine Core-Datei erhielt
+eine Audioabhaengigkeit oder neue Gameplaylogik.
+
+VALIDIERUNG
+
+- Debug-Build ohne Warnungen und Fehler.
+- 50/50 vorhandene Core-Tests bestanden.
+- Godot importierte alle neun Audiodateien.
+- Audio-Smoke-Test bestand und enthielt keine Resource-Loader-, Script- oder
+  Gameplayfehler. Die bekannte Headless-Zertifikatmeldung von Godot ist extern
+  zur Anwendung und beeinflusst die SFX nicht.
+
+EINSCHRAENKUNGEN
+
+Keine Lautstaerke-Optionen, kein Mixer-Menue, kein 3D-Spatial-Audio und kein
+shield_low-Ausloeser. Gegnerische Schuesse und Treffer erhalten in dieser Version
+keine eigenen lokalen UI-Sounds; die Effekte priorisieren das Spielerschiff.
+
+GEGNER-KI - AKTUELLER ABLAUF
+
+Die Gegner-KI lebt vollstaendig im SpaceSim.Core. Jeder Gegner besitzt einen
+normalen ShipState mit derselben Masse, Traegheit, Energieverteilung, Schild,
+Hull und Subsystem-Conditions wie der Spieler. Die KI schreibt niemals Position,
+Velocity oder Rotation. Pro Simulationstick erzeugt sie ausschliesslich einen
+ShipCommand mit MainThrust, ReverseThrust, YawLeft, YawRight und FireLance. Die
+gemeinsame ShipPhysics verarbeitet den Command anschliessend fuer Spieler und
+Gegner gleich.
+
+Pro Tick erstellt der Controller einen EnemyAiContext. Dieser enthaelt
+Position und Richtung zum Spieler, Distanz, relative Geschwindigkeit,
+ClosingSpeed, eigenen AimError, PlayerAimError sowie beide Lance-Ladungen.
+Aus dem Gegnerzustand berechnet EnemyRiskAssessment unabhaengig davon einen
+Risk Level. Die FSM und der Risk Level sind getrennt: Der State beschreibt die
+aktuelle Aktion, das Risiko bestimmt deren Vorsicht.
+
+RISK LEVEL
+
+- AGGRESSIVE: Hull voll, Schild mindestens 70 Prozent und alle Systeme gesund.
+- NORMAL: Hull voll, Schild unter 70 Prozent, sonst keine schwere Schaede.
+- DEFENSIVE: Hull nicht voll, Schild unter 30 Prozent oder eine Condition unter
+  60 Prozent.
+- CRITICAL: nur noch ein Hull-Punkt oder mindestens eine Condition bei 25 Prozent
+  oder darunter.
+
+FSM-ABLAUF
+
+1. ACQUIRE: Beim Encounter-Start wird der exakte WorldState des Spielers
+   uebernommen. Im naechsten Tick wechselt der Gegner zu APPROACH.
+2. APPROACH: Der Gegner steuert eine risikobezogene Kampfdistanz an. Sie liegt
+   bei 450 / 475 / 525 / 550 m fuer AGGRESSIVE bis CRITICAL. Ein
+   Geschwindigkeitscontroller richtet die Nase auf die benoetigte Beschleunigungs-
+   oder Bremsrichtung aus und nutzt nur normalen Vorwaerts-/Rueckschub.
+3. ATTACK: Im Bereich 250--700 m und bei kontrollierter Relativgeschwindigkeit
+   wird ATTACK bevorzugt. Der PD-Rotationscontroller berechnet aus AimError und
+   Winkelgeschwindigkeit Links-/Rechtsdrehmoment. Die Lanze feuert nur voll
+   geladen, in Reichweite, vor der eigenen Nase und unter 3 Grad AimError. Ein
+   Schuss erzwingt kein REPOSITION.
+4. EVADE: Eine Spielerlanze wird erst als Bedrohung betrachtet, wenn Ladung,
+   Reichweite und PlayerAimError die Risk-Schwellen erfuellen. Bei vollem Schild
+   ignoriert AGGRESSIVE eine lediglich bereite Lanze. Sonst gelten fuer
+   AGGRESSIVE / NORMAL / DEFENSIVE / CRITICAL Charge-Schwellen von
+   100 / 90 / 80 / 75 Prozent und Aim-Schwellen von 2 / 4 / 6 / 8 Grad.
+   Beim Eintritt wird ueber den reproduzierbaren Seed einmal links oder rechts
+   gewaehlt. EVADE dauert 0,45 bis 0,90 Sekunden. Danach blockiert ein Cooldown
+   erneutes EVADE fuer 3,5 / 3,0 / 2,5 / 2,0 Sekunden.
+5. REPOSITION: Dieser State wird nur bei wirklich schlechter Bewegungsgeometrie
+   verwendet: zu nah, zu weit, sehr hohe relative Geschwindigkeit oder ein
+   sehr schlechter Angriffswinkel. Danach geht der Gegner bei passender Distanz
+   bevorzugt zu ATTACK zurueck. Ein FLEE-State existiert nicht.
+
+ENERGIEPROFILE
+
+Die aktuelle KI nutzt dieselben PowerState-Werte wie der Spieler. ATTACK legt
+den Schwerpunkt auf Waffen, EVADE auf Propulsion, APPROACH und REPOSITION auf
+Manoeverleistung. Bei niedrigem Schild kann das DEFEND-Profil Schildregeneration
+priorisieren. Ein Profil veraendert damit wirklich Beschleunigung, Drehmoment,
+Lanzenladung und Schildregeneration; es ist kein KI-Bonus.
+
+SCHWIERIGKEITSSTUFEN - IMPLEMENTIERT
+
+EnemyDifficultyProfiles ist nun zentral im Core umgesetzt. Die Sternenkarte
+enthaelt vier Sprungpunkte: Encounter 1 ist der reine Uebungsbereich mit zehn
+Zielen, Encounter 2 besitzt einen Easy-Gegner, Encounter 3 einen Medium-Gegner
+und Encounter 4 einen Hard-Gegner. EnemyShipState und der Debug-HUD tragen die
+Difficulty sichtbar. Die gemeinsame ShipPhysics, Power-, Hull- und Shield-Regeln
+bleiben fuer alle Stufen unveraendert.
+
+SCHWIERIGKEITSSTUFEN - TUNING-PRINZIP
+
+Schwierigkeitsstufen sollten nicht die Physikregeln umgehen und keine direkten
+KI-Sonderbewegungen einfuehren. Eine saubere spaetere Struktur waere ein
+EnemyDifficultySettings-Record, der eine vollstaendige EnemyAiSettings-Kopie,
+PowerProfile-Werte und einen reproduzierbaren Seed enthaelt. Beim Spawn waehlt
+der Encounter eine Stufe und erstellt den bestehenden EnemyAiController mit
+diesen Einstellungen. Der Controller selbst braucht kein neues KI-System.
+
+BEISPIEL: EASY
+
+- PreferredCombatDistance um etwa 550--650 m; ATTACK erst spaeter betreten.
+- FireAimTolerance kleiner machen, etwa 1,5--2 Grad.
+- ThreatChargeThresholds spaeter setzen und ThreatAimAngles kleiner machen,
+  damit der Gegner weniger gut ausweicht.
+- Laengere EVADE-Cooldowns und kuerzere EVADE-Dauer.
+- Niedrigere ATTACK-Waffenenergie oder weniger effektive Weapons-Condition beim
+  Spawn nur dann, wenn sich die Stufe bewusst auch als Schiffsausstattung zeigt.
+
+BEISPIEL: NORMAL
+
+Die aktuellen V1.6-Startwerte sind die Normal-Stufe: 450--550 m Zielabstand,
+3 Grad Feuerwinkel, kurzer EVADE und die oben dokumentierten vier Risk Levels.
+
+BEISPIEL: HARD
+
+- PreferredCombatDistance etwa 350--450 m; AttackEnterDistance etwas groesser,
+  damit der Gegner frueher Druck macht.
+- FireAimTolerance auf etwa 4--5 Grad erhoehen; RotationKp/Kd nur vorsichtig
+  anpassen, damit der Gegner nicht zu unphysikalisch oder zitternd wirkt.
+- Bei DEFENSIVE und CRITICAL frueher ausweichen: niedrigere Charge-Schwellen,
+  groessere ThreatAimAngles und kuerzere EvadeCooldowns.
+- Hoehere WeaponsAllocation im ATTACK-Profil und hoehere PropulsionAllocation
+  im APPROACH-/REPOSITION-Profil, weiterhin innerhalb AvailablePower = 100.
+
+EMPFOHLENE UMSETZUNG SPAETER
+
+Zuerst DifficultySettings zentral hinzufuegen und jeden Wert im HUD oder Debug-
+Log anzeigen. Danach fuer jede Stufe automatisierte Tests schreiben: erwartete
+Risk-Einstufung, Feuerwinkel, Beginn und Cooldown von EVADE, bevorzugte
+Kampfdistanz und reale Auswirkungen der PowerProfile. Erst wenn die Ergebnisse
+deterministisch bleiben, sollten mehrere Gegner oder neue Waffen zur Schwierigkeit
+beitragen.

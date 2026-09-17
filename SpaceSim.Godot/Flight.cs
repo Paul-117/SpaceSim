@@ -7,6 +7,7 @@ using SpaceSim.GodotClient.Input;
 using SpaceSim.GodotClient.Rendering;
 using SpaceSim.GodotClient.UI;
 using SpaceSim.GodotClient.Testing;
+using SpaceSim.GodotClient.Audio;
 using NVector3 = System.Numerics.Vector3;
 using NQuaternion = System.Numerics.Quaternion;
 
@@ -24,6 +25,7 @@ public partial class Flight : Node
     private readonly PowerDistributionPanel _powerPanel = new();
     private readonly StarMap _starMap = new();
     private readonly GameOverOverlay _gameOver = new();
+    private readonly SoundEffects _sounds = new();
     private NavigationCommand _pendingNavigation;
     private PowerAllocationCommand _pendingPower;
     private NVector3 _previousPosition;
@@ -41,6 +43,7 @@ public partial class Flight : Node
     private float _visualTime;
     private string? _capturePath;
     private bool _capturing;
+    private float _cameraZoom = 1f;
 
     public override void _Ready()
     {
@@ -65,6 +68,7 @@ public partial class Flight : Node
         _ship.ZIndex = 2;
         AddChild(_camera);
         _camera.Enabled = true;
+        AddChild(_sounds);
         var cockpit = new CanvasLayer { Layer = 10 };
         AddChild(cockpit);
         cockpit.AddChild(_hud);
@@ -72,7 +76,7 @@ public partial class Flight : Node
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.3 | Core 60 Hz | power distribution, shields and combat encounters");
+        GD.Print("SpaceSim 1.6 | Core 60 Hz | tactical zoom, combat AI and sound effects");
     }
 
     private Simulation CreateSimulation()
@@ -92,6 +96,7 @@ public partial class Flight : Node
     {
         _arena.World = _simulation.World;
         _hud.World = _simulation.World;
+        _hud.Settings = _simulation.Settings;
         _powerPanel.World = _simulation.World;
         _starMap.World = _simulation.World;
     }
@@ -99,6 +104,16 @@ public partial class Flight : Node
     public override void _Input(InputEvent input)
     {
         if (_gameOver.Visible) return;
+        if (input is InputEventMouseButton { Pressed: true } mouse &&
+            (mouse.ButtonIndex == MouseButton.WheelUp || mouse.ButtonIndex == MouseButton.WheelDown))
+        {
+            float direction = mouse.ButtonIndex == MouseButton.WheelUp ? 1f : -1f;
+            _cameraZoom = Mathf.Clamp(_cameraZoom + direction * TacticalCameraSettings.MouseWheelZoomStep,
+                TacticalCameraSettings.MinimumZoom, TacticalCameraSettings.MaximumZoom);
+            _camera.Zoom = Vector2.One * _cameraZoom;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
         {
             _starMap.Close();
@@ -160,7 +175,7 @@ public partial class Flight : Node
         if (_enemySmokeTest)
         {
             _lastCommand = default;
-            if (_simulation.World.Tick == 600) _pendingNavigation = new NavigationCommand(2);
+            if (_simulation.World.Tick == 600) _pendingNavigation = new NavigationCommand(3);
         }
         _simulation.Step(_lastCommand, _pendingNavigation, _pendingPower);
         _pendingNavigation = default;
@@ -173,6 +188,7 @@ public partial class Flight : Node
             _starMap.Close();
         }
         _arena.ShowEvents(_simulation.Events);
+        _sounds.Update(_simulation.World, _simulation.Settings, _lastCommand, _simulation.Events);
         if (_simulation.Events.OfType<PlayerDestroyed>().Any())
         {
             _starMap.Close();
@@ -223,6 +239,7 @@ public partial class Flight : Node
         _pendingNavigation = default;
         _pendingPower = default;
         _arena.ResetVisuals();
+        _sounds.ResetForNewSession();
         _starMap.Close();
         _gameOver.Hide();
         _enemyGameOverFrames = 0;
@@ -246,6 +263,7 @@ public partial class Flight : Node
         _stars.CameraPosition = _ship.Position;
         _arena.ShipPosition = _ship.Position;
         _arena.ShipForward = new Vector2(forward.X, forward.Z).Normalized();
+        _arena.CameraZoom = _cameraZoom;
         _hud.Command = _lastCommand;
         _hud.IsFocused = _keyboard.IsFocused;
         bool captureReady = _enemySmokeTest

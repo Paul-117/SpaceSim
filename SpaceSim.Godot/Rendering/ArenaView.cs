@@ -13,6 +13,8 @@ public partial class ArenaView : Node2D
     public WorldState World { get; set; } = null!;
     public Vector2 ShipPosition { get; set; }
     public Vector2 ShipForward { get; set; } = Vector2.Up;
+    /// <summary>Current Camera2D magnification; indicators use it to derive visible world bounds.</summary>
+    public float CameraZoom { get; set; } = 1f;
 
     public void ShowEvents(IReadOnlyList<SimulationEvent> events)
     {
@@ -127,7 +129,7 @@ public partial class ArenaView : Node2D
     private void DrawEnemyIndicator(SpaceSim.Core.Combat.EnemyShipState enemy)
     {
         Vector2 delta = ViewSettings.Project(enemy.Ship.Position) - ShipPosition;
-        Vector2 half = GetViewportRect().Size / 2f - new Vector2(80, 170);
+        Vector2 half = VisibleWorldHalfExtent(new Vector2(80, 170));
         if (MathF.Abs(delta.X) <= half.X && MathF.Abs(delta.Y) <= half.Y) return;
         float scale = MathF.Min(half.X / MathF.Max(1, MathF.Abs(delta.X)),
             half.Y / MathF.Max(1, MathF.Abs(delta.Y)));
@@ -161,7 +163,7 @@ public partial class ArenaView : Node2D
         var nearest = World.Targets.MinBy(t => NVector3.DistanceSquared(t.Position, World.Ship.Position));
         if (nearest is null) return;
         Vector2 delta = ViewSettings.Project(nearest.Position) - ShipPosition;
-        Vector2 half = GetViewportRect().Size / 2f - new Vector2(65, 165);
+        Vector2 half = VisibleWorldHalfExtent(new Vector2(65, 165));
         if (MathF.Abs(delta.X) <= half.X && MathF.Abs(delta.Y) <= half.Y) return;
         float scale = MathF.Min(half.X / MathF.Max(1, MathF.Abs(delta.X)), half.Y / MathF.Max(1, MathF.Abs(delta.Y)));
         Vector2 tip = ShipPosition + delta * scale;
@@ -171,4 +173,7 @@ public partial class ArenaView : Node2D
         DrawString(ThemeDB.FallbackFont, tip + new Vector2(12, 4), $"T{nearest.Id:00}", fontSize: 12,
             modulate: ViewSettings.Amber);
     }
+
+    private Vector2 VisibleWorldHalfExtent(Vector2 screenMargin) =>
+        (GetViewportRect().Size / 2f - screenMargin) / MathF.Max(0.001f, CameraZoom);
 }
