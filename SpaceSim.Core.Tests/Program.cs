@@ -1,10 +1,15 @@
 using System.Numerics;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Simulation;
 using SpaceSim.Core.Navigation;
 using SpaceSim.Core.AI;
 using SpaceSim.Core.Combat;
 using SpaceSim.Core.Power;
+using SpaceSim.Stations;
+using SpaceSim.Stations.Armarium;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -175,6 +180,49 @@ var tests = new (string Name, Action Run)[]
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Check(rejected, "Zero mass must not enter the simulation.");
     }),
+    ("Armarium target bearing is normalized relative to the ship nose", () =>
+    {
+        Vector3 ship = Vector3.Zero;
+        Near(ArmariumStateBuilder.CalculateTargetBearingDegrees(ship, -Vector3.UnitZ, new Vector3(0, 0, -100)), 0f);
+        Check(ArmariumStateBuilder.CalculateTargetBearingDegrees(ship, -Vector3.UnitZ, new Vector3(-100, 0, -100)) < 0f,
+            "A target to port must have a negative bearing.");
+        Check(ArmariumStateBuilder.CalculateTargetBearingDegrees(ship, -Vector3.UnitZ, new Vector3(100, 0, -100)) > 0f,
+            "A target to starboard must have a positive bearing.");
+        Near(ArmariumStateBuilder.CalculateTargetBearingDegrees(ship, Vector3.UnitX, new Vector3(0, 0, -100)), -90f);
+        Near(ArmariumStateBuilder.CalculateTargetBearingDegrees(ship, -Vector3.UnitZ, new Vector3(0, 0, 100)), 180f);
+    }),
+    ("Armarium state is station-specific and tracks target and lance availability", () =>
+    {
+        var empty = NewWeapons();
+        ArmariumState noTarget = ArmariumStateBuilder.Build(empty.World);
+        Check(!noTarget.TargetAvailable && noTarget.TargetBearingDegrees == 0f && noTarget.LanceCharge == 0f,
+            "An empty encounter must not expose a target or world state.");
+        Step(empty, 180);
+        Check(ArmariumStateBuilder.Build(empty.World).LanceReady, "Armarium must expose lance readiness.");
+
+        var combat = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -900)));
+        JumpToCombat(combat);
+        ArmariumState target = ArmariumStateBuilder.Build(combat.World);
+        Check(target.TargetAvailable && MathF.Abs(target.TargetBearingDegrees) < 0.001f &&
+              target.SimulationTick == combat.World.Tick, "Armarium must receive only its current target bearing and lance state.");
+    }),
+    ("Armarium fire buffer creates one ordinary lance impulse", () =>
+    {
+        var buffer = new ArmariumFireCommandBuffer();
+        var early = NewWeapons();
+        buffer.RequestFire();
+        early.Step(new ShipCommand(FireLance: buffer.ConsumeFireImpulse()));
+        Check(!early.Events.OfType<WeaponFired>().Any(), "Early Armarium fire must obey the ordinary lance readiness rule.");
+
+        var sim = WithTargets(new Vector3(0, 0, -300));
+        Step(sim, 180);
+        buffer.RequestFire(); buffer.RequestFire();
+        sim.Step(new ShipCommand(FireLance: buffer.ConsumeFireImpulse()));
+        Check(sim.Events.OfType<WeaponFired>().Count() == 1 && !buffer.ConsumeFireImpulse(),
+            "Several network requests before one tick must produce one fire impulse.");
+    }),
+    ("Station server serves Armarium and relays hello state and fire", () =>
+        StationServerSmokeAsync().GetAwaiter().GetResult()),
     ("Four encounters assign their configured content and enemy difficulty", () =>
     {
         var sim = new Simulation();
@@ -446,6 +494,66 @@ var tests = new (string Name, Action Run)[]
         Step(sim, 300);
         Check(enemy.Ship.Position == position, "Destroyed enemy physics must stop.");
     }),
+    ("Ship collision below one hundred meters destroys both ships", () =>
+    {
+        var atThreshold = CombatSimulation(enemy: new ShipInitialState(new Vector3(100, 0, 0)));
+        JumpToCombat(atThreshold);
+        atThreshold.Step(default);
+        Check(atThreshold.World.GameState == GameState.Running && !atThreshold.World.CurrentEnemy!.IsDestroyed,
+            "Exactly one hundred meters must not count as a collision.");
+
+        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(99, 0, 0)));
+        JumpToCombat(sim);
+        var enemy = sim.World.CurrentEnemy!;
+        sim.Step(new ShipCommand(FireLance: true));
+        Check(sim.World.GameState == GameState.GameOver && enemy.IsDestroyed && sim.World.CurrentEnemy is null,
+            "A collision below one hundred meters must destroy player and enemy together.");
+        Check(sim.World.CurrentEncounter.EnemyAi!.CurrentState == EnemyAiState.Destroyed,
+            "The destroyed enemy AI must stop after a collision.");
+        Check(sim.Events.OfType<ShipCollision>().Single().EnemyId == enemy.EnemyId &&
+              sim.Events.OfType<EnemyDestroyed>().Single().EnemyId == enemy.EnemyId &&
+              sim.Events.OfType<PlayerDestroyed>().Single().EnemyId == enemy.EnemyId,
+            "Collision destruction events must identify the same enemy.");
+        Check(!sim.Events.OfType<WeaponFired>().Any(), "Collision must resolve before weapon commands in the same tick.");
+        long tick = sim.World.Tick;
+        sim.Step(default);
+        Check(sim.World.Tick == tick && sim.Events.Count == 0, "Collision GameOver must freeze the simulation.");
+    }),
+    ("Destroyed enemies damage the player by explosion distance", () =>
+    {
+        var shieldOnly = ExplosionScenario(349f);
+        JumpToCombat(shieldOnly);
+        shieldOnly.Step(new ShipCommand(FireLance: true));
+        Check(shieldOnly.World.GameState == GameState.Running && shieldOnly.World.Ship.Shield.CurrentShield == 0f,
+            $"An enemy destroyed within 350 meters must deplete the player shield only (shield {shieldOnly.World.Ship.Shield.CurrentShield}, enemy {shieldOnly.World.CurrentEnemy?.IsDestroyed}, events {string.Join(',', shieldOnly.Events.Select(item => item.GetType().Name))}).");
+        Check(shieldOnly.Events.OfType<ShieldDepleted>().Any(hit => hit.TargetOwner == WeaponOwner.Player),
+            "Shield depletion must be reported for the player.");
+
+        var oneSubsystem = ExplosionScenario(249f);
+        JumpToCombat(oneSubsystem);
+        oneSubsystem.Step(new ShipCommand(FireLance: true));
+        float[] oneConditions = [oneSubsystem.World.Ship.Systems.PropulsionCondition,
+            oneSubsystem.World.Ship.Systems.WeaponsCondition, oneSubsystem.World.Ship.Systems.ShieldsCondition];
+        Check(oneSubsystem.World.GameState == GameState.Running && oneConditions.Count(value => value == 0f) == 1,
+            "An enemy destroyed within 250 meters must disable exactly one player subsystem.");
+
+        var twoSubsystems = ExplosionScenario(199f);
+        JumpToCombat(twoSubsystems);
+        twoSubsystems.Step(new ShipCommand(FireLance: true));
+        float[] twoConditions = [twoSubsystems.World.Ship.Systems.PropulsionCondition,
+            twoSubsystems.World.Ship.Systems.WeaponsCondition, twoSubsystems.World.Ship.Systems.ShieldsCondition];
+        Check(twoSubsystems.World.GameState == GameState.Running && twoConditions.Count(value => value == 0f) == 2,
+            "An enemy destroyed within 200 meters must disable two distinct player subsystems.");
+
+        var fatal = ExplosionScenario(149f);
+        JumpToCombat(fatal);
+        fatal.Step(new ShipCommand(FireLance: true));
+        Check(fatal.World.GameState == GameState.GameOver && fatal.World.Ship.Hull.CurrentHull == 0,
+            "An enemy destroyed within 150 meters must destroy the player ship.");
+        Check(fatal.Events.OfType<EnemyExplosion>().Single().DistanceToPlayer <= 150f &&
+              fatal.Events.OfType<PlayerDestroyed>().Single().EnemyId == 2,
+            "Fatal explosion events must preserve the source enemy and distance.");
+    }),
     ("Power allocation rejects overflow and negative allocations but accepts an atomic valid request", () =>
     {
         var sim = new Simulation(new SimulationSettings { TargetCount = 0 }, spawnEnemy: false);
@@ -660,6 +768,9 @@ static Simulation CombatSimulation(ShipInitialState player = default, ShipInitia
         Shield = shield ?? new ShieldSettings(), Power = power ?? new PowerSettings(), Hull = hull ?? new HullSettings()
     }, player,
         randomSeed: 42, enemyInitial: enemy, spawnEnemy: true);
+static Simulation ExplosionScenario(float distance) => CombatSimulation(
+    enemy: new ShipInitialState(new Vector3(0, 0, -distance)),
+    shield: new ShieldSettings { LanceDamage = 200f }, hull: new HullSettings { MaximumHull = 1 });
 static PowerSettings PropulsionOnlyPower() => new()
 {
     DefaultPropulsionPower = 100f, DefaultWeaponsPower = 0f, DefaultShieldsPower = 0f
@@ -690,6 +801,50 @@ static void Fire(Simulation sim)
 static void Step(Simulation simulation, int count, ShipCommand command = default)
 {
     for (int i = 0; i < count; i++) simulation.Step(command);
+}
+static async Task StationServerSmokeAsync()
+{
+    var fire = new ArmariumFireCommandBuffer();
+    var assets = new Dictionary<string, string>
+    {
+        ["index.html"] = "<main>ARMARIUM</main>",
+        ["armarium.css"] = "body{}",
+        ["armarium.js"] = ""
+    };
+    using var server = new StationServer(new StationServerOptions { Port = 0, StateUpdatesPerSecond = 30 }, assets, fire);
+    server.UpdateState(new ArmariumState(true, -12.4f, 0.72f, false, 42));
+    server.Start();
+    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+    string page = await http.GetStringAsync(server.ArmariumUrl);
+    Check(page.Contains("ARMARIUM"), "Station server must serve the Armarium page.");
+
+    using var socket = new ClientWebSocket();
+    await socket.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/station"), CancellationToken.None);
+    await SendWebSocketJsonAsync(socket, new { type = "hello", station = "armarium", protocolVersion = 1 });
+    using JsonDocument welcome = JsonDocument.Parse(await ReceiveWebSocketTextAsync(socket));
+    Check(welcome.RootElement.GetProperty("type").GetString() == "welcome" &&
+          welcome.RootElement.GetProperty("protocolVersion").GetInt32() == StationProtocol.Version,
+        "Station server must accept the matching Armarium protocol.");
+    using JsonDocument state = JsonDocument.Parse(await ReceiveWebSocketTextAsync(socket));
+    Check(state.RootElement.GetProperty("type").GetString() == "armarium_state" &&
+          state.RootElement.GetProperty("targetAvailable").GetBoolean() &&
+          MathF.Abs(state.RootElement.GetProperty("targetBearingDegrees").GetSingle() + 12.4f) < 0.001f,
+        "Station server must transmit the Armarium snapshot.");
+    await SendWebSocketJsonAsync(socket, new { type = "fire_lance" });
+    bool received = SpinWait.SpinUntil(fire.ConsumeFireImpulse, TimeSpan.FromSeconds(1));
+    Check(received, "Station fire_lance must reach the thread-safe command buffer.");
+}
+static async Task SendWebSocketJsonAsync(ClientWebSocket socket, object value)
+{
+    byte[] data = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value));
+    await socket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+}
+static async Task<string> ReceiveWebSocketTextAsync(ClientWebSocket socket)
+{
+    byte[] buffer = new byte[4096];
+    WebSocketReceiveResult result = await socket.ReceiveAsync(buffer, CancellationToken.None);
+    Check(result.MessageType == WebSocketMessageType.Text && result.EndOfMessage, "Expected one complete WebSocket text message.");
+    return Encoding.UTF8.GetString(buffer, 0, result.Count);
 }
 static void Check(bool condition, string message)
 {

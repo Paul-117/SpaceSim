@@ -6,5 +6,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../SpaceSim.Core/SpaceSim.Core.csproj" />
+    <ProjectReference Include="../SpaceSim.Stations/SpaceSim.Stations.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Armarium/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

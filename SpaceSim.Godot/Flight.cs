@@ -8,6 +8,8 @@ using SpaceSim.GodotClient.Rendering;
 using SpaceSim.GodotClient.UI;
 using SpaceSim.GodotClient.Testing;
 using SpaceSim.GodotClient.Audio;
+using SpaceSim.Stations;
+using SpaceSim.Stations.Armarium;
 using NVector3 = System.Numerics.Vector3;
 using NQuaternion = System.Numerics.Quaternion;
 
@@ -26,6 +28,8 @@ public partial class Flight : Node
     private readonly StarMap _starMap = new();
     private readonly GameOverOverlay _gameOver = new();
     private readonly SoundEffects _sounds = new();
+    private readonly ArmariumFireCommandBuffer _armariumFireCommands = new();
+    private StationServer? _stationServer;
     private NavigationCommand _pendingNavigation;
     private PowerAllocationCommand _pendingPower;
     private NVector3 _previousPosition;
@@ -75,8 +79,9 @@ public partial class Flight : Node
         cockpit.AddChild(_powerPanel);
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
+        StartStationServer();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.6 | Core 60 Hz | tactical zoom, combat AI and sound effects");
+        GD.Print("SpaceSim 1.7 | Core 60 Hz | Armarium station server enabled");
     }
 
     private Simulation CreateSimulation()
@@ -101,6 +106,33 @@ public partial class Flight : Node
         _starMap.World = _simulation.World;
     }
 
+    private void StartStationServer()
+    {
+        try
+        {
+            var assets = new Dictionary<string, string>
+            {
+                ["index.html"] = Godot.FileAccess.GetFileAsString("res://Armarium/index.html"),
+                ["armarium.css"] = Godot.FileAccess.GetFileAsString("res://Armarium/armarium.css"),
+                ["armarium.js"] = Godot.FileAccess.GetFileAsString("res://Armarium/armarium.js")
+            };
+            _stationServer = new StationServer(new StationServerOptions(), assets, _armariumFireCommands, GD.Print);
+            _stationServer.Start();
+            _stationServer.UpdateState(ArmariumStateBuilder.Build(_simulation.World));
+            GD.Print($"Armarium available at {_stationServer.ArmariumUrl}");
+        }
+        catch (Exception exception)
+        {
+            GD.PushWarning($"Armarium station server did not start: {exception.Message}");
+        }
+    }
+
+    public override void _ExitTree()
+    {
+        _stationServer?.Dispose();
+        _stationServer = null;
+    }
+
     public override void _Input(InputEvent input)
     {
         if (_gameOver.Visible) return;
@@ -108,9 +140,13 @@ public partial class Flight : Node
             (mouse.ButtonIndex == MouseButton.WheelUp || mouse.ButtonIndex == MouseButton.WheelDown))
         {
             float direction = mouse.ButtonIndex == MouseButton.WheelUp ? 1f : -1f;
-            _cameraZoom = Mathf.Clamp(_cameraZoom + direction * TacticalCameraSettings.MouseWheelZoomStep,
-                TacticalCameraSettings.MinimumZoom, TacticalCameraSettings.MaximumZoom);
-            _camera.Zoom = Vector2.One * _cameraZoom;
+            float candidate = _cameraZoom * Mathf.Pow(TacticalCameraSettings.MouseWheelZoomFactor, direction);
+            // Keep Camera2D input finite, without imposing a design-time zoom limit.
+            if (float.IsFinite(candidate) && candidate > 0f)
+            {
+                _cameraZoom = candidate;
+                _camera.Zoom = Vector2.One * _cameraZoom;
+            }
             GetViewport().SetInputAsHandled();
             return;
         }
@@ -177,9 +213,12 @@ public partial class Flight : Node
             _lastCommand = default;
             if (_simulation.World.Tick == 600) _pendingNavigation = new NavigationCommand(3);
         }
+        if (_armariumFireCommands.ConsumeFireImpulse())
+            _lastCommand = _lastCommand with { FireLance = true };
         _simulation.Step(_lastCommand, _pendingNavigation, _pendingPower);
         _pendingNavigation = default;
         _pendingPower = default;
+        _stationServer?.UpdateState(ArmariumStateBuilder.Build(_simulation.World));
         if (_simulation.Events.OfType<EncounterChanged>().Any())
         {
             // Do not interpolate across different local coordinate systems.
@@ -244,6 +283,7 @@ public partial class Flight : Node
         _gameOver.Hide();
         _enemyGameOverFrames = 0;
         _powerSmokeAdjusted = false;
+        _armariumFireCommands.Clear();
         if (_enemySmokeTest) _enemySmokeRestarted = true;
     }
 
@@ -264,6 +304,7 @@ public partial class Flight : Node
         _arena.ShipPosition = _ship.Position;
         _arena.ShipForward = new Vector2(forward.X, forward.Z).Normalized();
         _arena.CameraZoom = _cameraZoom;
+        _hud.CameraZoom = _cameraZoom;
         _hud.Command = _lastCommand;
         _hud.IsFocused = _keyboard.IsFocused;
         bool captureReady = _enemySmokeTest

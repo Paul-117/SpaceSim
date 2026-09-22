@@ -1,9 +1,8 @@
 namespace SpaceSim.GodotClient.Rendering;
 
-/// <summary>Presentation-only limits for the player-centred tactical camera.</summary>
+/// <summary>Presentation-only wheel response for the player-centred tactical camera.</summary>
 public static class TacticalCameraSettings
 {
-    public const float MinimumZoom = 0.45f;
-    public const float MaximumZoom = 1.80f;
-    public const float MouseWheelZoomStep = 0.10f;
+    /// <summary>Each wheel notch changes magnification by this factor; there is no gameplay zoom cap.</summary>
+    public const float MouseWheelZoomFactor = 1.15f;
 }

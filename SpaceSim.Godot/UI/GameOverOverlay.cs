@@ -34,7 +34,6 @@ public partial class GameOverOverlay : Control
         DrawString(ThemeDB.FallbackFont, center + new Vector2(-112, -12), "SCHIFF ZERSTÖRT",
             fontSize: 20, modulate: ViewSettings.Text);
         DrawString(ThemeDB.FallbackFont, center + new Vector2(-145, 27),
-            "Die gegnerische Lanze hat das Schiff getroffen.", fontSize: 13, modulate: ViewSettings.Muted);
+            "Das Schiff wurde zerstoert.", fontSize: 13, modulate: ViewSettings.Muted);
     }
 }
-

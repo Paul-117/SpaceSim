@@ -34,4 +34,15 @@ internal static class ShieldSystem
         }
         return settings.LanceDamage - absorbed > 0.0001f;
     }
+
+    public static void Deplete(ShieldState shield, WeaponOwner targetOwner, int? targetEnemyId,
+        System.Numerics.Vector3 position, ShieldSettings settings, List<SimulationEvent> events)
+    {
+        float before = shield.CurrentShield;
+        if (before <= 0f) return;
+        shield.CurrentShield = 0f;
+        shield.RechargeDelayRemaining = settings.RechargeDelaySeconds;
+        events.Add(new ShieldHit(targetOwner, targetEnemyId, before, before, 0f, position));
+        events.Add(new ShieldDepleted(targetOwner, targetEnemyId, position));
+    }
 }

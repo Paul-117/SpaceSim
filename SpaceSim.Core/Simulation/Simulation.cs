@@ -81,9 +81,24 @@ public sealed class Simulation
         ShipPhysics.Step(World.Ship, command, Settings);
         foreach (EnemyShipState enemy in enemies)
             ShipPhysics.Step(enemy.Ship, enemyCommands[enemy.EnemyId], Settings);
+        if (ShipCollisionSystem.Resolve(World, enemies, Settings, _events))
+        {
+            foreach (EnemyShipState enemy in enemies.Where(enemy => enemy.IsDestroyed))
+                World.CurrentEncounter.GetEnemyAi(enemy.EnemyId)?.MarkDestroyed();
+            World.Tick++;
+            return;
+        }
         LanceSystem.FirePlayer(World, command.FireLance, Settings, _damageRandom, _events);
         foreach (EnemyShipState enemy in enemies.Where(enemy => enemy.IsDestroyed))
+        {
             World.CurrentEncounter.GetEnemyAi(enemy.EnemyId)?.MarkDestroyed();
+            EnemyExplosionSystem.Apply(World, enemy, Settings, _damageRandom, _events);
+        }
+        if (World.GameState == GameState.GameOver)
+        {
+            World.Tick++;
+            return;
+        }
         foreach (EnemyShipState enemy in enemies.Where(enemy => !enemy.IsDestroyed))
         {
             LanceSystem.FireEnemy(World, enemy, enemyCommands[enemy.EnemyId].FireLance, Settings, _damageRandom, _events);

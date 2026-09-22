@@ -17,6 +17,8 @@ public sealed record SimulationSettings
     public float YawTorqueNewtonMeters { get; init; } = 54_000f;
     public float LanceChargeSeconds { get; init; } = 3f;
     public float LanceRangeMeters { get; init; } = 1_600f;
+    /// <summary>Centre-to-centre distance below which a player and enemy ship are both destroyed.</summary>
+    public float ShipCollisionDistanceMeters { get; init; } = 100f;
     public float WarpChargeSeconds { get; init; } = 10f;
     public int TargetCount { get; init; } = 10;
     public int EncounterTwoTargetCount { get; init; }
@@ -29,6 +31,7 @@ public sealed record SimulationSettings
     public PowerSettings Power { get; init; } = new();
     public ShieldSettings Shield { get; init; } = new();
     public HullSettings Hull { get; init; } = new();
+    public EnemyExplosionSettings EnemyExplosion { get; init; } = new();
     public float MaximumNominalSpeedMetersPerSecond { get; init; } = 500f;
 
     internal void Validate()
@@ -40,6 +43,7 @@ public sealed record SimulationSettings
         Positive(YawTorqueNewtonMeters, nameof(YawTorqueNewtonMeters));
         Positive(LanceChargeSeconds, nameof(LanceChargeSeconds));
         Positive(LanceRangeMeters, nameof(LanceRangeMeters));
+        Positive(ShipCollisionDistanceMeters, nameof(ShipCollisionDistanceMeters));
         Positive(WarpChargeSeconds, nameof(WarpChargeSeconds));
         Positive(TargetRadiusMeters, nameof(TargetRadiusMeters));
         Positive(SpawnMinDistanceMeters, nameof(SpawnMinDistanceMeters));
@@ -48,10 +52,12 @@ public sealed record SimulationSettings
         ArgumentNullException.ThrowIfNull(Power);
         ArgumentNullException.ThrowIfNull(Shield);
         ArgumentNullException.ThrowIfNull(Hull);
+        ArgumentNullException.ThrowIfNull(EnemyExplosion);
         EnemyAi.Validate();
         Power.Validate();
         Shield.Validate();
         Hull.Validate();
+        EnemyExplosion.Validate();
         Positive(MaximumNominalSpeedMetersPerSecond, nameof(MaximumNominalSpeedMetersPerSecond));
         if (TargetCount < 0 || TargetCount > 256)
             throw new ArgumentOutOfRangeException(nameof(TargetCount));

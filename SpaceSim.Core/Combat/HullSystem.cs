@@ -24,4 +24,13 @@ internal static class HullSystem
         }
         return hull.CurrentHull == 0;
     }
+
+    public static void Destroy(HullState hull, WeaponOwner owner, int? enemyId, Vector3 position,
+        List<SimulationEvent> events)
+    {
+        int before = hull.CurrentHull;
+        if (before == 0) return;
+        hull.CurrentHull = 0;
+        events.Add(new HullDamaged(owner, enemyId, before, 0, position));
+    }
 }

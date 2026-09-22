@@ -1,0 +1,64 @@
+SPACESIM V1.6.1 - UNLIMITED TACTICAL ZOOM AND UI LAYOUT
+========================================================
+
+Version: 1.6.1
+Git: fuer v1.6.1 bereit, kein Tag automatisch erstellt.
+
+ZOOM
+----
+
+- Das Mausrad verwendet einen multiplikativen Zoomfaktor von 1,15 je Raster.
+- Es gibt keine Gameplay-Minimum- oder Maximum-Zoomgrenze mehr.
+- Die Kamera bleibt auf dem Spielerschiff zentriert.
+- Der HUD zeigt den aktuellen SCALE-Wert direkt neben den X/Z-Koordinaten.
+- Nur ungueltige Floatwerte werden abgefangen, damit Godot keine ungueltige
+  Camera2D-Transformation erhaelt.
+
+UI-KORREKTUREN
+--------------
+
+- Die untere HUD-Leiste ist hoeher. Positions-, Hull-, System-, Geschwindigkeits-
+  und Kurswerte liegen jetzt auf getrennten Reihen.
+- Die Gegnerdiagnose ist aus der unteren Leiste in ein eigenes Panel links unter
+  dem HUD verschoben. Sie ueberdeckt damit keine Flugwerte mehr.
+- Die Sternenkarte berechnet Breite und Anordnung ihrer Encounter-Karten aus der
+  Fensterbreite. Bei breiten Fenstern liegen alle vier Punkte horizontal; bei
+  schmaleren Fenstern verwendet sie ein klares 2x2-Raster.
+- Kartenstatus und Jump-/Zurueck-Buttons verwenden getrennte Zeilen.
+
+VALIDIERUNG
+-----------
+
+- Debug-Build erfolgreich, ohne Warnungen oder Fehler.
+- 50 von 50 Core-Tests bestanden.
+- Der Godot-Standard-Smoke-Test bestand nach der Aenderung.
+
+BEKANNTE GRENZE
+--------------
+
+Der Zoom ist nicht absichtlich begrenzt. Wie bei jeder Camera2D gelten nur die
+numerischen Grenzen von Gleitkommazahlen: Ein nicht-endlicher oder nicht-positiver
+Wert wird nicht an Godot uebergeben.
+
+KOLLISIONEN
+-----------
+
+- Spieler und aktiver Gegner kollidieren bei einem Mittelpunktabstand unter 100 m.
+- Die Kollision wird im Core vor der Waffenlogik desselben Ticks aufgeloest.
+- Beide Schiffe werden zerstoert; der Spieler erhaelt Game Over und die Gegner-KI
+  wird deaktiviert.
+- ShipCollision, EnemyDestroyed und PlayerDestroyed dokumentieren den Vorgang.
+
+ZERSTOERTE GEGNER
+-----------------
+
+Ein zerstoerter Gegner verursacht beim Spieler eine zentrale, abstandsabhaengige
+Explosion. Die Entfernungen sind in EnemyExplosionSettings konfigurierbar:
+
+- bis 350 m: Schild wird auf 0 gesetzt;
+- bis 250 m: ein noch funktionierendes Subsystem wird deaktiviert;
+- bis 200 m: zwei unterschiedliche, noch funktionierende Subsysteme werden
+  deaktiviert;
+- bis 150 m: Hull wird auf 0 gesetzt und Game Over ausgeloest.
+
+Die Auswahl ausgefallener Subsysteme ist ueber den Simulationsseed reproduzierbar.

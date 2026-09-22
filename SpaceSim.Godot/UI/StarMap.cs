@@ -14,6 +14,8 @@ public partial class StarMap : Control
     private readonly Dictionary<int, Button> _destinations = new();
     public int? SelectedEncounterId { get; private set; }
     private Rect2 _panel;
+    private Vector2 _destinationSize;
+    private int _destinationColumns;
 
     public Button DestinationButton(int id) => _destinations[id];
 
@@ -56,8 +58,12 @@ public partial class StarMap : Control
     public void Refresh()
     {
         Vector2 viewport = GetViewportRect().Size;
-        Vector2 panelSize = new(MathF.Min(960, viewport.X - 60), MathF.Min(510, viewport.Y - 220));
+        Vector2 panelSize = new(MathF.Min(960, viewport.X - 60), MathF.Min(560, viewport.Y - 60));
         _panel = new Rect2((viewport - panelSize) / 2, panelSize);
+        _destinationColumns = _panel.Size.X >= 880 ? Math.Max(1, World.Encounters.Count) : Math.Min(2, World.Encounters.Count);
+        float gap = 14;
+        float buttonWidth = (_panel.Size.X - 64 - gap * (_destinationColumns - 1)) / _destinationColumns;
+        _destinationSize = new Vector2(MathF.Min(215, buttonWidth), 106);
         int index = 0;
         foreach (var encounter in World.Encounters)
         {
@@ -70,15 +76,15 @@ public partial class StarMap : Control
             button.Text = $"{encounter.Name}\n{encounter.Targets.Count} / {encounter.InitialTargetCount} Ziele"
                 + enemyStatus
                 + (current ? "\nAKTUELL" : SelectedEncounterId == encounter.Id ? "\nAUSGEWÄHLT" : "\nSprungpunkt wählen");
-            button.Size = new Vector2(230, 125);
-            button.Position = PointPosition(index++) + new Vector2(-115, 36);
+            button.Size = _destinationSize;
+            button.Position = PointPosition(index++) + new Vector2(-_destinationSize.X / 2, 26);
         }
         JumpButton.Disabled = !World.WarpDrive.IsReady || SelectedEncounterId is null ||
             SelectedEncounterId == World.CurrentEncounter.Id;
         JumpButton.Size = new Vector2(170, 44);
-        JumpButton.Position = _panel.Position + new Vector2(_panel.Size.X - 202, _panel.Size.Y - 70);
+        JumpButton.Position = _panel.Position + new Vector2(_panel.Size.X - 202, _panel.Size.Y - 58);
         CloseButton.Size = new Vector2(235, 44);
-        CloseButton.Position = _panel.Position + new Vector2(32, _panel.Size.Y - 70);
+        CloseButton.Position = _panel.Position + new Vector2(32, _panel.Size.Y - 58);
         QueueRedraw();
     }
 
@@ -112,24 +118,26 @@ public partial class StarMap : Control
             if (current) Text(point + new Vector2(-39, -32), "POSITION", 11, color);
         }
 
-        float y = _panel.Size.Y - 144;
+        float y = _panel.Size.Y - 126;
         var drive = World.WarpDrive;
         Color chargeColor = drive.IsReady ? ViewSettings.Cyan : ViewSettings.Amber;
         Text(origin + new Vector2(32, y), "WARP DRIVE", 12, ViewSettings.Muted);
         Text(origin + new Vector2(155, y), drive.IsReady ? "100%  ·  READY" :
             $"{drive.ChargeFraction * 100:0}%  ·  Noch {drive.RemainingSeconds:0.0} s", 15, chargeColor);
         string status = SelectedEncounterId is { } selected ? $"Ziel: Encounter {selected}" : "Kein Sprungpunkt ausgewählt";
-        Text(origin + new Vector2(_panel.Size.X - 300, y), status, 13, ViewSettings.Muted);
+        Text(origin + new Vector2(32, y + 48), status, 13, ViewSettings.Muted);
         DrawRect(new Rect2(origin + new Vector2(32, y + 16), new Vector2(_panel.Size.X - 64, 5)), ViewSettings.Line);
         DrawRect(new Rect2(origin + new Vector2(32, y + 16), new Vector2((_panel.Size.X - 64) * drive.ChargeFraction, 5)), chargeColor);
-        Text(origin + new Vector2(290, _panel.Size.Y - 44), "Fortschritt bleibt erhalten.", 13, ViewSettings.Muted);
     }
 
     private Vector2 PointPosition(int index)
     {
-        int count = Math.Max(1, World.Encounters.Count);
-        float fraction = (index + 1f) / (count + 1f);
-        return _panel.Position + new Vector2(_panel.Size.X * fraction, 158);
+        int columns = Math.Max(1, _destinationColumns);
+        int row = index / columns;
+        int column = index % columns;
+        float gap = 14;
+        float cellWidth = (_panel.Size.X - 64 - gap * (columns - 1)) / columns;
+        return _panel.Position + new Vector2(32 + cellWidth * (column + 0.5f) + gap * column, 132 + row * 132);
     }
     private void Text(Vector2 position, string value, int size, Color color) =>
         DrawString(ThemeDB.FallbackFont, position, value, fontSize: size, modulate: color);

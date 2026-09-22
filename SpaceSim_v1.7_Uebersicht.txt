@@ -1,0 +1,123 @@
+SPACESIM V1.7 - ARMARIUM NETWORK PROTOTYPE
+===========================================
+
+Version: 1.7.0
+Git: fuer v1.7 bereit, kein Tag automatisch erstellt.
+
+ZIEL
+----
+
+V1.7 fuehrt die erste externe Browser-Schiffsstation ein. SpaceSim auf dem
+Haupt-PC bleibt der alleinige autoritative Simulationsserver. Das Armarium ist
+ein reiner Browserclient und sendet nur Bedienabsichten.
+
+NEUE DATEIEN
+------------
+
+- SpaceSim.Stations/: eigenstaendiges .NET-Modul fuer Stationsprotokoll,
+  ArmariumState, Bearing-Berechnung, Command-Puffer und StationServer.
+- SpaceSim.Godot/Armarium/index.html, armarium.css, armarium.js: browserfaehige,
+  frameworkfreie Canvas-Station.
+- docs/StationProtocol.md: JSON-Protokollversion 1.
+
+NETZWERKARCHITEKTUR
+-------------------
+
+Flight startet StationServer mit TcpListener auf allen lokalen Netzwerkschnittstellen.
+Der zentrale Port ist 47870, die Update-Rate 25 Hz. Der Server liefert die
+Armarium-Dateien unter /armarium/ und akzeptiert WebSockets unter /station.
+Netzwerk-I/O laeuft asynchron. Der Godot-Physics-Tick schreibt nur immutable
+ArmariumState-Snapshots und liest einen thread-sicheren Fire-Intent-Puffer.
+
+ARMARIUM-STATE UND BEARING
+--------------------------
+
+ArmariumState enthaelt nur TargetAvailable, TargetBearingDegrees, LanceCharge,
+LanceReady und SimulationTick. Der Bearing wird auf dem Haupt-PC aus der exakten
+Position des ersten aktiven Gegners und der Spielernase berechnet. Negative Werte
+bedeuten links, positive rechts; direkt voraus ist 0 Grad, hinter dem Schiff ist
+konsistent +180 Grad. Der Webclient bekommt keine Weltposition, Entfernung,
+AI-Daten oder Schadenswerte.
+
+FIRE COMMAND
+------------
+
+Der Browser sendet beim nicht wiederholten Druck auf F {"type":"fire_lance"}.
+Mehrere Nachrichten vor einem Physics-Tick werden zu genau einem Fire-Impuls
+verdichtet. Flight kombiniert ihn mit dem lokalen ShipCommand und uebergibt ihn
+an Simulation.Step. Damit gelten unveraendert Ladezeit, Energie, Schaden,
+Trefferlogik und Game-Over-Regeln der autoritativen Simulation.
+
+WEBCLIENT
+---------
+
+Die Seite verwendet HTML, CSS, Vanilla JavaScript und Canvas 2D. Sie zeichnet
+eine feste -30 bis +30 Grad Skala, ein unbewegliches Fadenkreuz bei 0 Grad und
+einen roten Zielpunkt. Ausserhalb des Bereichs bleibt der Punkt am Rand. Sie zeigt
+CONNECTED/DISCONNECTED, den Lanzenbalken und LANCE READY. Nach Trennung versucht
+sie alle 1,5 Sekunden eine neue Verbindung.
+
+LOKALER UND LAN-TEST
+--------------------
+
+1. SpaceSim starten.
+2. Auf demselben PC http://127.0.0.1:47870/armarium/ im Browser oeffnen.
+3. CONNECTED, Zielpunkt und Lanzenstatus pruefen.
+4. Schiff drehen: Der Punkt muss sich relativ zum festen Fadenkreuz bewegen.
+5. Nach LANCE READY F druecken; der Schuss muss im Hauptfenster erfolgen.
+6. Browser schliessen und erneut oeffnen; die neue Verbindung muss wieder
+   CONNECTED anzeigen.
+7. Fuer einen Raspberry Pi im selben LAN dieselbe URL mit der LAN-IP des
+   Haupt-PCs oeffnen. Es ist kein Pi-spezifischer Build oder Autostart noetig.
+
+TESTS UND VALIDIERUNG
+---------------------
+
+- Bearing-Test: voraus, links, rechts, gedrehte Nase und hinten.
+- ArmariumState-Test: TargetAvailable sowie Lanze ohne WorldState-Export.
+- Fire-Puffer-Test: frueher Schuss wird abgewiesen, mehrere Requests werden ein
+  Impuls.
+- Echter Netzwerk-Smoke-Test: HTTP-Datei, WebSocket, hello/welcome,
+  armarium_state und fire_lance.
+- Bestehende Core- und Godot-Smoke-Tests bleiben erhalten.
+
+BEKANNTE EINSCHRAENKUNGEN
+-------------------------
+
+- Es gibt nur den ersten aktiven Gegner, keine Zielauswahl und keine Sensorium-
+  Unsicherheit.
+- Der Bearing basiert bewusst noch auf der exakten Gegnerposition.
+- Es gibt keine Authentifizierung, Verschluesselung, Stationsrechte oder
+  Raspberry-Pi-Autostart.
+
+ERGEBNISSE
+----------
+
+- Vollstaendiger Debug-Build der Solution: erfolgreich, 0 Warnungen, 0 Fehler.
+- Automatisierte Core- und Stations-Tests: 56 von 56 bestanden.
+- Godot-Smoke-Test: bestanden; startet den Station Server und prueft Flight, HUD,
+  Schild, Lanze und Simulation.
+- Godot-Warp-Smoke-Test: bestanden.
+- Godot-Enemy-Smoke-Test: bestanden.
+- Der Station-Server-Smoke-Test verbindet einen echten .NET-WebSocket-Client,
+  ruft die Armarium-Seite per HTTP ab und prueft hello/welcome/state/fire_lance.
+
+TECHNISCHE ABWEICHUNGEN
+-----------------------
+
+Der Station Server verwendet bewusst TcpListener und eine kleine HTTP-/WebSocket-
+Implementierung aus .NET-Bordmitteln statt ASP.NET oder einer externen Bibliothek.
+Der Armarium-Bearing wird, wie fuer V1.7 erlaubt, aus der exakten Position des
+aktuellen Gegners berechnet. Der Server akzeptiert zur LAN-Vorbereitung alle lokalen
+Netzwerkschnittstellen; die Windows-Firewall muss bei einem echten LAN-Test den Port
+47870 erlauben.
+
+NAECHSTE SCHRITTE FUER RASPBERRY PI
+----------------------------------
+
+- Browser im Kiosk-Modus mit http://<LAN-IP-des-Haupt-PCs>:47870/armarium/ starten.
+- Firewall-Freigabe fuer TCP-Port 47870 am Haupt-PC pruefen.
+- Spaeter Sensorium-Kontakte statt exakter Gegnerposition als Bearing-Quelle
+  anschliessen.
+- Bei weiteren Stationen eigene State-Builder und Stationskennungen verwenden;
+  WorldState nicht direkt exportieren.

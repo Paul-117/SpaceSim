@@ -31,6 +31,8 @@ public partial class ArenaView : Node2D
                 _impacts.Add(new Impact(ViewSettings.Project(hit.Position)));
             if (item is EnemyDestroyed destroyed)
                 _impacts.Add(new Impact(ViewSettings.Project(destroyed.Position)));
+            if (item is ShipCollision collision)
+                _impacts.Add(new Impact(ViewSettings.Project(collision.Position)));
             if (item is ShieldHit shield)
                 _impacts.Add(new Impact(ViewSettings.Project(shield.Position)));
         }

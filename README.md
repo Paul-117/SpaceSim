@@ -1,4 +1,4 @@
-# SpaceSim 1.6
+# SpaceSim 1.7
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
@@ -54,9 +54,7 @@ abgebaut werden.
 **`Start.cmd` doppelklicken.** Das Skript baut das Projekt und startet das Spiel.
 Alternativ im Workspace:
 
-Der aktuelle Arbeitsstand ist **1.6.0**: Hull, Subsystemschaden, Speed Limit,
-taktischer Zoom, health-aware Combat AI und Sound Effects sind integriert. Er ist
-fuer `v1.6` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Der aktuelle Arbeitsstand ist **1.7.0**. Er umfasst die V1.6.1-Verbesserungen sowie die erste externe Waffenstation **Armarium**. Der Stand ist fuer `v1.7` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1
@@ -111,6 +109,31 @@ innerhalb von 1.600 m stoppt den Strahl. Ein Treffer zählt sofort und entfernt 
 Ziel dauerhaft für diese Sitzung. Der sichtbare Strahl bleibt nur 0,16 Sekunden
 bestehen. Auch beim Wegfliegen oder Zurückspringen werden keine Ziele ersetzt.
 
+## Armarium Station Server (V1.7)
+
+Beim Start von SpaceSim startet auf dem Haupt-PC der Station Server auf Port
+**47870**. Er liefert den Armarium-Webclient aus und akzeptiert dessen WebSocket-
+Verbindung. Lokal wird die Station im Browser unter
+`http://127.0.0.1:47870/armarium/` geoeffnet. Im LAN wird dieselbe URL mit der
+LAN-IP des Haupt-PCs verwendet, beispielsweise `http://192.168.x.x:47870/armarium/`.
+
+Das Armarium ist eine reine HTML/CSS/Vanilla-JavaScript-Canvas-Anwendung. Es zeigt
+den horizontalen Bearing des ersten aktiven Gegners relativ zur Bugwaffe, den
+Lanzenladestand und den Verbindungsstatus. Der rote Punkt ist auf -30 bis +30 Grad
+begrenzt; ausserhalb bleibt er am Rand. **F** im Browser sendet genau einen
+`fire_lance`-Befehl. Die lokale Leertaste bleibt parallel aktiv.
+
+Der Haupt-PC bleibt autoritativ: Der Browser erhaelt nur `targetAvailable`,
+`targetBearingDegrees`, `lanceCharge`, `lanceReady` und `simulationTick`.
+Er entscheidet nicht ueber Waffenfeuer oder Treffer. Der Fire Command wird im
+Haupt-PC thread-sicher gepuffert und erst im normalen `ShipCommand` des naechsten
+Simulationsticks verarbeitet. Das Armarium nutzt derzeit die exakte Gegnerposition;
+eine spaetere Sensorium-Quelle kann den Bearing liefern, ohne den Webclient zu aendern.
+
+Das WebSocket-Protokoll hat Version **1**. Der Client identifiziert sich beim
+Verbindungsaufbau als `armarium`, zeigt CONNECTED/DISCONNECTED und verbindet sich
+nach einem Abbruch automatisch erneut. Details stehen in
+[StationProtocol.md](docs/StationProtocol.md).
 ## Gegner und Game Over
 
 Encounter 1 bleibt ein Uebungsbereich mit zehn Zielen. Encounter 2 enthaelt einen
@@ -118,6 +141,11 @@ Easy-Gegner, Encounter 3 einen Medium-Gegner und Encounter 4 einen Hard-Gegner.
 Alle Gegner verwenden dieselbe Masse, Traegheit, Schub-, Energie-, Schild-, Hull-
 und Subsystemregeln wie der Spieler. Die KI erzeugt ausschliesslich normale
 `ShipCommand`-Befehle; sie setzt Position, Geschwindigkeit und Rotation nie direkt.
+Bei einem Abstand unter **100 m** kollidieren Spieler- und Gegnerschiff; beide
+werden sofort zerstoert. Der Spieler sieht anschliessend Game Over.
+Ein zerstoerter Gegner erzeugt zudem eine Explosion: bis 350 m wird der
+Spielerschild entleert, bis 250 m faellt ein Subsystem aus, bis 200 m zwei
+Subsysteme und bis 150 m wird das Spielerschiff zerstoert.
 
 Die Zustandsmaschine verwendet `ACQUIRE`, `APPROACH`, `ATTACK`, `EVADE` und
 `REPOSITION`. Der Health-aware Risk Level bestimmt die Vorsicht innerhalb dieser
@@ -141,11 +169,7 @@ im Projekt, bleibt aber bis zu einer mehrstufigen Schildmechanik ohne Ausloeser.
 
 ## Tactical Zoom und Health-Aware Combat AI (V1.5)
 
-Die Flight-Kamera bleibt immer auf dem Spielerschiff zentriert. Das Mausrad setzt
-nur ihren Zoom: hoch vergroessert die taktische Ansicht, runter verkleinert sie.
-Die zentralen Grenzen liegen bei **0,45 bis 1,80** mit einer Schrittweite von
-**0,10**. HUD, Sternenkarte und Randindikatoren liegen weiterhin in eigenen
-Canvas-Ebenen und behalten deshalb ihre Bildschirmgroesse.
+Die Flight-Kamera bleibt immer auf dem Spielerschiff zentriert. Das Mausrad aendert nur ihren Zoom: hoch vergroessert die taktische Ansicht, runter verkleinert sie. Der Zoom hat keine kuenstliche Ober- oder Untergrenze und wird je Eingabe multiplikativ angepasst. Das HUD zeigt neben der Positionsanzeige die aktuelle Skala. HUD, Sternenkarte und Randindikatoren liegen weiterhin in eigenen Canvas-Ebenen und behalten deshalb ihre Bildschirmgroesse.
 
 Jeder Gegner besitzt vollstaendig dasselbe Hull-, Shield- und Subsystemmodell
 wie der Spieler. Die bestehende FSM bleibt erhalten und erhaelt eine getrennte,
@@ -360,7 +384,7 @@ Start.cmd        Start per Doppelklick
 
 ## Testumfang
 
-Die 50 Core-Tests prüfen unter anderem:
+Die 56 Core-Tests prüfen unter anderem:
 
 - Geschwindigkeit ohne Schub, Beschleunigung in gedrehter Schiffsausrichtung,
   Weiterflug nach Loslassen, Rückschub und fehlendes Geschwindigkeitslimit.
@@ -436,10 +460,7 @@ Sprungpunkte: zehn Ziele in Encounter 1, einen Gegner in Encounter 2 und zwei
 Gegner in Encounter 3. Der Stand ist mit dem annotierten Git-Tag **`v1.2`**
 gesichert; die Details stehen in [SpaceSim_v1.2_Changelog.txt](SpaceSim_v1.2_Changelog.txt).
 
-Version **1.3.0** ist als Commit gespeichert und erweitert das Spiel um
-Energieverteilung und Schilde. Der aktuelle Arbeitsstand ist **1.4.0** mit Hull,
-Subsystemschaden und Speed Limit; er ist für den Tag `v1.4` vorbereitet und wird
-erst auf ausdrückliche Anweisung getaggt.
+Version **1.3.0** ist als Commit gespeichert und erweitert das Spiel um Energieverteilung und Schilde. V1.4 bis V1.6.1 erweitern diesen Stand um Hull, Subsystemschaden, Kollisions- und Explosionsfolgen, Zoom, UI-Verbesserungen, Gegner-Schwierigkeiten und Soundeffekte. Der aktuelle Arbeitsstand **1.7.0** fuegt den Armarium Station Server hinzu und ist fuer `v1.7` bereit. Ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 git status             # Änderungen seit dem letzten Commit anzeigen
