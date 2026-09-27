@@ -143,13 +143,14 @@ nach einem Abbruch automatisch erneut. Details stehen in
 
 ### Armarium von Windows oder Linux starten
 
-Auf dem Haupt-PC muss SpaceSim bereits laufen. Beide Starthelfer fragen nach der
-LAN-IP des Haupt-PCs und oeffnen dann die Armarium-Seite im Standardbrowser.
+Auf dem Haupt-PC muss SpaceSim bereits laufen. Die aktuelle LAN-Adresse des
+Haupt-PCs steht versioniert in `Armarium-Host.txt`. Der Linux-Starter liest sie
+automatisch; es ist keine IP-Eingabe erforderlich.
 
 | System | Starter | Direkter Aufruf mit IP |
 | --- | --- | --- |
-| Windows | `Armarium-Start_Windows.cmd` doppelklicken | `Armarium-Start_Windows.cmd 192.168.178.20` |
-| Linux | `./Armarium-Start_Linux.sh` | `./Armarium-Start_Linux.sh 192.168.178.20` |
+| Windows | `Armarium-Start_Windows.cmd` doppelklicken | Optional: `Armarium-Start_Windows.cmd 192.168.178.20` |
+| Linux | `./Armarium-Start_Linux.sh` | Optional: `./Armarium-Start_Linux.sh 192.168.178.20` |
 
 Falls das Linux-Skript nach dem ersten `git pull` noch nicht ausfuehrbar ist:
 
@@ -157,8 +158,11 @@ Falls das Linux-Skript nach dem ersten `git pull` noch nicht ausfuehrbar ist:
 chmod +x Armarium-Start_Linux.sh
 ```
 
-Die Starthelfer starten keine zweite Simulation; sie verbinden den jeweiligen
-Computer nur als Armarium-Station mit dem laufenden Haupt-PC.
+Wenn sich die IP des Windows-PCs aendert, auf ihm **`Armarium-SyncHost_Windows.cmd`**
+doppelklicken. Das Skript erkennt die aktive LAN-IP, aktualisiert `Armarium-Host.txt`
+und pusht nur diese Datei nach GitHub. Anschliessend auf dem Linux-Laptop `git pull`
+ausfuehren. Die Starthelfer starten keine zweite Simulation; sie verbinden den
+jeweiligen Computer nur als Armarium-Station mit dem laufenden Haupt-PC.
 ## Gegner und Game Over
 
 Encounter 1 bleibt ein Uebungsbereich mit zehn Zielen. Encounter 2 enthaelt einen

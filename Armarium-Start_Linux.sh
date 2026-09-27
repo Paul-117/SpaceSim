@@ -1,14 +1,19 @@
 #!/usr/bin/env sh
 set -eu
 
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 server="${1:-}"
 if [ -z "$server" ]; then
-  printf '%s' 'Main PC IP (for example 192.168.178.20): '
-  IFS= read -r server
-fi
-
-if [ -z "$server" ]; then
-  server="127.0.0.1"
+  host_file="$script_dir/Armarium-Host.txt"
+  if [ ! -r "$host_file" ]; then
+    printf 'Armarium host file is missing. Run Armarium-SyncHost_Windows.cmd on the main PC, then git pull here.\n' >&2
+    exit 1
+  fi
+  server=$(tr -d '\r\n' < "$host_file")
+  if [ -z "$server" ]; then
+    printf 'Armarium host file is empty. Run Armarium-SyncHost_Windows.cmd on the main PC, then git pull here.\n' >&2
+    exit 1
+  fi
 fi
 
 url="http://${server}:47870/armarium/"
