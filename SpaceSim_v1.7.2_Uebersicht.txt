@@ -47,22 +47,16 @@ Starthelfer fuer Windows und Linux
 Neue Dateien:
 - Armarium-Start_Windows.cmd
 - Armarium-Start_Linux.sh
-- Armarium-SyncHost_Windows.cmd
-- scripts/SyncArmariumHost.ps1
-- Armarium-Host.txt
 
-Armarium-Host.txt enthaelt die aktuelle LAN-IP des Haupt-PCs. Der Linux-Starter
-liest diese Datei automatisch und oeffnet ohne IP-Abfrage im Standardbrowser:
+Beide Scripts fragen die LAN-IP des Haupt-PCs ab und oeffnen im Standardbrowser:
 http://<Haupt-PC-IP>:47870/armarium/
 
-Optional kann die IP als erster Parameter uebergeben werden:
+Alternativ kann die IP als erster Parameter uebergeben werden:
 Armarium-Start_Windows.cmd 192.168.178.20
 ./Armarium-Start_Linux.sh 192.168.178.20
 
 Das Linux-Skript verwendet xdg-open, gio oder Firefox. Falls die Datei nach einem
-git pull nicht ausfuehrbar ist: chmod +x Armarium-Start_Linux.sh. Wenn sich die
-Windows-IP aendert, aktualisiert Armarium-SyncHost_Windows.cmd die Host-Datei und
-pusht sie nach GitHub; der Linux-Laptop uebernimmt sie mit git pull.
+git pull nicht ausfuehrbar ist: chmod +x Armarium-Start_Linux.sh
 
 SpaceSim muss dabei auf dem Haupt-PC bereits laufen. Die Starthelfer starten keine
 zweite Simulation; sie verbinden den jeweiligen Computer ausschliesslich als
@@ -72,9 +66,6 @@ Neue und geaenderte Dateien
 ---------------------------
 - Armarium-Start_Windows.cmd
 - Armarium-Start_Linux.sh
-- Armarium-SyncHost_Windows.cmd
-- scripts/SyncArmariumHost.ps1
-- Armarium-Host.txt
 - SpaceSim.Stations/Armarium/ArmariumCommandMixer.cs
 - SpaceSim.Stations/Armarium/ArmariumState.cs
 - SpaceSim.Stations/StationProtocol.cs
