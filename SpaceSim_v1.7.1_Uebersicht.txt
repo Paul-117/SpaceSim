@@ -1,0 +1,96 @@
+SPACESIM V1.7.1 - ARMARIUM FEINSTEUERUNG
+===========================================
+
+Version: 1.7.1
+Git: fuer v1.7.1 bereit, kein Tag automatisch erstellt.
+
+ZIEL
+----
+
+Die Bruecke kann die Links-/Rechts-Steuerung bewusst an das Armarium delegieren.
+Das Armarium liefert nur Eingabeabsichten; der Haupt-PC bleibt autoritativ und
+verarbeitet sie erst im normalen Simulationstick.
+
+BEDIENUNG
+---------
+
+- Auf der Bruecke schaltet T zwischen BRUECKE und ARMARIUM um.
+- Bei BRUECKE steuern A und D normal und die Armarium-Befehle werden verworfen.
+- Bei ARMARIUM steuern die Pfeiltasten links/rechts im Browser die Yaw-Triebwerke.
+- Diese Armarium-Yaw-Steuerung besitzt 50 Prozent der normalen Yaw-Kraft.
+- F im Browser wird nur bei aktiver Armarium-Uebergabe als Fire-Impuls akzeptiert.
+- Nur die Bruecke kann die Uebergabe mit T wieder zuruecknehmen.
+- Die lokale Space-Taste der Bruecke bleibt unveraendert ein normaler Feuerbefehl.
+
+AUTORITAET UND COMMAND-PFAD
+---------------------------
+
+Der Browser sendet yaw- und fire_lance-Absichten an StationServer. Der Server
+nimmt diese nur an, wenn ArmariumControlsActive im neuesten vom Haupt-PC
+veroeffentlichten Snapshot true ist. ArmariumCommandBuffer puffert sie
+thread-sicher. Flight liest den Puffer im Physics-Tick und kombiniert die Werte
+mit dem lokalen ShipCommand. Fuer Yaw wird YawIntensity = 0.5 gesetzt.
+
+ShipCommand besitzt nun die allgemeine, auf 0 bis 1 begrenzte YawIntensity. Das
+ist kein Armarium-Sonderbefehl: Tastatur und KI verwenden weiter die normale
+Vorgabe 1.0. ShipPhysics skaliert ausschliesslich das vorhandene Yaw-Drehmoment.
+Position, Geschwindigkeit und Rotation werden weder vom Browser noch vom
+Netzwerkserver direkt gesetzt.
+
+ANZEIGEN
+--------
+
+Das Flight-HUD zeigt oben CONTROL: BRUECKE oder CONTROL: ARMARIUM / ACTIVE.
+Bei delegierter Steuerung aendert der untere Steuerhinweis sich zu T ARMARIUM.
+Im Armarium erscheint ausschliesslich ACTIVE, solange die Bruecke die Kontrolle
+uebergeben hat. Die Browser-Fusszeile dokumentiert ARROWS fuer FINE YAW und F
+fuer FIRE LANCE.
+
+PROTOKOLL V2
+------------
+
+Das Stationsprotokoll wurde von Version 1 auf Version 2 erhoeht, damit alte
+Browserclients sauber abgewiesen werden. ArmariumState enthaelt neu
+armariumControlsActive. Der neue Client-Command ist:
+
+{ "type": "yaw", "direction": "left" | "right", "active": true | false }
+
+Tastendruck setzt active true, Loslassen active false. Ein Verbindungsverlust
+loescht die gehaltene Yaw-Absicht. Vollstaendige Nachrichtenformate stehen in
+/docs/StationProtocol.md.
+
+NEUE UND GEAENDERTE DATEIEN
+---------------------------
+
+- SpaceSim.Core/Ships/ShipCommand.cs und ShipPhysics.cs: allgemeine
+  YawIntensity und Drehmoment-Skalierung.
+- SpaceSim.Stations/Armarium/ArmariumCommandBuffer.cs: atomarer Fire- und
+  Yaw-Intent-Puffer; ersetzt den reinen Fire-Puffer.
+- SpaceSim.Stations/Armarium/ArmariumState.cs: Control-Owner-Flag.
+- SpaceSim.Stations/StationServer.cs und StationProtocol.cs: Zugriffsgate,
+  yaw-Message und Protocol v2.
+- SpaceSim.Godot/Flight.cs und UI/FlightHud.cs: T-Handoff, 50-Prozent-
+  Feinsteuerung und Bridge-Indikator.
+- SpaceSim.Godot/Armarium/: Pfeiltasteneingabe und ACTIVE-Anzeige.
+- docs/StationProtocol.md und README.md: Bedienung und Protokoll v2.
+
+TESTS UND ERGEBNISSE
+--------------------
+
+- Neuer Core-Test bestaetigt: YawIntensity 0.5 erzeugt genau halbes
+  Drehmoment gegenueber der Bruecke.
+- Der Armarium-Command-Puffer testet Feuerimpuls, Richtung und Leeren beim
+  Kontrollentzug.
+- Der echte HTTP/WebSocket-Smoke-Test prueft hello/welcome, Control-Status,
+  fire_lance, yaw und das Verwerfen beider Commands ohne Bridge-Freigabe.
+- Vollstaendiger Debug-Build: erfolgreich, 0 Warnungen, 0 Fehler.
+- Alle automatisierten Tests: 57 von 57 bestanden.
+- Godot-Smoke, Warp-Smoke und Enemy-Smoke: bestanden.
+
+BEKANNTE EINSCHRAENKUNGEN
+-------------------------
+
+Es gibt genau eine Armarium-Station und keine Authentifizierung. Die Yaw-
+Feinsteuerung nutzt Pfeiltasten und unterstuetzt keine analoge Achse. Der
+Server bindet weiterhin an den konfigurierten Port 47870; fuer LAN-Betrieb
+muss die Windows-Firewall den TCP-Port erlauben.

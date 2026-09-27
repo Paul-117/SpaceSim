@@ -24,12 +24,12 @@ public sealed class StationServer : IDisposable
 
     private readonly StationServerOptions _options;
     private readonly IReadOnlyDictionary<string, string> _assets;
-    private readonly ArmariumFireCommandBuffer _fireCommands;
+    private readonly ArmariumCommandBuffer _armariumCommands;
     private readonly Action<string>? _log;
     private readonly ConcurrentDictionary<int, StationConnection> _connections = new();
     private readonly CancellationTokenSource _stopping = new();
     private readonly TcpListener _listener;
-    private ArmariumState _latestState = new(false, 0f, 0f, false, 0);
+    private ArmariumState _latestState = new(false, 0f, 0f, false, false, 0);
     private Task? _acceptTask;
     private Task? _broadcastTask;
     private int _nextConnectionId;
@@ -37,12 +37,12 @@ public sealed class StationServer : IDisposable
     private bool _started;
 
     public StationServer(StationServerOptions options, IReadOnlyDictionary<string, string> assets,
-        ArmariumFireCommandBuffer fireCommands, Action<string>? log = null)
+        ArmariumCommandBuffer armariumCommands, Action<string>? log = null)
     {
         _options = options;
         _options.Validate();
         _assets = assets;
-        _fireCommands = fireCommands;
+        _armariumCommands = armariumCommands;
         _log = log;
         _listener = new TcpListener(IPAddress.Any, options.Port);
     }
@@ -121,6 +121,7 @@ public sealed class StationServer : IDisposable
             if (connection is not null)
             {
                 _connections.TryRemove(connection.Id, out _);
+                _armariumCommands.ClearSteering();
                 connection.Dispose();
             }
             client.Dispose();
@@ -156,7 +157,14 @@ public sealed class StationServer : IDisposable
                 continue;
             }
 
-            if (command.Type == "fire_lance") _fireCommands.RequestFire();
+            if (!Volatile.Read(ref _latestState).ArmariumControlsActive) continue;
+            if (command.Type == "fire_lance") _armariumCommands.RequestFire();
+            else if (command.Type == "yaw" && command.Active is bool active)
+            {
+                int direction = string.Equals(command.Direction, "left", StringComparison.OrdinalIgnoreCase) ? -1 :
+                    string.Equals(command.Direction, "right", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                _armariumCommands.SetYawDirection(active ? direction : 0);
+            }
         }
     }
 
@@ -314,7 +322,8 @@ public sealed class StationServer : IDisposable
     }
 
     private sealed record HttpRequest(string Path, IReadOnlyDictionary<string, string> Headers, bool IsWebSocket);
-    private sealed record StationClientMessage(string? Type, string? Station, int? ProtocolVersion);
+    private sealed record StationClientMessage(string? Type, string? Station, int? ProtocolVersion,
+        string? Direction, bool? Active);
     private sealed record StationWelcome(string Station, int ProtocolVersion) { public string Type { get; } = "welcome"; }
     private sealed record StationError(string Code, string Message) { public string Type { get; } = "error"; }
     private sealed record ArmariumStateMessage(ArmariumState State, long ConnectionSequence)
@@ -324,6 +333,7 @@ public sealed class StationServer : IDisposable
         public float TargetBearingDegrees => State.TargetBearingDegrees;
         public float LanceCharge => State.LanceCharge;
         public bool LanceReady => State.LanceReady;
+        public bool ArmariumControlsActive => State.ArmariumControlsActive;
         public long SimulationTick => State.SimulationTick;
     }
 }

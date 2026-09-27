@@ -6,7 +6,9 @@ public readonly record struct ShipCommand(
     bool ReverseThrust = false,
     bool YawLeft = false,
     bool YawRight = false,
-    bool FireLance = false);
+    bool FireLance = false,
+    /// <summary>Normalised yaw-thruster authority. Keyboard and AI use 1; fine-control stations may use less.</summary>
+    float YawIntensity = 1f);
 
 public interface IShipControl
 {

@@ -12,8 +12,9 @@ internal static class ShipPhysics
         float force = (command.MainThrust ? settings.MainThrustNewtons * powerFactor : 0f)
                     - (command.ReverseThrust ? settings.ReverseThrustNewtons * powerFactor : 0f);
         // Positive rotation about +Y turns the nose (-Z) left in the X/Z view.
+        float yawIntensity = float.IsFinite(command.YawIntensity) ? Math.Clamp(command.YawIntensity, 0f, 1f) : 0f;
         float torque = ((command.YawLeft ? 1f : 0f) - (command.YawRight ? 1f : 0f))
-                       * settings.YawTorqueNewtonMeters * powerFactor;
+                       * settings.YawTorqueNewtonMeters * powerFactor * yawIntensity;
         Vector3 acceleration = ship.Forward * (force / ship.MassKg);
         float speedLimit = settings.MaximumNominalSpeedMetersPerSecond * powerFactor;
         if (command.MainThrust && Vector3.Dot(ship.Velocity, acceleration) > 0f && ship.Velocity.Length() >= speedLimit)

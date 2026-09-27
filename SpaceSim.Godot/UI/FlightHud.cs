@@ -10,6 +10,7 @@ public partial class FlightHud : Control
     public WorldState World { get; set; } = null!;
     public SimulationSettings Settings { get; set; } = null!;
     public ShipCommand Command { get; set; }
+    public bool ArmariumControlsActive { get; set; }
     public bool IsFocused { get; set; } = true;
     /// <summary>Presentation-only Camera2D magnification supplied by Flight.</summary>
     public float CameraZoom { get; set; } = 1f;
@@ -50,7 +51,9 @@ public partial class FlightHud : Control
         DrawRect(new Rect2(0, height - 154, width, 154), new Color(0.0196f, 0.0314f, 0.0549f, 0.96f));
         Text(new Vector2(30, 35), "SPACESIM", 23, ViewSettings.Text);
         Text(new Vector2(165, 34), $"/  {World.CurrentEncounter.Name.ToUpperInvariant()}", 13, ViewSettings.Muted);
-        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.7", 12, ViewSettings.Cyan);
+        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.7.1", 12, ViewSettings.Cyan);
+        Text(new Vector2(width - 510, 33), ArmariumControlsActive ? "CONTROL: ARMARIUM / ACTIVE" : "CONTROL: BRUECKE", 12,
+            ArmariumControlsActive ? ViewSettings.Cyan : ViewSettings.Muted);
         DrawLine(new Vector2(30, 49), new Vector2(width - 30, 49), ViewSettings.Line, 1);
 
         float column = (width - 60) / 4;
@@ -82,7 +85,8 @@ public partial class FlightHud : Control
 
         KeyHint(new Vector2(30, height - 76), "W", "SCHUB", Command.MainThrust);
         KeyHint(new Vector2(169, height - 76), "S", "RUECKSCHUB", Command.ReverseThrust);
-        KeyHint(new Vector2(340, height - 76), "A / D", "DREHMOMENT", Command.YawLeft || Command.YawRight, 56);
+        KeyHint(new Vector2(340, height - 76), ArmariumControlsActive ? "T" : "A / D",
+            ArmariumControlsActive ? "ARMARIUM" : "DREHMOMENT", Command.YawLeft || Command.YawRight, ArmariumControlsActive ? 30 : 56);
         KeyHint(new Vector2(561, height - 76), "SPACE", "Lance", Command.FireLance, 70);
         Text(new Vector2(30, height - 21), "TRAEGHEITSFLUG   /   Zum Bremsen Gegenschub geben. Rotation bleibt erhalten.", 12, ViewSettings.Muted);
         Text(new Vector2(width - 220, height - 21), World.WarpDrive.IsReady ? "WARP 100% / READY" :

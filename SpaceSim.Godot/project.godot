@@ -3,7 +3,7 @@ config_version=5
 
 [application]
 config/name="SpaceSim | Lance test range"
-config/version="1.7.0"
+config/version="1.7.1"
 run/main_scene="res://Scenes/Flight.tscn"
 config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
 

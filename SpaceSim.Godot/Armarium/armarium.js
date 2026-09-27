@@ -1,5 +1,5 @@
 (() => {
-  const protocolVersion = 1;
+  const protocolVersion = 2;
   const visibleBearingDegrees = 30;
   const reconnectDelayMs = 1500;
   const canvas = document.getElementById("scope");
@@ -8,8 +8,10 @@
   const targetStatus = document.getElementById("target-status");
   const lanceLabel = document.getElementById("lance-label");
   const chargeFill = document.getElementById("charge-fill");
+  const activeLabel = document.getElementById("armarium-active");
   let socket = null;
-  let state = { targetAvailable: false, targetBearingDegrees: 0, lanceCharge: 0, lanceReady: false };
+  let heldYawDirection = null;
+  let state = { targetAvailable: false, targetBearingDegrees: 0, lanceCharge: 0, lanceReady: false, armariumControlsActive: false };
 
   function setConnection(connected) {
     connection.textContent = connected ? "CONNECTED" : "DISCONNECTED";
@@ -41,7 +43,11 @@
     }
   }
   function update(next) {
-    state = next; const percent = Math.round(Math.max(0, Math.min(1, state.lanceCharge)) * 100);
+    const wasActive = state.armariumControlsActive;
+    state = next;
+    if (wasActive && !state.armariumControlsActive) releaseYaw();
+    activeLabel.hidden = !state.armariumControlsActive;
+    const percent = Math.round(Math.max(0, Math.min(1, state.lanceCharge)) * 100);
     lanceLabel.textContent = state.lanceReady ? "READY" : `${percent} %`; chargeFill.style.width = `${percent}%`;
     targetStatus.textContent = state.targetAvailable ? "TARGET ACQUIRED" : "NO TARGET"; draw();
   }
@@ -50,9 +56,32 @@
     socket = new WebSocket(`${scheme}://${location.host}/station`);
     socket.addEventListener("open", () => { setConnection(true); socket.send(JSON.stringify({ type: "hello", station: "armarium", protocolVersion })); });
     socket.addEventListener("message", event => { const message = JSON.parse(event.data); if (message.type === "armarium_state") update(message); if (message.type === "error") { setConnection(false); targetStatus.textContent = message.message; } });
-    socket.addEventListener("close", () => { setConnection(false); setTimeout(connect, reconnectDelayMs); });
+    socket.addEventListener("close", () => { heldYawDirection = null; setConnection(false); setTimeout(connect, reconnectDelayMs); });
     socket.addEventListener("error", () => socket.close());
   }
-  document.addEventListener("keydown", event => { if (event.key.toLowerCase() === "f" && !event.repeat && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "fire_lance" })); });
+  function sendYaw(direction, active) {
+    if (socket?.readyState !== WebSocket.OPEN || !state.armariumControlsActive) return;
+    socket.send(JSON.stringify({ type: "yaw", direction, active }));
+  }
+  function releaseYaw() {
+    if (heldYawDirection !== null) sendYaw(heldYawDirection, false);
+    heldYawDirection = null;
+  }
+  document.addEventListener("keydown", event => {
+    const direction = event.key === "ArrowLeft" ? "left" : event.key === "ArrowRight" ? "right" : null;
+    if (direction) {
+      event.preventDefault();
+      if (!event.repeat && state.armariumControlsActive) { heldYawDirection = direction; sendYaw(direction, true); }
+      return;
+    }
+    if (event.key.toLowerCase() === "f" && !event.repeat && state.armariumControlsActive && socket?.readyState === WebSocket.OPEN)
+      socket.send(JSON.stringify({ type: "fire_lance" }));
+  });
+  document.addEventListener("keyup", event => {
+    const direction = event.key === "ArrowLeft" ? "left" : event.key === "ArrowRight" ? "right" : null;
+    if (direction) { event.preventDefault(); if (heldYawDirection === direction) releaseYaw(); }
+  });
+  window.addEventListener("blur", releaseYaw);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) releaseYaw(); });
   window.addEventListener("resize", resizeCanvas); resizeCanvas(); connect();
 })();
