@@ -42,22 +42,30 @@ Netzwerk und Protokoll
   senden. Die Simulation bleibt allein autoritativ.
 - Details: docs/StationProtocol.md
 
-Laptop-Start
-------------
-Neue Datei: Armarium-Start.cmd
+Starthelfer fuer Windows und Linux
+----------------------------------
+Neue Dateien:
+- Armarium-Start_Windows.cmd
+- Armarium-Start_Linux.sh
 
-Das Script fragt die LAN-IP des Haupt-PCs ab und oeffnet im Standardbrowser:
+Beide Scripts fragen die LAN-IP des Haupt-PCs ab und oeffnen im Standardbrowser:
 http://<Haupt-PC-IP>:47870/armarium/
 
 Alternativ kann die IP als erster Parameter uebergeben werden:
-Armarium-Start.cmd 192.168.178.20
+Armarium-Start_Windows.cmd 192.168.178.20
+./Armarium-Start_Linux.sh 192.168.178.20
 
-SpaceSim muss dabei auf dem Haupt-PC bereits laufen. Der Starthelfer startet keine
-zweite Simulation; er verbindet den Laptop ausschliesslich als Armarium-Station.
+Das Linux-Skript verwendet xdg-open, gio oder Firefox. Falls die Datei nach einem
+git pull nicht ausfuehrbar ist: chmod +x Armarium-Start_Linux.sh
+
+SpaceSim muss dabei auf dem Haupt-PC bereits laufen. Die Starthelfer starten keine
+zweite Simulation; sie verbinden den jeweiligen Computer ausschliesslich als
+Armarium-Station.
 
 Neue und geaenderte Dateien
 ---------------------------
-- Armarium-Start.cmd
+- Armarium-Start_Windows.cmd
+- Armarium-Start_Linux.sh
 - SpaceSim.Stations/Armarium/ArmariumCommandMixer.cs
 - SpaceSim.Stations/Armarium/ArmariumState.cs
 - SpaceSim.Stations/StationProtocol.cs
