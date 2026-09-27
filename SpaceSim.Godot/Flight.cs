@@ -31,7 +31,6 @@ public partial class Flight : Node
     private const float ArmariumYawIntensity = 0.5f;
     private readonly ArmariumCommandBuffer _armariumCommands = new();
     private StationServer? _stationServer;
-    private bool _armariumControlsActive;
     private NavigationCommand _pendingNavigation;
     private PowerAllocationCommand _pendingPower;
     private NVector3 _previousPosition;
@@ -83,7 +82,7 @@ public partial class Flight : Node
         cockpit.AddChild(_gameOver);
         StartStationServer();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.7.1 | Core 60 Hz | Armarium fine-control station server enabled");
+        GD.Print("SpaceSim 1.7.2 | Core 60 Hz | Armarium parallel fine-control station server enabled");
     }
 
     private Simulation CreateSimulation()
@@ -120,7 +119,7 @@ public partial class Flight : Node
             };
             _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, GD.Print);
             _stationServer.Start();
-            _stationServer.UpdateState(ArmariumStateBuilder.Build(_simulation.World, _armariumControlsActive));
+            _stationServer.UpdateState(ArmariumStateBuilder.Build(_simulation.World));
             GD.Print($"Armarium available at {_stationServer.ArmariumUrl}");
         }
         catch (Exception exception)
@@ -138,16 +137,6 @@ public partial class Flight : Node
     public override void _Input(InputEvent input)
     {
         if (_gameOver.Visible) return;
-        if (input is InputEventKey { Pressed: true, Echo: false } controlKey &&
-            (controlKey.PhysicalKeycode == Key.T || controlKey.Keycode == Key.T))
-        {
-            _armariumControlsActive = !_armariumControlsActive;
-            _armariumCommands.Clear();
-            _stationServer?.UpdateState(ArmariumStateBuilder.Build(_simulation.World, _armariumControlsActive));
-            GD.Print(_armariumControlsActive ? "Armarium fine control active." : "Bridge flight control active.");
-            GetViewport().SetInputAsHandled();
-            return;
-        }
         if (input is InputEventMouseButton { Pressed: true } mouse &&
             (mouse.ButtonIndex == MouseButton.WheelUp || mouse.ButtonIndex == MouseButton.WheelDown))
         {
@@ -229,7 +218,7 @@ public partial class Flight : Node
         _simulation.Step(_lastCommand, _pendingNavigation, _pendingPower);
         _pendingNavigation = default;
         _pendingPower = default;
-        _stationServer?.UpdateState(ArmariumStateBuilder.Build(_simulation.World, _armariumControlsActive));
+        _stationServer?.UpdateState(ArmariumStateBuilder.Build(_simulation.World));
         if (_simulation.Events.OfType<EncounterChanged>().Any())
         {
             // Do not interpolate across different local coordinate systems.
@@ -281,21 +270,9 @@ public partial class Flight : Node
 
     private void ApplyArmariumControl()
     {
-        if (!_armariumControlsActive)
-        {
-            _armariumCommands.Clear();
-            return;
-        }
-
         ArmariumCommand command = _armariumCommands.ReadCommand();
-        // The bridge still owns thrust, reverse thrust and its local lance key. Only yaw is delegated.
-        _lastCommand = _lastCommand with
-        {
-            YawLeft = command.YawLeft,
-            YawRight = command.YawRight,
-            YawIntensity = ArmariumYawIntensity,
-            FireLance = _lastCommand.FireLance || command.FireLance
-        };
+        // Both stations retain normal control. Browser yaw is deliberately capped at half authority.
+        _lastCommand = ArmariumCommandMixer.Merge(_lastCommand, command, ArmariumYawIntensity);
     }
 
     private void RestartGame()
@@ -314,7 +291,6 @@ public partial class Flight : Node
         _enemyGameOverFrames = 0;
         _powerSmokeAdjusted = false;
         _armariumCommands.Clear();
-        _armariumControlsActive = false;
         if (_enemySmokeTest) _enemySmokeRestarted = true;
     }
 
@@ -337,7 +313,7 @@ public partial class Flight : Node
         _arena.CameraZoom = _cameraZoom;
         _hud.CameraZoom = _cameraZoom;
         _hud.Command = _lastCommand;
-        _hud.ArmariumControlsActive = _armariumControlsActive;
+        _hud.ArmariumOnline = _stationServer?.IsArmariumOnline == true;
         _hud.IsFocused = _keyboard.IsFocused;
         bool captureReady = _enemySmokeTest
             ? _simulation.World.GameState == SpaceSim.Core.Combat.GameState.GameOver

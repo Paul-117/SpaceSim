@@ -9,19 +9,17 @@ public sealed record ArmariumState(
     float TargetBearingDegrees,
     float LanceCharge,
     bool LanceReady,
-    bool ArmariumControlsActive,
     long SimulationTick);
 
 public static class ArmariumStateBuilder
 {
-    public static ArmariumState Build(WorldState world, bool armariumControlsActive = false)
+    public static ArmariumState Build(WorldState world)
     {
         var enemy = world.CurrentEnemy;
         bool hasTarget = enemy is not null;
         float bearing = hasTarget ? CalculateTargetBearingDegrees(world.Ship.Position, world.Ship.Forward,
             enemy!.Ship.Position) : 0f;
-        return new ArmariumState(hasTarget, bearing, world.Lance.ChargeFraction, world.Lance.IsReady,
-            armariumControlsActive, world.Tick);
+        return new ArmariumState(hasTarget, bearing, world.Lance.ChargeFraction, world.Lance.IsReady, world.Tick);
     }
 
     /// <summary>Returns a normalized horizontal bearing: negative is port/left, positive is starboard/right.</summary>

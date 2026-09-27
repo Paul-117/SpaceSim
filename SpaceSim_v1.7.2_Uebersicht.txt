@@ -1,0 +1,95 @@
+SpaceSim V1.7.2 – Armarium Parallel Control & Laptop Start
+============================================================
+
+Version: 1.7.2
+Git-Tag: nicht erstellt
+
+Ziel
+----
+V1.7.2 entfernt die bisherige Steuerungsuebergabe per T. Die Bruecke und ein
+verbundenes Armarium duerfen die Yaw-Seitentriebwerke nun gleichzeitig bedienen.
+Das Armarium bleibt eine Netzwerkstation und kann auf einem Laptop im Browser
+geoeffnet werden.
+
+Armarium-Steuerung
+-------------------
+- Taste T und der lokale Steuerungsmodus wurden entfernt.
+- A/D auf der Bruecke bleiben jederzeit aktiv.
+- Pfeil links/rechts im Armarium bleiben jederzeit aktiv, sobald die WebSocket-
+  Verbindung erfolgreich aufgebaut ist.
+- Armarium-Yaw hat 50 Prozent der normalen Seitentriebwerkskraft.
+- Gleichgerichtete Eingaben werden auf die normale maximale Yaw-Leistung begrenzt.
+- Gegensinnige Eingaben werden als Achsenwerte kombiniert; Bruecke links (100 %)
+  plus Armarium rechts (50 %) ergibt beispielsweise noch 50 % nach links.
+- F im Armarium erzeugt weiterhin nur einen normalen Fire-Impuls. Der Core prueft
+  wie bisher Lanzenladung, Energie und Treffer.
+
+Online-Anzeige
+--------------
+- Nach erfolgreichem WebSocket-Handshake setzt der Station Server den Status
+  Armarium online.
+- Das Flight-HUD zeigt dann gruen: ARMARIUM ONLINE.
+- Ohne bestaetigte Station zeigt das Flight-HUD: ARMARIUM OFFLINE.
+- Der Browser zeigt ebenfalls ARMARIUM ONLINE beziehungsweise ARMARIUM OFFLINE.
+
+Netzwerk und Protokoll
+----------------------
+- StationProtocol wurde wegen der entfernten Steuerungsuebergabe von Version 2 auf
+  Version 3 erhoeht.
+- Das Feld armariumControlsActive wurde aus ArmariumState und den Netzwerk-
+  Snapshots entfernt.
+- Eine erfolgreich angemeldete Armarium-Station darf yaw und fire_lance direkt
+  senden. Die Simulation bleibt allein autoritativ.
+- Details: docs/StationProtocol.md
+
+Laptop-Start
+------------
+Neue Datei: Armarium-Start.cmd
+
+Das Script fragt die LAN-IP des Haupt-PCs ab und oeffnet im Standardbrowser:
+http://<Haupt-PC-IP>:47870/armarium/
+
+Alternativ kann die IP als erster Parameter uebergeben werden:
+Armarium-Start.cmd 192.168.178.20
+
+SpaceSim muss dabei auf dem Haupt-PC bereits laufen. Der Starthelfer startet keine
+zweite Simulation; er verbindet den Laptop ausschliesslich als Armarium-Station.
+
+Neue und geaenderte Dateien
+---------------------------
+- Armarium-Start.cmd
+- SpaceSim.Stations/Armarium/ArmariumCommandMixer.cs
+- SpaceSim.Stations/Armarium/ArmariumState.cs
+- SpaceSim.Stations/StationProtocol.cs
+- SpaceSim.Stations/StationServer.cs
+- SpaceSim.Godot/Flight.cs
+- SpaceSim.Godot/UI/FlightHud.cs
+- SpaceSim.Godot/Rendering/ViewSettings.cs
+- SpaceSim.Godot/Armarium/index.html
+- SpaceSim.Godot/Armarium/armarium.js
+- SpaceSim.Godot/Armarium/armarium.css
+- SpaceSim.Godot/project.godot
+- SpaceSim.Core.Tests/Program.cs
+- README.md
+- docs/StationProtocol.md
+
+Pruefung
+--------
+- Vollstaendiger Debug-Build: bestanden, 0 Warnungen, 0 Fehler.
+- Automatisierte Core- und Stations-Tests: 58 von 58 bestanden.
+- Neue Tests pruefen die halbe Armarium-Yaw-Leistung, die gleichzeitige
+  Kombination mit Bruecken-Yaw, die Begrenzung auf Normalleistung, Fire-Weitergabe,
+  die Online-Erkennung und das entfernte Protokollfeld.
+- Godot-Standard-Smoke-Test: bestanden.
+- Godot-Warp-Smoke-Test: bestanden.
+- Godot-Enemy-Smoke-Test: bestanden.
+
+Bekannte Grenzen
+---------------
+- Der Laptop muss sich im selben LAN befinden und Port 47870 auf dem Haupt-PC
+  erreichen koennen. Falls Windows fragt, muss der Zugriff im privaten Netzwerk
+  erlaubt werden.
+- Der Starthelfer speichert keine IP. Bei DHCP-Wechsel muss die aktuelle IP erneut
+  eingegeben oder als Parameter uebergeben werden.
+- Mehrere gleichzeitig verbundene Armarium-Browser teilen sich derzeit denselben
+  Steuerpuffer. V1.7.2 ist fuer eine relevante Armarium-Station ausgelegt.

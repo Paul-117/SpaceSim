@@ -1,4 +1,4 @@
-# SpaceSim 1.7
+# SpaceSim 1.7.2
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
@@ -54,7 +54,7 @@ abgebaut werden.
 **`Start.cmd` doppelklicken.** Das Skript baut das Projekt und startet das Spiel.
 Alternativ im Workspace:
 
-Der aktuelle Arbeitsstand ist **1.7.1**. Er umfasst die V1.6.1-Verbesserungen sowie die externe Waffenstation **Armarium** mit delegierbarer Feinsteuerung. Der Stand ist fuer `v1.7.1` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Der aktuelle Arbeitsstand ist **1.7.2**. Er umfasst die V1.6.1-Verbesserungen sowie die externe Waffenstation **Armarium** mit paralleler Feinsteuerung. Der Stand ist fuer `v1.7.2` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1
@@ -109,7 +109,7 @@ innerhalb von 1.600 m stoppt den Strahl. Ein Treffer zählt sofort und entfernt 
 Ziel dauerhaft für diese Sitzung. Der sichtbare Strahl bleibt nur 0,16 Sekunden
 bestehen. Auch beim Wegfliegen oder Zurückspringen werden keine Ziele ersetzt.
 
-## Armarium Station Server (V1.7.1)
+## Armarium Station Server (V1.7.2)
 
 Beim Start von SpaceSim startet auf dem Haupt-PC der Station Server auf Port
 **47870**. Er liefert den Armarium-Webclient aus und akzeptiert dessen WebSocket-
@@ -120,14 +120,14 @@ LAN-IP des Haupt-PCs verwendet, beispielsweise `http://192.168.x.x:47870/armariu
 Das Armarium ist eine reine HTML/CSS/Vanilla-JavaScript-Canvas-Anwendung. Es zeigt
 den horizontalen Bearing des ersten aktiven Gegners relativ zur Bugwaffe, den
 Lanzenladestand und den Verbindungsstatus. Der rote Punkt ist auf -30 bis +30 Grad
-begrenzt; ausserhalb bleibt er am Rand. Die Bruecke uebergibt die Links-/Rechts-
-Feinsteuerung mit **T** an das Armarium und kann sie ausschliesslich selbst wieder
-zuruecknehmen. Das Flight-HUD zeigt `CONTROL: BRUECKE` oder
-`CONTROL: ARMARIUM / ACTIVE`; das Armarium zeigt bei aktiver Uebergabe nur `ACTIVE`.
-Dann steuern die Pfeiltasten links/rechts die Yaw-Triebwerke mit **50 Prozent** der
-normalen Kraft, und **F** im Browser sendet genau einen `fire_lance`-Befehl. Ohne
-aktive Uebergabe nimmt der Server weder Armarium-Yaw noch Armarium-Feuer entgegen.
-Die lokale Leertaste bleibt parallel aktiv.
+begrenzt; ausserhalb bleibt er am Rand. Sobald ein Browser das Stationsprotokoll
+erfolgreich angemeldet hat, zeigt das Flight-HUD gruen `ARMARIUM ONLINE`; der Browser
+zeigt denselben Status. Es gibt keine Steuerungsuebergabe und keine Taste **T** mehr.
+Die Bruecke kann mit **A/D** und das Armarium mit den Pfeiltasten gleichzeitig drehen.
+Armarium-Yaw hat dabei stets **50 Prozent** der normalen Seitentriebwerkskraft. Gleich
+gerichtete Eingaben bleiben auf die normale Maximalleistung begrenzt, gegensinnige
+Eingaben heben sich entsprechend auf. **F** im Browser sendet genau einen
+`fire_lance`-Befehl. Die lokale Leertaste bleibt parallel aktiv.
 
 Der Haupt-PC bleibt autoritativ: Der Browser erhaelt nur `targetAvailable`,
 `targetBearingDegrees`, `lanceCharge`, `lanceReady` und `simulationTick`.
@@ -136,10 +136,24 @@ Haupt-PC thread-sicher gepuffert und erst im normalen `ShipCommand` des naechste
 Simulationsticks verarbeitet. Das Armarium nutzt derzeit die exakte Gegnerposition;
 eine spaetere Sensorium-Quelle kann den Bearing liefern, ohne den Webclient zu aendern.
 
-Das WebSocket-Protokoll hat Version **2**. Der Client identifiziert sich beim
-Verbindungsaufbau als `armarium`, zeigt CONNECTED/DISCONNECTED und verbindet sich
+Das WebSocket-Protokoll hat Version **3**. Der Client identifiziert sich beim
+Verbindungsaufbau als `armarium`, zeigt `ARMARIUM ONLINE/OFFLINE` und verbindet sich
 nach einem Abbruch automatisch erneut. Details stehen in
 [StationProtocol.md](docs/StationProtocol.md).
+
+### Armarium vom Laptop starten
+
+Auf dem Haupt-PC muss SpaceSim bereits laufen. Nach `git pull` auf dem Laptop kann
+**`Armarium-Start.cmd`** doppelt geklickt werden. Das Skript fragt die LAN-IP des
+Haupt-PCs ab und oeffnet dann die Armarium-Seite im Standardbrowser. Alternativ kann
+die IP direkt als Parameter uebergeben werden:
+
+```powershell
+.\Armarium-Start.cmd 192.168.178.20
+```
+
+Der Starthelfer startet keine zweite Simulation; er verbindet den Laptop nur als
+Armarium-Station mit dem laufenden Haupt-PC.
 ## Gegner und Game Over
 
 Encounter 1 bleibt ein Uebungsbereich mit zehn Zielen. Encounter 2 enthaelt einen
@@ -466,7 +480,7 @@ Sprungpunkte: zehn Ziele in Encounter 1, einen Gegner in Encounter 2 und zwei
 Gegner in Encounter 3. Der Stand ist mit dem annotierten Git-Tag **`v1.2`**
 gesichert; die Details stehen in [SpaceSim_v1.2_Changelog.txt](SpaceSim_v1.2_Changelog.txt).
 
-Version **1.3.0** ist als Commit gespeichert und erweitert das Spiel um Energieverteilung und Schilde. V1.4 bis V1.6.1 erweitern diesen Stand um Hull, Subsystemschaden, Kollisions- und Explosionsfolgen, Zoom, UI-Verbesserungen, Gegner-Schwierigkeiten und Soundeffekte. V1.7.1 fuegt den Armarium Station Server mit delegierbarer Feinsteuerung hinzu und ist fuer `v1.7.1` bereit. Ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Version **1.3.0** ist als Commit gespeichert und erweitert das Spiel um Energieverteilung und Schilde. V1.4 bis V1.6.1 erweitern diesen Stand um Hull, Subsystemschaden, Kollisions- und Explosionsfolgen, Zoom, UI-Verbesserungen, Gegner-Schwierigkeiten und Soundeffekte. V1.7.2 fuegt den Armarium Station Server mit paralleler Feinsteuerung und Laptop-Starthelfer hinzu und ist fuer `v1.7.2` bereit. Ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 git status             # Änderungen seit dem letzten Commit anzeigen

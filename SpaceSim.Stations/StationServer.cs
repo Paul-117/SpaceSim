@@ -29,7 +29,7 @@ public sealed class StationServer : IDisposable
     private readonly ConcurrentDictionary<int, StationConnection> _connections = new();
     private readonly CancellationTokenSource _stopping = new();
     private readonly TcpListener _listener;
-    private ArmariumState _latestState = new(false, 0f, 0f, false, false, 0);
+    private ArmariumState _latestState = new(false, 0f, 0f, false, 0);
     private Task? _acceptTask;
     private Task? _broadcastTask;
     private int _nextConnectionId;
@@ -49,6 +49,8 @@ public sealed class StationServer : IDisposable
 
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
     public string ArmariumUrl => $"http://127.0.0.1:{Port}/armarium/";
+    /// <summary>True once an Armarium browser has completed its protocol handshake.</summary>
+    public bool IsArmariumOnline => _connections.Values.Any(connection => connection.IsAccepted);
 
     public void Start()
     {
@@ -157,7 +159,6 @@ public sealed class StationServer : IDisposable
                 continue;
             }
 
-            if (!Volatile.Read(ref _latestState).ArmariumControlsActive) continue;
             if (command.Type == "fire_lance") _armariumCommands.RequestFire();
             else if (command.Type == "yaw" && command.Active is bool active)
             {
@@ -333,7 +334,6 @@ public sealed class StationServer : IDisposable
         public float TargetBearingDegrees => State.TargetBearingDegrees;
         public float LanceCharge => State.LanceCharge;
         public bool LanceReady => State.LanceReady;
-        public bool ArmariumControlsActive => State.ArmariumControlsActive;
         public long SimulationTick => State.SimulationTick;
     }
 }

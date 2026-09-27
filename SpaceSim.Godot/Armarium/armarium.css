@@ -5,8 +5,7 @@ body { margin: 0; min-height: 100vh; display: grid; place-items: center; backgro
 header { display: grid; grid-template-columns: 1fr auto auto; align-items: end; border-bottom: 1px solid #28455b; padding-bottom: 18px; }
 .eyebrow { grid-column: 1 / -1; color: #7f9bb0; font-size: .78rem; letter-spacing: .13em; margin: 0 0 6px; }
 h1 { margin: 0; font-size: clamp(1.7rem, 5vw, 3rem); letter-spacing: .12em; }
-.connection { margin: 0; font-size: .82rem; letter-spacing: .08em; }.connected { color: #6ee7ef; }.disconnected { color: #ff7078; }
-#armarium-active { margin: 0 18px 0 0; padding: 4px 8px; border: 1px solid #6ee7ef; color: #6ee7ef; font-size: .82rem; letter-spacing: .12em; }
+.connection { margin: 0; font-size: .82rem; letter-spacing: .08em; }.connected { color: #6ce3a0; }.disconnected { color: #ff7078; }
 .scope-panel { margin-top: clamp(32px, 7vw, 72px); }.scope-panel canvas { width: 100%; height: min(32vw, 280px); min-height: 180px; display: block; background: #07131e; border: 1px solid #28455b; }
 #target-status { min-height: 1.2em; text-align: center; margin: 14px 0 0; color: #ff7078; letter-spacing: .1em; font-size: .82rem; }
 .lance-panel { margin-top: 36px; }.lance-row { display: flex; justify-content: space-between; color: #99b1c3; font-size: 1rem; letter-spacing: .12em; }.lance-row strong { color: #6ee7ef; }

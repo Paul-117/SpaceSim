@@ -1,5 +1,5 @@
 (() => {
-  const protocolVersion = 2;
+  const protocolVersion = 3;
   const visibleBearingDegrees = 30;
   const reconnectDelayMs = 1500;
   const canvas = document.getElementById("scope");
@@ -8,13 +8,12 @@
   const targetStatus = document.getElementById("target-status");
   const lanceLabel = document.getElementById("lance-label");
   const chargeFill = document.getElementById("charge-fill");
-  const activeLabel = document.getElementById("armarium-active");
   let socket = null;
   let heldYawDirection = null;
-  let state = { targetAvailable: false, targetBearingDegrees: 0, lanceCharge: 0, lanceReady: false, armariumControlsActive: false };
+  let state = { targetAvailable: false, targetBearingDegrees: 0, lanceCharge: 0, lanceReady: false };
 
   function setConnection(connected) {
-    connection.textContent = connected ? "CONNECTED" : "DISCONNECTED";
+    connection.textContent = connected ? "ARMARIUM ONLINE" : "ARMARIUM OFFLINE";
     connection.className = `connection ${connected ? "connected" : "disconnected"}`;
   }
   function resizeCanvas() {
@@ -43,10 +42,7 @@
     }
   }
   function update(next) {
-    const wasActive = state.armariumControlsActive;
     state = next;
-    if (wasActive && !state.armariumControlsActive) releaseYaw();
-    activeLabel.hidden = !state.armariumControlsActive;
     const percent = Math.round(Math.max(0, Math.min(1, state.lanceCharge)) * 100);
     lanceLabel.textContent = state.lanceReady ? "READY" : `${percent} %`; chargeFill.style.width = `${percent}%`;
     targetStatus.textContent = state.targetAvailable ? "TARGET ACQUIRED" : "NO TARGET"; draw();
@@ -60,7 +56,7 @@
     socket.addEventListener("error", () => socket.close());
   }
   function sendYaw(direction, active) {
-    if (socket?.readyState !== WebSocket.OPEN || !state.armariumControlsActive) return;
+    if (socket?.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ type: "yaw", direction, active }));
   }
   function releaseYaw() {
@@ -71,10 +67,10 @@
     const direction = event.key === "ArrowLeft" ? "left" : event.key === "ArrowRight" ? "right" : null;
     if (direction) {
       event.preventDefault();
-      if (!event.repeat && state.armariumControlsActive) { heldYawDirection = direction; sendYaw(direction, true); }
+      if (!event.repeat) { heldYawDirection = direction; sendYaw(direction, true); }
       return;
     }
-    if (event.key.toLowerCase() === "f" && !event.repeat && state.armariumControlsActive && socket?.readyState === WebSocket.OPEN)
+    if (event.key.toLowerCase() === "f" && !event.repeat && socket?.readyState === WebSocket.OPEN)
       socket.send(JSON.stringify({ type: "fire_lance" }));
   });
   document.addEventListener("keyup", event => {
