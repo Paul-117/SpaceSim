@@ -141,24 +141,19 @@ Verbindungsaufbau als `armarium`, zeigt `ARMARIUM ONLINE/OFFLINE` und verbindet 
 nach einem Abbruch automatisch erneut. Details stehen in
 [StationProtocol.md](docs/StationProtocol.md).
 
-### Armarium von Windows oder Linux starten
+### Armarium vom Laptop starten
 
-Auf dem Haupt-PC muss SpaceSim bereits laufen. Beide Starthelfer fragen nach der
-LAN-IP des Haupt-PCs und oeffnen dann die Armarium-Seite im Standardbrowser.
+Auf dem Haupt-PC muss SpaceSim bereits laufen. Nach `git pull` auf dem Laptop kann
+**`Armarium-Start.cmd`** doppelt geklickt werden. Das Skript fragt die LAN-IP des
+Haupt-PCs ab und oeffnet dann die Armarium-Seite im Standardbrowser. Alternativ kann
+die IP direkt als Parameter uebergeben werden:
 
-| System | Starter | Direkter Aufruf mit IP |
-| --- | --- | --- |
-| Windows | `Armarium-Start_Windows.cmd` doppelklicken | `Armarium-Start_Windows.cmd 192.168.178.20` |
-| Linux | `./Armarium-Start_Linux.sh` | `./Armarium-Start_Linux.sh 192.168.178.20` |
-
-Falls das Linux-Skript nach dem ersten `git pull` noch nicht ausfuehrbar ist:
-
-```sh
-chmod +x Armarium-Start_Linux.sh
+```powershell
+.\Armarium-Start.cmd 192.168.178.20
 ```
 
-Die Starthelfer starten keine zweite Simulation; sie verbinden den jeweiligen
-Computer nur als Armarium-Station mit dem laufenden Haupt-PC.
+Der Starthelfer startet keine zweite Simulation; er verbindet den Laptop nur als
+Armarium-Station mit dem laufenden Haupt-PC.
 ## Gegner und Game Over
 
 Encounter 1 bleibt ein Uebungsbereich mit zehn Zielen. Encounter 2 enthaelt einen
