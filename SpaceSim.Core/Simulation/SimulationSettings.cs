@@ -17,6 +17,9 @@ public sealed record SimulationSettings
     public float YawTorqueNewtonMeters { get; init; } = 54_000f;
     public float LanceChargeSeconds { get; init; } = 3f;
     public float LanceRangeMeters { get; init; } = 1_600f;
+    /// <summary>Maximum horizontal player lance mount deflection from the ship nose.</summary>
+    public float LanceTurretMaximumAngleDegrees { get; init; } = 5f;
+    public float LanceTurretDegreesPerSecond { get; init; } = 10f;
     /// <summary>Centre-to-centre distance below which a player and enemy ship are both destroyed.</summary>
     public float ShipCollisionDistanceMeters { get; init; } = 100f;
     public float WarpChargeSeconds { get; init; } = 10f;
@@ -43,6 +46,8 @@ public sealed record SimulationSettings
         Positive(YawTorqueNewtonMeters, nameof(YawTorqueNewtonMeters));
         Positive(LanceChargeSeconds, nameof(LanceChargeSeconds));
         Positive(LanceRangeMeters, nameof(LanceRangeMeters));
+        Positive(LanceTurretMaximumAngleDegrees, nameof(LanceTurretMaximumAngleDegrees));
+        Positive(LanceTurretDegreesPerSecond, nameof(LanceTurretDegreesPerSecond));
         Positive(ShipCollisionDistanceMeters, nameof(ShipCollisionDistanceMeters));
         Positive(WarpChargeSeconds, nameof(WarpChargeSeconds));
         Positive(TargetRadiusMeters, nameof(TargetRadiusMeters));

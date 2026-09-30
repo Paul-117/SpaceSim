@@ -51,7 +51,7 @@ public partial class FlightHud : Control
         DrawRect(new Rect2(0, height - 154, width, 154), new Color(0.0196f, 0.0314f, 0.0549f, 0.96f));
         Text(new Vector2(30, 35), "SPACESIM", 23, ViewSettings.Text);
         Text(new Vector2(165, 34), $"/  {World.CurrentEncounter.Name.ToUpperInvariant()}", 13, ViewSettings.Muted);
-        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.7.2", 12, ViewSettings.Cyan);
+        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.8.4", 12, ViewSettings.Cyan);
         Text(new Vector2(width - 510, 33), ArmariumOnline ? "ARMARIUM ONLINE" : "ARMARIUM OFFLINE", 12,
             ArmariumOnline ? ViewSettings.Green : ViewSettings.Muted);
         DrawLine(new Vector2(30, 49), new Vector2(width - 30, 49), ViewSettings.Line, 1);
@@ -62,6 +62,7 @@ public partial class FlightHud : Control
         float lanceX = 30 + column * 2;
         Panel(new Rect2(lanceX, 64, column - 10, 83));
         Text(new Vector2(lanceX + 14, 85), "LANZE", 11, ViewSettings.Muted);
+        Text(new Vector2(lanceX + 114, 85), $"TURRET {World.LanceAim.YawOffsetDegrees:+0.0;-0.0;0.0} DEG", 10, ViewSettings.Muted);
         var chargeColor = World.Lance.IsReady ? ViewSettings.Cyan : ViewSettings.Amber;
         Text(new Vector2(lanceX + 14, 117), $"{World.Lance.ChargeFraction * 100:0}%", 27, chargeColor);
         Text(new Vector2(lanceX + 117, 115), World.Lance.IsReady ? "READY" : "LÄDT", 13, chargeColor);

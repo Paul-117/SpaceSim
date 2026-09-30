@@ -1,0 +1,59 @@
+SpaceSim V1.8.4 - Zielhilfe Smoothing and Hit Feedback
+========================================================
+
+Zielhilfe
+---------
+- Das obere Armarium-Fenster ist sichtbar mit ZIELHILFE beschriftet.
+- Der Bereich bleibt bei -7,5 bis +7,5 Grad.
+- Der Gegnerpunkt wird nicht mehr nur bei jedem Netzwerk-Update umgesetzt.
+  Browserseitige requestAnimationFrame-Interpolation glattet seine Bewegung mit
+  einer schnellen, exponentiellen Annaherung an den aktuellen Bearing.
+- Die Lafettenmarkierung wird mit derselben Darstellungsglaettung aktualisiert.
+- Die Simulation, Trefferberechnung und Netzwerkfrequenz bleiben unveraendert.
+
+Treffer-Feedback
+----------------
+- Nur ein bereits vom Core bestaetigter Spieler-Lanzentreffer kann einen Effekt
+  ausloesen. Der Browser entscheidet niemals, ob ein Schuss getroffen hat.
+- Flight erfasst WeaponFired-Events mit HitKind Target oder Enemy.
+- Fuer jeden Treffer erhoeht Flight eine fortlaufende TargetHitSequence und
+  speichert den Bearing des Treffpunkts.
+- Das Armarium erhaelt diese beiden Werte im stationsspezifischen Snapshot.
+- Bei einer neuen Sequence laesst der Browser den Punkt an der Trefferposition
+  fuer 650 ms gelb-weiss aufleuchten.
+- Der Effekt funktioniert auch, wenn ein statisches Ziel direkt nach dem
+  Treffer aus der Simulation entfernt wird.
+
+Protokoll
+---------
+- Das Stationsprotokoll wurde von Version 5 auf Version 6 erhoeht.
+- armarium_state enthaelt neu:
+  - targetHitSequence (integer)
+  - lastTargetHitBearingDegrees (number)
+- Details stehen in docs/StationProtocol.md.
+
+Geaenderte Dateien
+------------------
+- SpaceSim.Godot/Armarium/index.html
+- SpaceSim.Godot/Armarium/armarium.css
+- SpaceSim.Godot/Armarium/armarium.js
+- SpaceSim.Godot/Flight.cs
+- SpaceSim.Stations/Armarium/ArmariumState.cs
+- SpaceSim.Stations/StationServer.cs
+- SpaceSim.Stations/StationProtocol.cs
+- SpaceSim.Core.Tests/Program.cs
+- SpaceSim.Godot/project.godot
+- SpaceSim.Godot/UI/FlightHud.cs
+- README.md
+- docs/StationProtocol.md
+
+Validierung
+-----------
+- Build, Core-/Stations-Tests und JavaScript-Syntaxpruefung werden nach der
+  Implementierung ausgefuehrt.
+
+Bekannte Grenzen
+---------------
+- Die Zielhilfe zeigt weiterhin nur den ersten aktiven Gegner.
+- Der Effekt ist reine Darstellung und hat keine Auswirkung auf Punkte,
+  Schaden oder Entfernen eines getroffenen Ziels.

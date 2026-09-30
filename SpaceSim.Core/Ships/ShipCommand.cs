@@ -7,6 +7,9 @@ public readonly record struct ShipCommand(
     bool YawLeft = false,
     bool YawRight = false,
     bool FireLance = false,
+    /// <summary>Moves the player lance mount left/right without applying ship yaw torque.</summary>
+    bool AimLanceLeft = false,
+    bool AimLanceRight = false,
     /// <summary>Normalised yaw-thruster authority. Keyboard and AI use 1; fine-control stations may use less.</summary>
     float YawIntensity = 1f);
 

@@ -1,0 +1,48 @@
+SpaceSim V1.8.2 - Compact Armarium Layout
+============================================
+
+Ziel
+----
+V1.8.2 verdichtet die bestehende Armarium-Oberflaeche. Alle Bereiche bleiben ohne
+Scrollen in der aktuellen Browser-Fensterhoehe sichtbar.
+
+Oberes Zielvisier
+-----------------
+- Der sichtbare Winkelbereich wurde von +/-30 Grad auf +/-7,5 Grad reduziert.
+- Die Skala zeigt -7,5, -3,75, 0, +3,75 und +7,5 Grad.
+- Der rote Gegnerpunkt bewegt sich direkt auf der horizontalen Skalenachse.
+- Ziele ausserhalb des Bereichs bleiben am linken oder rechten Rand markiert.
+- Die cyanfarbene Markierung der Lanzenlafette bleibt sichtbar.
+
+Layout ohne Scrollen
+--------------------
+- Das Armarium verwendet eine feste, an die Browserhoehe angepasste Grid-Anordnung.
+- Header, oberes Visier, Lanzenstatus, 1-km-Sektorkarte und Bedienleiste teilen sich
+  den sichtbaren Bereich.
+- Die obere Zielansicht erhaelt einen Teil, die taktische Karte zwei Teile des
+  verbleibenden Platzes.
+- Bei niedrigen Bildschirmhoehen werden Abstaende und Mindesthoehen weiter reduziert.
+- Der Browser-Body blendet vertikales Scrollen aus.
+
+Unveraendert
+------------
+- Die untere Karte bleibt ein 1-km-Sektor von -15 bis +15 Grad.
+- Die Lanze bleibt mechanisch auf -5 bis +5 Grad begrenzt.
+- Pfeiltasten drehen die Lafette; F sendet einen normalen Fire-Impuls.
+- Das WebSocket-Protokoll bleibt Version 5.
+
+Geaenderte Dateien
+------------------
+- SpaceSim.Godot/Armarium/armarium.css
+- SpaceSim.Godot/Armarium/armarium.js
+- SpaceSim.Godot/project.godot
+- SpaceSim.Godot/Flight.cs
+- SpaceSim.Godot/UI/FlightHud.cs
+- README.md
+
+Validierung
+-----------
+- .NET Debug-Build und alle Core-/Stations-Tests: 60/60 bestanden.
+- JavaScript-Syntax von armarium.js: bestanden.
+- Die Aenderung betrifft nur HTML/CSS/Canvas-Darstellung und Versionsanzeigen;
+  sie veraendert keine Simulations- oder Netzwerkregeln.

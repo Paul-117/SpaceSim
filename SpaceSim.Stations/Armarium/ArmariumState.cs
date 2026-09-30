@@ -7,19 +7,34 @@ namespace SpaceSim.Stations.Armarium;
 public sealed record ArmariumState(
     bool TargetAvailable,
     float TargetBearingDegrees,
+    float TargetDistanceMeters,
     float LanceCharge,
     bool LanceReady,
+    float LanceTurretAngleDegrees,
+    long TargetHitSequence,
+    float LastTargetHitBearingDegrees,
     long SimulationTick);
 
 public static class ArmariumStateBuilder
 {
-    public static ArmariumState Build(WorldState world)
+    public static ArmariumState Build(WorldState world, long targetHitSequence = 0,
+        float lastTargetHitBearingDegrees = 0f)
     {
         var enemy = world.CurrentEnemy;
         bool hasTarget = enemy is not null;
         float bearing = hasTarget ? CalculateTargetBearingDegrees(world.Ship.Position, world.Ship.Forward,
             enemy!.Ship.Position) : 0f;
-        return new ArmariumState(hasTarget, bearing, world.Lance.ChargeFraction, world.Lance.IsReady, world.Tick);
+        float distance = hasTarget ? CalculateHorizontalDistanceMeters(world.Ship.Position, enemy!.Ship.Position) : 0f;
+        return new ArmariumState(hasTarget, bearing, distance, world.Lance.ChargeFraction, world.Lance.IsReady,
+            world.LanceAim.YawOffsetDegrees, targetHitSequence, lastTargetHitBearingDegrees, world.Tick);
+    }
+
+    /// <summary>Horizontal distance for the tactical map; vertical separation is not represented there.</summary>
+    public static float CalculateHorizontalDistanceMeters(Vector3 shipPosition, Vector3 targetPosition)
+    {
+        Vector3 delta = targetPosition - shipPosition;
+        delta.Y = 0f;
+        return delta.Length();
     }
 
     /// <summary>Returns a normalized horizontal bearing: negative is port/left, positive is starboard/right.</summary>

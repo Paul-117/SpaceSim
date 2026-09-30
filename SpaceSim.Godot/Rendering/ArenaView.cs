@@ -148,9 +148,7 @@ public partial class ArenaView : Node2D
 
     private void DrawAimAndDrift()
     {
-        for (float distance = 42; distance < 280; distance += 18)
-            DrawLine(ShipPosition + ShipForward * distance, ShipPosition + ShipForward * (distance + 5),
-                ViewSettings.Alpha(ViewSettings.Cyan, World.Lance.IsReady ? 0.3f : 0.12f), 1, true);
+        DrawBowOrientationLine();
         Vector2 velocity = ViewSettings.Project(World.Ship.Velocity);
         if (velocity.Length() < 0.5f) return;
         Vector2 direction = velocity.Normalized();
@@ -158,6 +156,29 @@ public partial class ArenaView : Node2D
         DrawLine(ShipPosition + direction * 32, tip, ViewSettings.Alpha(ViewSettings.Cyan, 0.45f), 1, true);
         DrawPolyline(new[] { tip - direction.Rotated(0.5f) * 8, tip, tip - direction.Rotated(-0.5f) * 8 },
             ViewSettings.Cyan, 1, true);
+    }
+
+    /// <summary>Draws the ship's bow axis to the actual visible edge in world coordinates.</summary>
+    private void DrawBowOrientationLine()
+    {
+        if (ShipForward.LengthSquared() < 0.000001f) return;
+        Vector2 direction = ShipForward.Normalized();
+        Vector2 half = VisibleWorldHalfExtent(Vector2.Zero);
+        float xDistance = MathF.Abs(direction.X) < 0.000001f ? float.PositiveInfinity : half.X / MathF.Abs(direction.X);
+        float yDistance = MathF.Abs(direction.Y) < 0.000001f ? float.PositiveInfinity : half.Y / MathF.Abs(direction.Y);
+        float edgeDistance = MathF.Min(xDistance, yDistance);
+        if (!float.IsFinite(edgeDistance) || edgeDistance <= 0f) return;
+
+        // Keep dash and gap visually stable while their world-space size follows the camera zoom.
+        float zoom = MathF.Max(0.001f, CameraZoom);
+        float dashLength = 11f / zoom;
+        float gapLength = 8f / zoom;
+        for (float start = 0f; start < edgeDistance; start += dashLength + gapLength)
+        {
+            float end = MathF.Min(edgeDistance, start + dashLength);
+            DrawLine(ShipPosition + direction * start, ShipPosition + direction * end,
+                ViewSettings.Alpha(ViewSettings.Cyan, 0.30f), 1, true);
+        }
     }
 
     private void DrawNearestIndicator()

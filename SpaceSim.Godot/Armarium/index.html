@@ -13,15 +13,22 @@
       <h1>ARMARIUM</h1>
       <p id="connection" class="connection disconnected">ARMARIUM OFFLINE</p>
     </header>
-    <section class="scope-panel" aria-label="Forward lance sight">
+    <section class="scope-panel" aria-label="Zielhilfe">
+      <div class="scope-heading"><span>ZIELHILFE</span><span>±7.5°</span></div>
       <canvas id="scope" aria-label="Horizontal target bearing"></canvas>
       <p id="target-status">NO TARGET</p>
     </section>
     <section class="lance-panel" aria-label="Lance status">
       <div class="lance-row"><span>LANCE</span><strong id="lance-label">0 %</strong></div>
       <div class="charge-track"><div id="charge-fill"></div></div>
+      <p id="turret-status">TURRET 0.0° / ±5°</p>
     </section>
-    <footer><kbd>ARROWS</kbd><span>FINE YAW</span><kbd>F</kbd><span>FIRE LANCE</span><span id="protocol">PROTOCOL 3</span></footer>
+    <section class="tactical-map-panel" aria-label="One kilometre lance tactical map">
+      <div class="map-heading"><span>TACTICAL LANCE MAP</span><span>RANGE 1.0 KM</span></div>
+      <canvas id="tactical-map" aria-label="Forward tactical map with lance field of fire"></canvas>
+      <p id="map-status">FORWARD SECTOR ±30°</p>
+    </section>
+    <footer><kbd>ARROWS</kbd><span>TURRET ±5°</span><kbd>F</kbd><span>FIRE LANCE</span><span id="protocol">PROTOCOL 6</span></footer>
   </main>
   <script src="armarium.js"></script>
 </body>

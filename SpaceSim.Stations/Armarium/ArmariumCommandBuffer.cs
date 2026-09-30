@@ -9,25 +9,25 @@ namespace SpaceSim.Stations.Armarium;
 public sealed class ArmariumCommandBuffer
 {
     private int _pendingFire;
-    private int _yawDirection;
+    private int _turretDirection;
 
     public void RequestFire() => Interlocked.Exchange(ref _pendingFire, 1);
 
     /// <param name="direction">-1 for port/left, 1 for starboard/right, 0 for neutral.</param>
-    public void SetYawDirection(int direction) => Volatile.Write(ref _yawDirection, Math.Clamp(direction, -1, 1));
+    public void SetTurretDirection(int direction) => Volatile.Write(ref _turretDirection, Math.Clamp(direction, -1, 1));
 
     public ArmariumCommand ReadCommand() => new(
-        YawLeft: Volatile.Read(ref _yawDirection) < 0,
-        YawRight: Volatile.Read(ref _yawDirection) > 0,
+        AimLanceLeft: Volatile.Read(ref _turretDirection) < 0,
+        AimLanceRight: Volatile.Read(ref _turretDirection) > 0,
         FireLance: Interlocked.Exchange(ref _pendingFire, 0) != 0);
 
     public void Clear()
     {
         Interlocked.Exchange(ref _pendingFire, 0);
-        Volatile.Write(ref _yawDirection, 0);
+        Volatile.Write(ref _turretDirection, 0);
     }
 
-    public void ClearSteering() => Volatile.Write(ref _yawDirection, 0);
+    public void ClearTurret() => Volatile.Write(ref _turretDirection, 0);
 }
 
-public readonly record struct ArmariumCommand(bool YawLeft, bool YawRight, bool FireLance);
+public readonly record struct ArmariumCommand(bool AimLanceLeft, bool AimLanceRight, bool FireLance);

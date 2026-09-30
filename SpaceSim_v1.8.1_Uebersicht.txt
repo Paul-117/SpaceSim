@@ -1,0 +1,73 @@
+SpaceSim V1.8.1 - Armarium Tactical Lance Map
+================================================
+
+Ziel
+----
+Die bestehende obere Armarium-Zielskala bleibt unveraendert. V1.8.1 ergaenzt
+darunter eine grosse taktische Ansicht fuer die Buglanze.
+
+Taktische Karte
+---------------
+- Der untere Hauptbereich des Armariums zeigt eine Canvas-Karte.
+- Die Karte ist ein vorwaertiger Sektor mit einem Radius von 1.000 m.
+- Sichtbar ist nur der Winkelbereich von -15 Grad bis +15 Grad relativ zur
+  Schiffsnase. Der Bereich ausserhalb dieses Sektors bleibt leer.
+- Das eigene Schiff liegt am Ursprung des Sektors. Die Mitte oben entspricht
+  der Richtung der Schiffsnase.
+- Ein 500-m-Halbkreis und der 1-km-Aussenbogen dienen als Distanzskala.
+- Der aktive Gegner erscheint als roter Punkt ausschliesslich dann, wenn er
+  innerhalb von 1.000 m und innerhalb des sichtbaren +/-15-Grad-Sektors liegt.
+  Ziele ausserhalb bleiben absichtlich unsichtbar; es gibt keine Randmarker in
+  der taktischen Karte.
+
+Lanzenanzeige
+-------------
+- Der schwach cyanfarbene Bereich zwischen -5 und +5 Grad zeigt den gesamten
+  mechanischen Drehbereich der Lanzenlafette.
+- Die helle cyanfarbene Linie zeigt die aktuelle Lanzenrichtung.
+- Damit ist direkt sichtbar, ob ein Gegner sowohl im taktischen Sektor als auch
+  im erreichbaren Schwenkbereich der Lanze liegt.
+- Die obere -30-bis-+30-Grad-Skala, Pfeiltasten-Steuerung und F zum Feuern
+  funktionieren weiterhin wie in V1.8.
+
+Stationsdaten und Protokoll
+---------------------------
+- ArmariumState enthaelt neu TargetDistanceMeters.
+- Es handelt sich um die horizontale Entfernung zum aktiven Gegner. Sie wird
+  nur fuer die 1-km-Karte verwendet; Weltpositionen werden nicht uebertragen.
+- Das WebSocket-Protokoll wurde von Version 4 auf Version 5 erhoeht.
+- armarium_state enthaelt jetzt targetDistanceMeters.
+
+Geaenderte Dateien
+------------------
+- SpaceSim.Godot/Armarium/index.html
+- SpaceSim.Godot/Armarium/armarium.css
+- SpaceSim.Godot/Armarium/armarium.js
+- SpaceSim.Stations/Armarium/ArmariumState.cs
+- SpaceSim.Stations/StationServer.cs
+- SpaceSim.Stations/StationProtocol.cs
+- SpaceSim.Core.Tests/Program.cs
+- SpaceSim.Godot/Flight.cs
+- SpaceSim.Godot/UI/FlightHud.cs
+- SpaceSim.Godot/project.godot
+- README.md
+- docs/StationProtocol.md
+
+Validierung
+-----------
+- .NET Debug-Build: erfolgreich, 0 Warnungen und 0 Fehler.
+- Core- und Stations-Tests: 60/60 bestanden.
+- JavaScript-Syntax: armarium.js mit node --check bestanden.
+- Godot-Smoke-Test: UI-/Gameplay-Smoke erfolgreich. Der Testlauf meldete beim
+  zweiten Start, dass Port 47870 bereits durch einen laufenden Station-Server
+  belegt war; das ist kein Fehler der Kartenlogik. Fuer einen vollstaendlichen
+  Netzwerk-Smoke muss vorher die bereits laufende SpaceSim-Instanz beendet
+  werden.
+
+Bekannte Grenzen
+---------------
+- Die Karte zeigt nur den ersten aktiven Gegner und keine Ziele, Kontakte oder
+  Sensorunsicherheit.
+- Es gibt keine Hoehenanzeige und keine Entfernung ausserhalb des 1-km-Sektors.
+- Die Karte ist eine Anzeige. Sie hat keine Autoritaet ueber Simulation,
+  Zielauswahl, Feuerfreigabe oder Treffer.

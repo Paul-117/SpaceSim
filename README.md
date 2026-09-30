@@ -1,4 +1,4 @@
-# SpaceSim 1.7.2
+# SpaceSim 1.8.4
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
@@ -54,7 +54,7 @@ abgebaut werden.
 **`Start.cmd` doppelklicken.** Das Skript baut das Projekt und startet das Spiel.
 Alternativ im Workspace:
 
-Der aktuelle Arbeitsstand ist **1.7.2**. Er umfasst die V1.6.1-Verbesserungen sowie die externe Waffenstation **Armarium** mit paralleler Feinsteuerung. Der Stand ist fuer `v1.7.2` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Der aktuelle Arbeitsstand ist **1.8.4**. Er umfasst die V1.6.1-Verbesserungen sowie die externe Waffenstation **Armarium** mit einer begrenzten Lanzenlafette und einer taktischen Sektorkarte. Der Stand ist fuer `v1.8.4` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1
@@ -109,7 +109,7 @@ innerhalb von 1.600 m stoppt den Strahl. Ein Treffer zählt sofort und entfernt 
 Ziel dauerhaft für diese Sitzung. Der sichtbare Strahl bleibt nur 0,16 Sekunden
 bestehen. Auch beim Wegfliegen oder Zurückspringen werden keine Ziele ersetzt.
 
-## Armarium Station Server (V1.7.2)
+## Armarium Station Server (V1.8.4)
 
 Beim Start von SpaceSim startet auf dem Haupt-PC der Station Server auf Port
 **47870**. Er liefert den Armarium-Webclient aus und akzeptiert dessen WebSocket-
@@ -119,24 +119,36 @@ LAN-IP des Haupt-PCs verwendet, beispielsweise `http://192.168.x.x:47870/armariu
 
 Das Armarium ist eine reine HTML/CSS/Vanilla-JavaScript-Canvas-Anwendung. Es zeigt
 den horizontalen Bearing des ersten aktiven Gegners relativ zur Bugwaffe, den
-Lanzenladestand und den Verbindungsstatus. Der rote Punkt ist auf -30 bis +30 Grad
-begrenzt; ausserhalb bleibt er am Rand. Sobald ein Browser das Stationsprotokoll
+Lanzenladestand und den Verbindungsstatus. Das obere Fenster heisst **ZIELHILFE**.
+Die Skala zeigt -7,5 bis +7,5 Grad; der rote Gegnerpunkt laeuft mit browserseitiger
+Interpolation weich auf ihrer horizontalen Achse und bleibt ausserhalb dieses Bereichs
+am Rand. Ein vom Core bestaetigter Lanzen-Treffer laesst den Punkt kurz aufleuchten.
+Sobald ein Browser das Stationsprotokoll
 erfolgreich angemeldet hat, zeigt das Flight-HUD gruen `ARMARIUM ONLINE`; der Browser
-zeigt denselben Status. Es gibt keine Steuerungsuebergabe und keine Taste **T** mehr.
-Die Bruecke kann mit **A/D** und das Armarium mit den Pfeiltasten gleichzeitig drehen.
-Armarium-Yaw hat dabei stets **50 Prozent** der normalen Seitentriebwerkskraft. Gleich
-gerichtete Eingaben bleiben auf die normale Maximalleistung begrenzt, gegensinnige
-Eingaben heben sich entsprechend auf. **F** im Browser sendet genau einen
-`fire_lance`-Befehl. Die lokale Leertaste bleibt parallel aktiv.
+zeigt denselben Status. Die Bruecke besitzt ausschliesslich die Schiffssteuerung mit
+**A/D**. Die Pfeiltasten im Armarium bewegen nur die Lanzenlafette mit **10 Grad pro
+Sekunde** innerhalb von **-5 bis +5 Grad** relativ zur Schiffsnase. Der cyanfarbene
+Marker im Armarium zeigen die aktuelle Waffenachse. Die gestrichelte Linie in der
+Brueckenansicht zeigt dagegen immer die Bugausrichtung bis zum sichtbaren Bildschirmrand.
+Unter
+der bisherigen Zielskala zeigt die **TACTICAL LANCE MAP** einen 1-km-Sektor vor dem
+Schiff. Sichtbar ist nur der Bereich von **-30 bis +30 Grad**; ausserhalb bleibt die
+Karte leer. Der Sektor zeigt die Begrenzung der Lanzenlafette bei -5/+5 Grad, ihre
+aktuelle cyanfarbene Ausrichtung und den Gegner nur innerhalb dieses Bereichs und
+der Reichweite. Die Armarium-Oberflaeche verwendet immer genau die aktuelle
+Fensterhoehe und benoetigt keine Scrollleiste. **F**
+im Browser sendet genau einen `fire_lance`-Befehl. Die lokale Leertaste bleibt parallel
+aktiv.
 
 Der Haupt-PC bleibt autoritativ: Der Browser erhaelt nur `targetAvailable`,
-`targetBearingDegrees`, `lanceCharge`, `lanceReady` und `simulationTick`.
+`targetBearingDegrees`, `targetDistanceMeters`, `lanceCharge`, `lanceReady`,
+`lanceTurretAngleDegrees` und `simulationTick`.
 Er entscheidet nicht ueber Waffenfeuer oder Treffer. Der Fire Command wird im
 Haupt-PC thread-sicher gepuffert und erst im normalen `ShipCommand` des naechsten
 Simulationsticks verarbeitet. Das Armarium nutzt derzeit die exakte Gegnerposition;
 eine spaetere Sensorium-Quelle kann den Bearing liefern, ohne den Webclient zu aendern.
 
-Das WebSocket-Protokoll hat Version **3**. Der Client identifiziert sich beim
+Das WebSocket-Protokoll hat Version **6**. Der Client identifiziert sich beim
 Verbindungsaufbau als `armarium`, zeigt `ARMARIUM ONLINE/OFFLINE` und verbindet sich
 nach einem Abbruch automatisch erneut. Details stehen in
 [StationProtocol.md](docs/StationProtocol.md).
@@ -480,7 +492,7 @@ Sprungpunkte: zehn Ziele in Encounter 1, einen Gegner in Encounter 2 und zwei
 Gegner in Encounter 3. Der Stand ist mit dem annotierten Git-Tag **`v1.2`**
 gesichert; die Details stehen in [SpaceSim_v1.2_Changelog.txt](SpaceSim_v1.2_Changelog.txt).
 
-Version **1.3.0** ist als Commit gespeichert und erweitert das Spiel um Energieverteilung und Schilde. V1.4 bis V1.6.1 erweitern diesen Stand um Hull, Subsystemschaden, Kollisions- und Explosionsfolgen, Zoom, UI-Verbesserungen, Gegner-Schwierigkeiten und Soundeffekte. V1.7.2 fuegt den Armarium Station Server mit paralleler Feinsteuerung und Laptop-Starthelfer hinzu und ist fuer `v1.7.2` bereit. Ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Version **1.3.0** ist als Commit gespeichert und erweitert das Spiel um Energieverteilung und Schilde. V1.4 bis V1.6.1 erweitern diesen Stand um Hull, Subsystemschaden, Kollisions- und Explosionsfolgen, Zoom, UI-Verbesserungen, Gegner-Schwierigkeiten und Soundeffekte. V1.8 ersetzt die Armarium-Seitentriebwerksteuerung durch eine begrenzte Lanzenlafette. V1.8.1 ergaenzt deren 1-km-Sektorkarte, V1.8.2 verdichtet die Zielskala und passt die Ansicht ohne Scrollen an. V1.8.3 erweitert die Sektorkarte und zeichnet die Bugausrichtung bis zum Bildschirmrand. V1.8.4 glattet die Zielhilfe und visualisiert bestaetigte Treffer. Der Stand ist fuer `v1.8.4` bereit. Ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 git status             # Änderungen seit dem letzten Commit anzeigen

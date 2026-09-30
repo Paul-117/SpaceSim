@@ -156,6 +156,28 @@ var tests = new (string Name, Action Run)[]
         Fire(sim);
         Check(sim.World.HitCount == 1, "Rotated weapon ray must hit.");
     }),
+    ("Lance turret is limited and does not apply ship yaw", () =>
+    {
+        var sim = NewWeapons();
+        Step(sim, 30, new ShipCommand(AimLanceRight: true));
+        Near(sim.World.LanceAim.YawOffsetDegrees, 5f);
+        Near(sim.World.Ship.AngularVelocity.Y, 0f);
+        Check(sim.World.LanceDirection.X > 0f && sim.World.LanceDirection.Z < 0f,
+            "Starboard turret aim must rotate only the lance ray to starboard.");
+        Step(sim, 60, new ShipCommand(AimLanceLeft: true));
+        Near(sim.World.LanceAim.YawOffsetDegrees, -5f);
+        Near(sim.World.Ship.AngularVelocity.Y, 0f);
+    }),
+    ("Turret deflection changes the player lance hit ray", () =>
+    {
+        float radians = 5f * MathF.PI / 180f;
+        var target = new Vector3(MathF.Sin(radians) * 300f, 0f, -MathF.Cos(radians) * 300f);
+        var sim = WithTargets(target);
+        Step(sim, 30, new ShipCommand(AimLanceRight: true));
+        Step(sim, 150);
+        sim.Step(new ShipCommand(FireLance: true));
+        Check(sim.World.HitCount == 1, "A target on the mounted lance axis must be hit.");
+    }),
     ("Spawn positions are safe and repeatable with a fixed seed", () =>
     {
         var sim = new Simulation();
@@ -203,19 +225,23 @@ var tests = new (string Name, Action Run)[]
     {
         var empty = NewWeapons();
         ArmariumState noTarget = ArmariumStateBuilder.Build(empty.World);
-        Check(!noTarget.TargetAvailable && noTarget.TargetBearingDegrees == 0f && noTarget.LanceCharge == 0f,
+        Check(!noTarget.TargetAvailable && noTarget.TargetBearingDegrees == 0f && noTarget.LanceCharge == 0f &&
+              noTarget.TargetDistanceMeters == 0f && noTarget.LanceTurretAngleDegrees == 0f,
             "An empty encounter must not expose a target or world state.");
         Step(empty, 180);
         Check(ArmariumStateBuilder.Build(empty.World).LanceReady,
             "Armarium must expose the ordinary lance readiness state.");
+        Step(empty, 30, new ShipCommand(AimLanceRight: true));
+        Near(ArmariumStateBuilder.Build(empty.World).LanceTurretAngleDegrees, 5f);
 
         var combat = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -900)));
         JumpToCombat(combat);
         ArmariumState target = ArmariumStateBuilder.Build(combat.World);
         Check(target.TargetAvailable && MathF.Abs(target.TargetBearingDegrees) < 0.001f &&
-              target.SimulationTick == combat.World.Tick, "Armarium must receive only its current target bearing and lance state.");
+              MathF.Abs(target.TargetDistanceMeters - 900f) < 0.001f && target.SimulationTick == combat.World.Tick,
+            "Armarium must receive its compact target map distance, bearing and lance state.");
     }),
-    ("Armarium command buffer creates ordinary fire and yaw intents", () =>
+    ("Armarium command buffer creates ordinary fire and turret intents", () =>
     {
         var buffer = new ArmariumCommandBuffer();
         var early = NewWeapons();
@@ -226,32 +252,22 @@ var tests = new (string Name, Action Run)[]
         var sim = WithTargets(new Vector3(0, 0, -300));
         Step(sim, 180);
         buffer.RequestFire(); buffer.RequestFire();
-        buffer.SetYawDirection(-1);
+        buffer.SetTurretDirection(-1);
         ArmariumCommand command = buffer.ReadCommand();
-        sim.Step(new ShipCommand(YawLeft: command.YawLeft, YawRight: command.YawRight,
-            FireLance: command.FireLance, YawIntensity: 0.5f));
-        Check(sim.Events.OfType<WeaponFired>().Count() == 1 && !buffer.ReadCommand().FireLance && command.YawLeft,
+        sim.Step(new ShipCommand(AimLanceLeft: command.AimLanceLeft, AimLanceRight: command.AimLanceRight,
+            FireLance: command.FireLance));
+        Check(sim.Events.OfType<WeaponFired>().Count() == 1 && !buffer.ReadCommand().FireLance && command.AimLanceLeft,
             "Several network requests before one tick must produce one fire impulse.");
         buffer.Clear();
-        Check(!buffer.ReadCommand().YawLeft && !buffer.ReadCommand().YawRight,
-            "Clearing the station buffer must release held Armarium steering.");
+        Check(!buffer.ReadCommand().AimLanceLeft && !buffer.ReadCommand().AimLanceRight,
+            "Clearing the station buffer must release held Armarium turret input.");
     }),
-    ("Armarium and bridge yaw combine into one bounded ordinary command", () =>
+    ("Armarium turret input never changes the ship thrusters", () =>
     {
-        ShipCommand remoteOnly = ArmariumCommandMixer.Merge(default,
-            new ArmariumCommand(YawLeft: true, YawRight: false, FireLance: false), 0.5f);
-        Check(remoteOnly.YawLeft && !remoteOnly.YawRight && MathF.Abs(remoteOnly.YawIntensity - 0.5f) < 0.001f,
-            "Armarium yaw must use half normal thruster authority.");
-
-        ShipCommand sameDirection = ArmariumCommandMixer.Merge(new ShipCommand(YawLeft: true),
-            new ArmariumCommand(YawLeft: true, YawRight: false, FireLance: true), 0.5f);
-        Check(sameDirection.YawLeft && MathF.Abs(sameDirection.YawIntensity - 1f) < 0.001f && sameDirection.FireLance,
-            "Parallel inputs must keep normal maximum yaw authority and pass a fire impulse.");
-
-        ShipCommand opposingDirection = ArmariumCommandMixer.Merge(new ShipCommand(YawLeft: true),
-            new ArmariumCommand(YawLeft: false, YawRight: true, FireLance: false), 0.5f);
-        Check(opposingDirection.YawLeft && MathF.Abs(opposingDirection.YawIntensity - 0.5f) < 0.001f,
-            "Opposing Armarium fine control must reduce the bridge command by half authority.");
+        var sim = NewWeapons();
+        Step(sim, 60, new ShipCommand(AimLanceRight: true));
+        Near(sim.World.Ship.AngularVelocity.Y, 0f);
+        Near(sim.World.LanceAim.YawOffsetDegrees, 5f);
     }),
     ("Station server serves Armarium and relays hello state and fire", () =>
         StationServerSmokeAsync().GetAwaiter().GetResult()),
@@ -844,7 +860,7 @@ static async Task StationServerSmokeAsync()
         ["armarium.js"] = ""
     };
     using var server = new StationServer(new StationServerOptions { Port = 0, StateUpdatesPerSecond = 30 }, assets, commands);
-    server.UpdateState(new ArmariumState(true, -12.4f, 0.72f, false, 42));
+    server.UpdateState(new ArmariumState(true, -12.4f, 640f, 0.72f, false, 2.5f, 3, -12.4f, 42));
     server.Start();
     using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
     string page = await http.GetStringAsync(server.ArmariumUrl);
@@ -862,14 +878,18 @@ static async Task StationServerSmokeAsync()
     Check(state.RootElement.GetProperty("type").GetString() == "armarium_state" &&
           state.RootElement.GetProperty("targetAvailable").GetBoolean() &&
           !state.RootElement.TryGetProperty("armariumControlsActive", out _) &&
+          MathF.Abs(state.RootElement.GetProperty("lanceTurretAngleDegrees").GetSingle() - 2.5f) < 0.001f &&
+          state.RootElement.GetProperty("targetHitSequence").GetInt64() == 3 &&
+          MathF.Abs(state.RootElement.GetProperty("lastTargetHitBearingDegrees").GetSingle() + 12.4f) < 0.001f &&
+          MathF.Abs(state.RootElement.GetProperty("targetDistanceMeters").GetSingle() - 640f) < 0.001f &&
           MathF.Abs(state.RootElement.GetProperty("targetBearingDegrees").GetSingle() + 12.4f) < 0.001f,
         "Station server must transmit only the current Armarium snapshot.");
     await SendWebSocketJsonAsync(socket, new { type = "fire_lance" });
     bool received = SpinWait.SpinUntil(() => commands.ReadCommand().FireLance, TimeSpan.FromSeconds(1));
     Check(received, "Station fire_lance must reach the thread-safe command buffer.");
-    await SendWebSocketJsonAsync(socket, new { type = "yaw", direction = "left", active = true });
-    bool yawReceived = SpinWait.SpinUntil(() => commands.ReadCommand().YawLeft, TimeSpan.FromSeconds(1));
-    Check(yawReceived, "Station yaw must reach the thread-safe command buffer without a bridge handoff.");
+    await SendWebSocketJsonAsync(socket, new { type = "turret", direction = "left", active = true });
+    bool turretReceived = SpinWait.SpinUntil(() => commands.ReadCommand().AimLanceLeft, TimeSpan.FromSeconds(1));
+    Check(turretReceived, "Station turret input must reach the thread-safe command buffer.");
 }
 static async Task SendWebSocketJsonAsync(ClientWebSocket socket, object value)
 {

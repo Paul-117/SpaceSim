@@ -28,7 +28,6 @@ public partial class Flight : Node
     private readonly StarMap _starMap = new();
     private readonly GameOverOverlay _gameOver = new();
     private readonly SoundEffects _sounds = new();
-    private const float ArmariumYawIntensity = 0.5f;
     private readonly ArmariumCommandBuffer _armariumCommands = new();
     private StationServer? _stationServer;
     private NavigationCommand _pendingNavigation;
@@ -49,6 +48,8 @@ public partial class Flight : Node
     private string? _capturePath;
     private bool _capturing;
     private float _cameraZoom = 1f;
+    private long _armariumTargetHitSequence;
+    private float _armariumLastTargetHitBearingDegrees;
 
     public override void _Ready()
     {
@@ -82,7 +83,7 @@ public partial class Flight : Node
         cockpit.AddChild(_gameOver);
         StartStationServer();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.7.2 | Core 60 Hz | Armarium parallel fine-control station server enabled");
+        GD.Print("SpaceSim 1.8.4 | Core 60 Hz | Armarium target aid and hit pulse enabled");
     }
 
     private Simulation CreateSimulation()
@@ -119,7 +120,7 @@ public partial class Flight : Node
             };
             _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, GD.Print);
             _stationServer.Start();
-            _stationServer.UpdateState(ArmariumStateBuilder.Build(_simulation.World));
+            PublishArmariumState();
             GD.Print($"Armarium available at {_stationServer.ArmariumUrl}");
         }
         catch (Exception exception)
@@ -218,7 +219,8 @@ public partial class Flight : Node
         _simulation.Step(_lastCommand, _pendingNavigation, _pendingPower);
         _pendingNavigation = default;
         _pendingPower = default;
-        _stationServer?.UpdateState(ArmariumStateBuilder.Build(_simulation.World));
+        RecordArmariumTargetHit();
+        PublishArmariumState();
         if (_simulation.Events.OfType<EncounterChanged>().Any())
         {
             // Do not interpolate across different local coordinate systems.
@@ -271,9 +273,27 @@ public partial class Flight : Node
     private void ApplyArmariumControl()
     {
         ArmariumCommand command = _armariumCommands.ReadCommand();
-        // Both stations retain normal control. Browser yaw is deliberately capped at half authority.
-        _lastCommand = ArmariumCommandMixer.Merge(_lastCommand, command, ArmariumYawIntensity);
+        // Armarium never changes ship physics. It only contributes normal lance mount and fire intent.
+        _lastCommand = _lastCommand with
+        {
+            AimLanceLeft = command.AimLanceLeft,
+            AimLanceRight = command.AimLanceRight,
+            FireLance = _lastCommand.FireLance || command.FireLance
+        };
     }
+
+    private void RecordArmariumTargetHit()
+    {
+        WeaponFired? hit = _simulation.Events.OfType<WeaponFired>().FirstOrDefault(shot =>
+            shot.Owner == WeaponOwner.Player && shot.HitKind is WeaponHitKind.Target or WeaponHitKind.Enemy);
+        if (hit is null) return;
+        _armariumTargetHitSequence++;
+        _armariumLastTargetHitBearingDegrees = ArmariumStateBuilder.CalculateTargetBearingDegrees(
+            _simulation.World.Ship.Position, _simulation.World.Ship.Forward, hit.End);
+    }
+
+    private void PublishArmariumState() => _stationServer?.UpdateState(ArmariumStateBuilder.Build(
+        _simulation.World, _armariumTargetHitSequence, _armariumLastTargetHitBearingDegrees));
 
     private void RestartGame()
     {
@@ -305,7 +325,8 @@ public partial class Flight : Node
         NVector3 forward = NVector3.Transform(-NVector3.UnitZ, rotation);
         _ship.Position = ViewSettings.Project(position);
         _ship.Rotation = MathF.Atan2(forward.X, -forward.Z);
-        _ship.Refresh(_lastCommand, _simulation.World.Lance.IsReady, _visualTime);
+        _ship.Refresh(_lastCommand, _simulation.World.Lance.IsReady, _visualTime,
+            _simulation.World.LanceAim.YawOffsetDegrees);
         _camera.Position = _ship.Position;
         _stars.CameraPosition = _ship.Position;
         _arena.ShipPosition = _ship.Position;

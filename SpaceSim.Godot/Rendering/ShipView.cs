@@ -8,12 +8,14 @@ public partial class ShipView : Node2D
     private ShipCommand _command;
     private bool _ready;
     private float _time;
+    private float _lanceTurretAngleDegrees;
 
-    public void Refresh(ShipCommand command, bool ready, float time)
+    public void Refresh(ShipCommand command, bool ready, float time, float lanceTurretAngleDegrees)
     {
         _command = command;
         _ready = ready;
         _time = time;
+        _lanceTurretAngleDegrees = lanceTurretAngleDegrees;
         QueueRedraw();
     }
 
@@ -46,7 +48,8 @@ public partial class ShipView : Node2D
         Vector2[] hull = { new(0, -23), new(14, 15), new(0, 9), new(-14, 15) };
         DrawColoredPolygon(hull, new Color("172d3e"));
         DrawPolyline(new[] { hull[0], hull[1], hull[2], hull[3], hull[0] }, ViewSettings.Text, 1.5f, true);
-        DrawLine(new Vector2(0, -13), new Vector2(0, 5), ViewSettings.Cyan, 2, true);
-        DrawCircle(new Vector2(0, -20), 2.5f, _ready ? ViewSettings.Cyan : ViewSettings.Amber);
+        Vector2 lanceDirection = Vector2.Up.Rotated(Mathf.DegToRad(_lanceTurretAngleDegrees));
+        DrawLine(new Vector2(0, 5), lanceDirection * 20, ViewSettings.Cyan, 2, true);
+        DrawCircle(lanceDirection * 20, 2.5f, _ready ? ViewSettings.Cyan : ViewSettings.Amber);
     }
 }

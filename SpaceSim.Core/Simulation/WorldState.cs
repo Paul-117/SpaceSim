@@ -1,3 +1,4 @@
+using System.Numerics;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Targets;
 using SpaceSim.Core.Weapons;
@@ -10,6 +11,8 @@ public sealed class WorldState
 {
     public ShipState Ship { get; }
     public LanceState Lance { get; } = new();
+    public LanceAimState LanceAim { get; } = new();
+    public Vector3 LanceDirection => LanceAimSystem.GetDirection(Ship.Forward, LanceAim.YawOffsetDegrees);
     public WarpDriveState WarpDrive { get; } = new();
     public IReadOnlyList<EncounterState> Encounters { get; }
     public EncounterState CurrentEncounter { get; internal set; }

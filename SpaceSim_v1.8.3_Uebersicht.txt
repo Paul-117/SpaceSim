@@ -1,0 +1,45 @@
+SpaceSim V1.8.3 - Wider Lance Sector and Bow Axis
+==================================================
+
+Armarium Tactical Lance Map
+---------------------------
+- Der sichtbare Kartensektor wurde von +/-15 Grad auf +/-30 Grad erweitert.
+- Der Kartenradius bleibt 1.000 m.
+- Der rote Gegnerpunkt wird innerhalb dieses groesseren Vorwaertssektors gezeigt.
+- Die mechanische Lanzenbegrenzung bleibt bei +/-5 Grad. Der cyanfarbene
+  Begrenzungskegel und die aktuelle Lanzenrichtung bleiben deshalb klar vom
+  sichtbaren +/-30-Grad-Kartensektor getrennt.
+
+Brueckenansicht
+---------------
+- Die gestrichelte Fuehrungslinie zeigt jetzt die Bugausrichtung des Schiffs.
+- Die Lanzenlafetten-Ausrichtung beeinflusst diese Linie nicht mehr.
+- Die Linie startet am Schiff und wird bis zum sichtbaren Rand der taktischen
+  Ansicht berechnet.
+- Ihre Laenge wird aus Viewport und Camera2D-Zoom berechnet. Dadurch reicht sie
+  bei jeder Zoomstufe bis zum Bildschirmrand.
+- Das Strichmuster wird in Weltkoordinaten gegen den Zoom skaliert, damit es
+  optisch stabil bleibt.
+
+Unveraendert
+------------
+- Die Lanzenlafette kann weiterhin nur mit den Armarium-Pfeiltasten zwischen
+  -5 und +5 Grad bewegt werden.
+- Die obere Armarium-Zielskala bleibt bei +/-7,5 Grad.
+- Fire-Command, Schadensmodell und Stationsprotokoll Version 5 bleiben gleich.
+
+Geaenderte Dateien
+------------------
+- SpaceSim.Godot/Armarium/armarium.js
+- SpaceSim.Godot/Rendering/ArenaView.cs
+- SpaceSim.Godot/Flight.cs
+- SpaceSim.Godot/UI/FlightHud.cs
+- SpaceSim.Godot/project.godot
+- README.md
+
+Validierung
+-----------
+- Der Build und die vorhandenen 60 Core-/Stations-Tests werden nach der Aenderung
+  ausgefuehrt.
+- Die Aenderung besitzt keine neue Gameplay- oder Netzwerkregel; sie betrifft
+  die Armarium-Canvas-Karte und die Godot-Darstellung.

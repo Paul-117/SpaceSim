@@ -67,6 +67,7 @@ public sealed class Simulation
                 World.Ship.Power.WeaponsAllocation, World.Ship.Power.ShieldsAllocation));
         ShieldSystem.Recharge(World.Ship.Shield, World.Ship.Power.ShieldsPowerFactor * World.Ship.Systems.ShieldsCondition, Settings.Shield);
         LanceSystem.Charge(World.Lance, Settings, World.Ship.Power.WeaponsPowerFactor * World.Ship.Systems.WeaponsCondition);
+        LanceAimSystem.Step(World.LanceAim, command, Settings);
         EnemyShipState[] enemies = World.CurrentEnemies.ToArray();
         var enemyCommands = new Dictionary<int, ShipCommand>(enemies.Length);
         foreach (EnemyShipState enemy in enemies)

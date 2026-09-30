@@ -1,0 +1,87 @@
+SpaceSim V1.8 – Armarium Lance Turret
+======================================
+
+Version: 1.8.0
+Git-Tag: nicht erstellt
+
+Ziel
+----
+V1.8 ersetzt die bisherige Armarium-Steuerung der Seitentriebwerke durch eine
+begrenzte, horizontal drehbare Lanzenlafette. Das Armarium bleibt eine reine
+Netzwerkstation und veraendert den verbindlichen Spielzustand nie direkt.
+
+Lanzenlafette
+-------------
+- Der Spieler besitzt im Core einen LanceAimState mit YawOffsetDegrees.
+- Negative Werte bedeuten links/Backbord, positive Werte rechts/Steuerbord.
+- Die Lafette startet bei 0 Grad, bewegt sich mit 10 Grad pro Simulationssekunde
+  und wird zentral bei -5 bis +5 Grad begrenzt.
+- Die Lafette ist vom Schiff getrennt: Turret-Befehle erzeugen weder Drehmoment
+  noch Positions- oder Geschwindigkeitsaenderungen am Schiff.
+- Die Spielerlance nutzt beim Schuss die aktuelle Lafettenachse. Gegner behalten
+  ihre bisherige starre Buglanze.
+- Die Lafettenposition bleibt bei Warp-Spruengen erhalten und wird erst bei einem
+  Neustart der Sitzung auf 0 Grad zurueckgesetzt.
+
+Armarium und Protokoll
+----------------------
+- Die Pfeiltasten senden jetzt gehaltene turret-Befehle statt yaw-Befehlen.
+- F sendet weiterhin einen einmaligen fire_lance-Befehl.
+- ProtocolVersion wurde von 3 auf 4 erhoeht.
+- ArmariumState enthaelt neu lanceTurretAngleDegrees.
+- Der Browser zeigt den roten Ziel-Bearing relativ zur Schiffsnase sowie einen
+  cyanfarbenen Marker fuer die aktuelle Lafettenachse und den Textwert TURRET.
+- Beim Verbindungsverlust wird ein gehaltener Turret-Befehl geloescht.
+
+Darstellung
+-----------
+- Die gestrichelte Visierlinie in der Godot-Flugansicht folgt der Lanzenlafette.
+- Das Spielerschiff zeigt die gedrehte Kanone und deren Bereitschaftsindikator.
+- Das Flight-HUD zeigt den aktuellen Turret-Winkel im LANZE-Panel.
+
+Neue und geaenderte Dateien
+---------------------------
+- SpaceSim.Core/Weapons/LanceAimState.cs
+- SpaceSim.Core/Weapons/LanceAimSystem.cs
+- SpaceSim.Core/Ships/ShipCommand.cs
+- SpaceSim.Core/Simulation/SimulationSettings.cs
+- SpaceSim.Core/Simulation/WorldState.cs
+- SpaceSim.Core/Simulation/Simulation.cs
+- SpaceSim.Core/Weapons/LanceSystem.cs
+- SpaceSim.Stations/Armarium/ArmariumCommandBuffer.cs
+- SpaceSim.Stations/Armarium/ArmariumState.cs
+- SpaceSim.Stations/StationServer.cs
+- SpaceSim.Stations/StationProtocol.cs
+- SpaceSim.Godot/Flight.cs
+- SpaceSim.Godot/Rendering/ShipView.cs
+- SpaceSim.Godot/Rendering/ArenaView.cs
+- SpaceSim.Godot/UI/FlightHud.cs
+- SpaceSim.Godot/Armarium/index.html
+- SpaceSim.Godot/Armarium/armarium.js
+- SpaceSim.Godot/Armarium/armarium.css
+- SpaceSim.Godot/project.godot
+- SpaceSim.Core.Tests/Program.cs
+- README.md
+- docs/StationProtocol.md
+
+Entfernt
+---------
+- SpaceSim.Stations/Armarium/ArmariumCommandMixer.cs
+
+Pruefung
+--------
+- Ausgangs-Build vor der Implementierung: bestanden, 0 Warnungen, 0 Fehler.
+- Ausgangstests vor der Implementierung: 58 von 58 bestanden.
+- Core-Tests nach der Implementierung: 60 von 60 bestanden.
+- Neuer Test: Lafette wird bei +/-5 Grad begrenzt und veraendert keine
+  Schiffswinkelgeschwindigkeit.
+- Neuer Test: Ein Ziel auf der Lafettenachse wird mit abgelenkter Lanze getroffen.
+- Der Stations-Smoketest prueft den turret-Befehl und den neuen State-Wert.
+
+Bekannte Grenzen
+---------------
+- Nur die Spielerlanze besitzt in V1.8 eine bewegliche Lafette.
+- Es gibt keine vertikale Ausrichtung, keine automatische Zielverfolgung und keine
+  Vorhalteberechnung.
+- Die Bruecke besitzt noch keine lokale Turret-Steuerung; die Lafette wird allein
+  ueber das Armarium bedient.

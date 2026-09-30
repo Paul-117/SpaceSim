@@ -25,7 +25,7 @@ internal static class LanceSystem
 
         Discharge(lance);
         Vector3 origin = world.Ship.Position;
-        Vector3 direction = Vector3.Normalize(world.Ship.Forward);
+        Vector3 direction = world.LanceDirection;
         float nearestDistance = settings.LanceRangeMeters;
         TargetState? hit = null;
         foreach (var target in world.Targets)
