@@ -3,8 +3,8 @@ namespace SpaceSim.Core.AI;
 /// <summary>All enemy decision thresholds live here; angles are stored as radians.</summary>
 public sealed record EnemyAiSettings
 {
-    /// <summary>Distance at which a patrol discovers the player and enables combat.</summary>
-    public float DetectionRangeMeters { get; init; } = 1_500f;
+    /// <summary>Detection distance when the player's physical reactor output is 100 percent.</summary>
+    public float DetectionRangeAtFullReactorMeters { get; init; } = 2_000f;
     public float PatrolSpawnMinimumDistanceMeters { get; init; } = 2_000f;
     public float PatrolSpawnMaximumDistanceMeters { get; init; } = 3_000f;
     public float PatrolCruiseSpeedMetersPerSecond { get; init; } = 100f;
@@ -34,7 +34,7 @@ public sealed record EnemyAiSettings
 
     internal void Validate()
     {
-        Positive(DetectionRangeMeters, nameof(DetectionRangeMeters));
+        Positive(DetectionRangeAtFullReactorMeters, nameof(DetectionRangeAtFullReactorMeters));
         Positive(PatrolSpawnMinimumDistanceMeters, nameof(PatrolSpawnMinimumDistanceMeters));
         Positive(PatrolSpawnMaximumDistanceMeters, nameof(PatrolSpawnMaximumDistanceMeters));
         Positive(PatrolCruiseSpeedMetersPerSecond, nameof(PatrolCruiseSpeedMetersPerSecond));
@@ -58,7 +58,7 @@ public sealed record EnemyAiSettings
         if (FlybySafetyDistanceMeters <= 100f)
             throw new ArgumentOutOfRangeException(nameof(FlybySafetyDistanceMeters), "Must exceed collision distance.");
         if (PatrolSpawnMaximumDistanceMeters <= PatrolSpawnMinimumDistanceMeters ||
-            DetectionRangeMeters >= PatrolSpawnMinimumDistanceMeters)
+            DetectionRangeAtFullReactorMeters > PatrolSpawnMinimumDistanceMeters)
             throw new ArgumentException("Patrol spawn distances must stay outside the detection range.");
         if (PatrolReactorOperatingLevelPercent is <= 0f or > 100f || !float.IsFinite(PatrolReactorOperatingLevelPercent))
             throw new ArgumentOutOfRangeException(nameof(PatrolReactorOperatingLevelPercent));

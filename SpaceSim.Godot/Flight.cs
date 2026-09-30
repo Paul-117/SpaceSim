@@ -3,6 +3,8 @@ using SpaceSim.Core.Ships;
 using SpaceSim.Core.Simulation;
 using SpaceSim.Core.Navigation;
 using SpaceSim.Core.Power;
+using SpaceSim.Core.AI;
+using SpaceSim.Core.Combat;
 using SpaceSim.GodotClient.Input;
 using SpaceSim.GodotClient.Rendering;
 using SpaceSim.GodotClient.UI;
@@ -50,6 +52,11 @@ public partial class Flight : Node
     private string? _capturePath;
     private bool _capturing;
     private float _cameraZoom = 1f;
+    private bool _freeCameraMode;
+    private Vector2 _freeCameraPosition;
+    private int? _selectedEnemyId;
+    private AutopilotController? _autopilot;
+    private int? _autopilotTargetId;
     private long _armariumTargetHitSequence;
     private float _armariumLastTargetHitBearingDegrees;
 
@@ -87,7 +94,7 @@ public partial class Flight : Node
         StartStationServer();
         if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest) _starMap.Open();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.9.4 | Core 60 Hz | Armarium and Reactorium station server enabled");
+        GD.Print("SpaceSim 1.9.5 | Core 60 Hz | Armarium and Reactorium station server enabled");
     }
 
     private Simulation CreateSimulation()
@@ -152,6 +159,27 @@ public partial class Flight : Node
     public override void _Input(InputEvent input)
     {
         if (_gameOver.Visible) return;
+        if (!_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false } autopilotKey &&
+            (autopilotKey.PhysicalKeycode == Key.P || autopilotKey.Keycode == Key.P))
+        {
+            ToggleAutopilot();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (!_starMap.Visible && input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click &&
+            IsTacticalMapPoint(click.Position) && _arena.TrySelectEnemy(ScreenToWorld(click.Position), out int enemyId))
+        {
+            _selectedEnemyId = enemyId;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (!_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false } key &&
+            (key.PhysicalKeycode == Key.Space || key.Keycode == Key.Space))
+        {
+            ToggleFreeCamera();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (input is InputEventMouseButton { Pressed: true } mouse &&
             (mouse.ButtonIndex == MouseButton.WheelUp || mouse.ButtonIndex == MouseButton.WheelDown))
         {
@@ -212,12 +240,13 @@ public partial class Flight : Node
         if (_warpScenario is null) _lastCommand = _smokeTest
             ? new ShipCommand(MainThrust: _simulation.World.Tick >= 181, YawLeft: _simulation.World.Tick >= 451,
                 FireLance: _simulation.World.Tick == 450)
-            : _keyboard.ReadCommand();
+            : _keyboard.ReadCommand(allowFlightControls: !_freeCameraMode);
         if (_enemySmokeTest)
         {
             _lastCommand = default;
             if (_simulation.World.Tick == 600) _pendingNavigation = new NavigationCommand(3);
         }
+        ApplyAutopilotControl();
         ApplyArmariumControl();
         float? reactorLevel = _reactoriumCommands.TryReadOperatingLevel(out float requestedLevel) ? requestedLevel : null;
         PowerAllocation? allocation = _reactoriumCommands.TryReadAllocation(out PowerAllocation requestedAllocation)
@@ -313,6 +342,11 @@ public partial class Flight : Node
         _previousRotation = _simulation.World.Ship.Rotation;
         _lastCommand = default;
         _pendingNavigation = default;
+        _freeCameraMode = false;
+        _freeCameraPosition = _ship.Position;
+        _selectedEnemyId = null;
+        _autopilot = null;
+        _autopilotTargetId = null;
         _arena.ResetVisuals();
         _sounds.ResetForNewSession();
         _starMap.Close();
@@ -335,12 +369,15 @@ public partial class Flight : Node
         _ship.Rotation = MathF.Atan2(forward.X, -forward.Z);
         _ship.Refresh(_lastCommand, _simulation.World.Lance.IsReady, _visualTime,
             _simulation.World.LanceAim.YawOffsetDegrees);
-        _camera.Position = _ship.Position;
-        _stars.CameraPosition = _ship.Position;
+        UpdateCamera((float)delta);
         _arena.ShipPosition = _ship.Position;
         _arena.ShipForward = new Vector2(forward.X, forward.Z).Normalized();
+        _arena.CameraPosition = _camera.Position;
         _arena.CameraZoom = _cameraZoom;
+        _arena.IsFreeCamera = _freeCameraMode;
+        UpdateSelectedContact();
         _hud.CameraZoom = _cameraZoom;
+        _hud.IsFreeCamera = _freeCameraMode;
         _hud.Command = _lastCommand;
         _thrusterPanel.Command = _lastCommand;
         _hud.ArmariumOnline = _stationServer?.IsArmariumOnline == true;
@@ -354,6 +391,116 @@ public partial class Flight : Node
             CaptureFrame();
         }
     }
+
+    private void ToggleFreeCamera()
+    {
+        if (_freeCameraMode)
+        {
+            _freeCameraMode = false;
+            _freeCameraPosition = _ship.Position;
+        }
+        else
+        {
+            _freeCameraMode = true;
+            _freeCameraPosition = _camera.Position;
+            // Prevent a partially held bridge throttle from being applied while WASD pans the tactical map.
+            _keyboard.Clear();
+        }
+    }
+
+    private void UpdateCamera(float delta)
+    {
+        if (!_freeCameraMode)
+        {
+            _camera.Position = _ship.Position;
+            _freeCameraPosition = _ship.Position;
+        }
+        else if (_keyboard.IsFocused)
+        {
+            Vector2 direction = new(
+                (Godot.Input.IsPhysicalKeyPressed(Key.D) ? 1f : 0f) - (Godot.Input.IsPhysicalKeyPressed(Key.A) ? 1f : 0f),
+                (Godot.Input.IsPhysicalKeyPressed(Key.S) ? 1f : 0f) - (Godot.Input.IsPhysicalKeyPressed(Key.W) ? 1f : 0f));
+            if (direction.LengthSquared() > 0f)
+                _freeCameraPosition += direction.Normalized() *
+                    TacticalCameraSettings.FreePanPixelsPerSecond / MathF.Max(0.001f, _cameraZoom) * delta;
+            _camera.Position = _freeCameraPosition;
+        }
+        _stars.CameraPosition = _camera.Position;
+    }
+
+    private bool IsTacticalMapPoint(Vector2 screenPosition)
+    {
+        Vector2 size = GetViewport().GetVisibleRect().Size;
+        return screenPosition.Y >= 154f && screenPosition.Y <= size.Y - 154f;
+    }
+
+    private Vector2 ScreenToWorld(Vector2 screenPosition) =>
+        _camera.Position + (screenPosition - GetViewport().GetVisibleRect().Size / 2f) / MathF.Max(0.001f, _cameraZoom);
+
+    private void UpdateSelectedContact()
+    {
+        var enemies = _simulation.World.CurrentEnemies.ToArray();
+        if (!enemies.Any(enemy => enemy.EnemyId == _selectedEnemyId))
+            _selectedEnemyId = enemies.FirstOrDefault()?.EnemyId;
+        _arena.SelectedEnemyId = _selectedEnemyId;
+        _hud.SelectedEnemyId = _selectedEnemyId;
+        EnemyShipState? autopilotTarget = CurrentAutopilotTarget();
+        if (_autopilot is not null && autopilotTarget is null)
+        {
+            _autopilot = null;
+            _autopilotTargetId = null;
+        }
+        _hud.AutopilotActive = _autopilot is not null;
+        _hud.AutopilotTargetName = autopilotTarget?.Name ?? "-";
+    }
+
+    private void ToggleAutopilot()
+    {
+        if (_autopilot is not null)
+        {
+            _autopilot = null;
+            _autopilotTargetId = null;
+            return;
+        }
+        EnemyShipState? target = _simulation.World.CurrentEnemies
+            .FirstOrDefault(enemy => enemy.EnemyId == _selectedEnemyId) ??
+            _simulation.World.CurrentEnemies.FirstOrDefault();
+        if (target is null) return;
+        _autopilot = new AutopilotController(_simulation.Settings.EnemyAi,
+            _simulation.Settings.ReverseThrustNewtons / _simulation.Settings.ShipMassKg);
+        _autopilotTargetId = target.EnemyId;
+        _keyboard.Clear();
+    }
+
+    private void ApplyAutopilotControl()
+    {
+        EnemyShipState? target = CurrentAutopilotTarget();
+        if (_autopilot is null || target is null)
+        {
+            if (_autopilot is not null)
+            {
+                _autopilot = null;
+                _autopilotTargetId = null;
+            }
+            return;
+        }
+        ShipCommand flight = _autopilot.Tick(_simulation.World.Ship, target.Ship);
+        // Preserve manual/Armarium weapon intents; the autopilot owns only flight controls.
+        _lastCommand = _lastCommand with
+        {
+            MainThrust = flight.MainThrust,
+            ReverseThrust = flight.ReverseThrust,
+            YawLeft = flight.YawLeft,
+            YawRight = flight.YawRight,
+            MainThrustIntensity = flight.MainThrust ? 1f : 0f,
+            ReverseThrustIntensity = flight.ReverseThrust ? 1f : 0f,
+            YawIntensity = 1f
+        };
+    }
+
+    private EnemyShipState? CurrentAutopilotTarget() => _autopilotTargetId is int targetId
+        ? _simulation.World.CurrentEnemies.FirstOrDefault(enemy => enemy.EnemyId == targetId)
+        : null;
 
     private async void CaptureFrame()
     {

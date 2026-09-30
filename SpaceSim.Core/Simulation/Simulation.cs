@@ -144,7 +144,7 @@ public sealed class Simulation
         ShipState ship = CreateShip(initial, profile.Ai.PatrolReactorOperatingLevelPercent);
         ship.Shield.CurrentShield = 0f;
         PowerDistributionSystem.ApplyEnemyPatrolDemand(ship, profile.Ai.PatrolPropulsionDraw);
-        encounter.AddEnemy(new EnemyShipState(enemyId, ship, difficulty),
+        encounter.AddEnemy(new EnemyShipState(enemyId, $"{profile.Name}-{enemyId:00}", profile.ShipClass, ship, difficulty),
             new EnemyAiController(profile.Ai, difficulty, Settings.ReverseThrustNewtons / Settings.ShipMassKg));
     }
 

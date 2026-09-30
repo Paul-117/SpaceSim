@@ -307,6 +307,12 @@ var tests = new (string Name, Action Run)[]
               sim.World.Encounters[2].Enemies.Single().Difficulty == EnemyDifficulty.Medium &&
               sim.World.Encounters[3].Enemies.Single().Difficulty == EnemyDifficulty.Hard,
             "Each jump point must use its configured enemy difficulty.");
+        EnemyShipState[] enemies = sim.World.Encounters.Skip(1).SelectMany(encounter => encounter.Enemies).ToArray();
+        Check(enemies.Select(enemy => enemy.Name).All(name => !string.IsNullOrWhiteSpace(name)) &&
+              enemies.Select(enemy => enemy.Name).Distinct().Count() == enemies.Length,
+            "Every configured enemy must have a distinct contact name.");
+        Check(enemies.Select(enemy => enemy.ShipClass).Distinct().Count() == enemies.Length,
+            "Each configured enemy must expose its contact class.");
         Check(sim.World.Encounters.SelectMany(e => e.Targets).Select(t => t.Id).Distinct().Count() == 10,
             "Target IDs must be unique across encounters.");
     }),
@@ -352,6 +358,26 @@ var tests = new (string Name, Action Run)[]
               enemy.Ship.Power.WeaponsRequested == enemy.Ship.Power.MaximumWeaponsDraw &&
               enemy.Ship.Power.ShieldsRequested == enemy.Ship.Power.MaximumShieldsDraw,
             "Detected enemy must request all three stations at their normal maximum.");
+    }),
+    ("Enemy detection range scales linearly with the player's physical reactor output", () =>
+    {
+        var halfOutside = DetectionSimulation(50f, 1_001f);
+        JumpToCombat(halfOutside);
+        halfOutside.Step(default);
+        Check(!halfOutside.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
+            "A 50 percent reactor must not be detected beyond one kilometre.");
+
+        var halfAtRange = DetectionSimulation(50f, 1_000f);
+        JumpToCombat(halfAtRange);
+        halfAtRange.Step(default);
+        Check(halfAtRange.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
+            "A 50 percent reactor must be detected at one kilometre.");
+
+        var fullAtRange = DetectionSimulation(100f, 2_000f);
+        JumpToCombat(fullAtRange);
+        fullAtRange.Step(default);
+        Check(fullAtRange.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
+            "A 100 percent reactor must be detected at two kilometres.");
     }),
     ("Encounter 4 activates its Hard enemy through shared physics", () =>
     {
@@ -487,6 +513,18 @@ var tests = new (string Name, Action Run)[]
               MathF.Abs(enemyBefore.AngularVelocity.Y - angularBefore) <= 0.6f / 60f + 0.0001f,
             "AI motion must remain bounded by the shared thruster physics.");
         NearVector(enemyBefore.Position, positionBefore + enemyBefore.Velocity / 60f, 0.0001f);
+    }),
+    ("Autopilot uses the shared flight rules and never creates a fire command", () =>
+    {
+        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(900, 0, 0), YawRadians: MathF.PI / 2));
+        JumpToCombat(sim);
+        var autopilot = new AutopilotController(sim.Settings.EnemyAi,
+            sim.Settings.ReverseThrustNewtons / sim.Settings.ShipMassKg);
+        ShipCommand command = autopilot.Tick(sim.World.Ship, sim.World.CurrentEnemy!.Ship);
+        Check(!command.FireLance && !command.AimLanceLeft && !command.AimLanceRight,
+            "Autopilot must leave every weapon intent to the bridge and Armarium.");
+        Check(autopilot.CurrentState is AutopilotState.Approach or AutopilotState.Attack or AutopilotState.Reposition,
+            "Autopilot must use a normal shared flight state.");
     }),
     ("AI context computes distance, relative velocity, closing speed and both aim errors", () =>
     {
@@ -925,6 +963,12 @@ static Simulation CombatSimulation(ShipInitialState player = default, ShipInitia
         Shield = shield ?? new ShieldSettings(), Power = power ?? new PowerSettings(), Hull = hull ?? new HullSettings()
     }, player,
         randomSeed: 42, enemyInitial: enemy ?? new ShipInitialState(new Vector3(0, 0, -1_000), YawRadians: MathF.PI), spawnEnemy: true);
+static Simulation DetectionSimulation(float playerReactorPercent, float enemyDistance) =>
+    new(new SimulationSettings
+    {
+        TargetCount = 0,
+        Power = new PowerSettings { DefaultReactorOperatingLevelPercent = playerReactorPercent }
+    }, enemyInitial: new ShipInitialState(new Vector3(0, 0, -enemyDistance), YawRadians: MathF.PI), spawnEnemy: true);
 static Simulation ExplosionScenario(float distance) => CombatSimulation(
     enemy: new ShipInitialState(new Vector3(0, 0, -distance)),
     shield: new ShieldSettings { LanceDamage = 200f }, hull: new HullSettings { MaximumHull = 1 });

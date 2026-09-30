@@ -1,4 +1,4 @@
-# SpaceSim 1.9.4
+# SpaceSim 1.9.5
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
@@ -54,7 +54,7 @@ abgebaut werden.
 **`Start.cmd` doppelklicken.** Das Skript baut das Projekt und startet das Spiel.
 Alternativ im Workspace:
 
-Der aktuelle Arbeitsstand ist **1.9.4**. Er umfasst die externe Waffenstation **Armarium**, das angeschlossene **Reactorium**, die überarbeitete Brückenansicht, Gegnerpatrouillen und den vorhaltebasierten Fly-by-Anflug. Der Stand ist fuer `v1.9.4` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Der aktuelle Arbeitsstand ist **1.9.5**. Er umfasst die externe Waffenstation **Armarium**, das angeschlossene **Reactorium**, die überarbeitete Brückenansicht, Gegnerpatrouillen, den vorhaltebasierten Fly-by-Anflug und die freie taktische Karte. Der Stand ist fuer `v1.9.5` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1
@@ -91,7 +91,11 @@ Godot-Projekt und die Pfade in den Skripten gemeinsam anpassen.
 | A | Drehmoment nach links |
 | D | Drehmoment nach rechts |
 | Mausrad hoch / runter | Taktische Ansicht hinein- / herauszoomen |
-| Leertaste | Lanze einmal abfeuern, wenn bereit |
+| F | Brückenlanze einmal abfeuern, wenn bereit |
+| Leertaste | Freie taktische Karte ein-/ausschalten |
+| W / A / S / D bei freier Karte | Kamera verschieben; das Schiff erhält dabei keinen Schubbefehl. Gegner-Randpfeile sind ausgeblendet, die gestrichelte Kurslinie bleibt sichtbar. |
+| Linksklick auf sichtbaren Gegner | Kontakt im rechten `CONTACTS`-Fenster auswählen |
+| P | Autopilot für den ausgewählten Kontakt ein-/ausschalten; Waffen bleiben manuell |
 | Button „Warp Drive“ | Sternenkarte jederzeit öffnen |
 | Klick auf einen anderen Encounter | Sprungpunkt auswählen |
 | Button „Jump“ | Zum ausgewählten Encounter springen, sobald der Drive bereit ist |
@@ -139,8 +143,8 @@ Karte leer. Der Sektor zeigt die Begrenzung der Lanzenlafette bei -5/+5 Grad, ih
 aktuelle cyanfarbene Ausrichtung und den Gegner nur innerhalb dieses Bereichs und
 der Reichweite. Die Armarium-Oberflaeche verwendet immer genau die aktuelle
 Fensterhoehe und benoetigt keine Scrollleiste. **Leertaste**
-im Browser sendet genau einen `fire_lance`-Befehl. Die lokale Leertaste bleibt parallel
-aktiv.
+im Browser sendet genau einen `fire_lance`-Befehl. Die lokale Brücke feuert mit
+**F**; die Leertaste des Armariums bleibt weiterhin dessen eigener Fire-Command.
 
 Die kompakte Waffenzeile zeigt rechts LANCE, Ladebalken und Lafettenwinkel. Links
 steht das Armarium-Energiefenster mit dem vom Core zugewiesenen Budget in PU und
@@ -267,7 +271,7 @@ Sie kennt keinen Risk-Level und keinen EVADE-State. Gegner schaetzen die eigene
 Hull-, Schild- und Systemlage nicht taktisch ein; sie verwenden REPOSITION nur,
 um Entfernung, Relativgeschwindigkeit und drohende Kollisionen zu korrigieren.
 
-### Gegnerpatrouille und Anflug 1.9.4
+### Gegnerpatrouille und Anflug 1.9.5
 
 Jeder Gegner beginnt zwei bis drei Kilometer vom lokalen Einstiegspunkt entfernt
 auf einem reproduzierbar zufaelligen Kurs mit 100 m/s Reisegeschwindigkeit. Seine
@@ -277,12 +281,30 @@ den Spieler zunaechst nicht entdeckt und laesst die vorhandene Kampf-FSM in
 50 PU nur fuer Propulsion, ohne Waffen- oder Schildleistung. Sein Schild beginnt
 leer und regeneriert in der Patrouille nicht.
 
-Bei **1.500 m** oder weniger entdeckt der Gegner den Spieler. Dann setzt er den
-Reaktor-Sollwert auf 100 Prozent und ramped dann mit der normalen Reaktorrate von
-50 auf 100 Prozent. Dabei fordert er die maximale Leistung aller drei
-Stationen an: 50 PU Propulsion, 40 PU Weapons und 35 PU Shields. Anschliessend
-geht er unmittelbar ueber `ACQUIRE` nach `APPROACH`. Die beim Hochfahren
-verfuegbare Leistung wird wie beim Spieler proportional begrenzt.
+Die Erkennungsdistanz richtet sich nach der tatsaechlichen Reaktorleistung des
+Spielers: bei 100 Prozent betraegt sie 2.000 m, bei 50 Prozent 1.000 m; die
+Werte dazwischen werden linear berechnet. Sobald der Gegner den Spieler erkennt,
+setzt er den Reaktor-Sollwert auf 100 Prozent und ramped dann mit der normalen
+Reaktorrate von 50 auf 100 Prozent. Dabei fordert er die maximale Leistung aller
+drei Stationen an: 50 PU Propulsion, 40 PU Weapons und 35 PU Shields.
+Anschliessend geht er unmittelbar ueber `ACQUIRE` nach `APPROACH`. Die beim
+Hochfahren verfuegbare Leistung wird wie beim Spieler proportional begrenzt.
+
+Jeder Gegner besitzt einen festen Kontaktnamen und eine Kontaktklasse. Der Name
+steht auf der taktischen Karte ueber dem Schiff. Ein Linksklick auf ein sichtbares
+Gegnerschiff waehlt ihn fuer das rechte **CONTACTS**-Fenster aus. Dieses zeigt
+Name, Klasse, Distanz, Relativgeschwindigkeit, aktuelle Reaktorleistung,
+Shield- und Weapons-Status sowie Hull Integrity. Die Auswahl ist reine
+Bruecken-Darstellung und veraendert weder Gegner-KI noch Simulationszustand.
+
+Mit **P** kann die Bruecke den Autopiloten fuer den ausgewaehlten Kontakt
+einschalten. Er verwendet dieselben Flugregeln wie die Gegner-KI: Vorhalteflug,
+kontrollierte Annäherung, Bremsen, Reposition und kollisionssichere Fly-bys.
+Er erzeugt ausschliesslich normale Flug-`ShipCommand`-Befehle und feuert nie.
+Lanzenfeuer und Lafettensteuerung bleiben beim Spieler beziehungsweise Armarium.
+Die Box oberhalb von `CONTACTS` zeigt `AUTOPILOT: ACTIVE` und den festgelegten
+Zielnamen. Wird das Ziel zerstoert oder der Encounter gewechselt, deaktiviert
+sich der Autopilot automatisch.
 
 `APPROACH` sagt den Spielerort voraus und plant eine Ankunft nahe der bevorzugten
 Kampfentfernung von 600 m. Die erlaubte Annäherungsgeschwindigkeit ergibt sich
@@ -342,8 +364,8 @@ gesperrt. Auswahl allein löst keinen Sprung aus; frühe Sprungbefehle werden
 verworfen und nicht für später vorgemerkt.
 
 **Die Sternenkarte pausiert das Spiel nicht.** Flug, Rotation, Waffenladung und
-Warp-Ladung laufen weiter. W/S, A/D und Leertaste bleiben bedienbar. Die Buttons
-übernehmen keinen Tastaturfokus, damit Leertaste keinen Sprung auslösen kann.
+Warp-Ladung laufen weiter. W/S, A/D und F bleiben bedienbar. Die Buttons
+übernehmen keinen Tastaturfokus, damit Tastatureingaben keinen Sprung auslösen.
 
 Nach einem Sprung schließt sich die Karte. Das Schiff startet am lokalen
 Einstiegspunkt `(0, 0, 0)`, mit Standardausrichtung und ohne lineare oder

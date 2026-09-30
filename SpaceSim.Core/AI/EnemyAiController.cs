@@ -44,7 +44,7 @@ public sealed class EnemyAiController
         LastContext = EnemyAiContext.Create(player, playerLance, enemy);
         if (!IsPlayerDetected)
         {
-            if (LastContext.DistanceToPlayer > _settings.DetectionRangeMeters)
+            if (LastContext.DistanceToPlayer > DetectionRangeFor(player))
                 return LastCommand = Patrol(enemy.Ship);
             IsPlayerDetected = true;
         }
@@ -96,6 +96,13 @@ public sealed class EnemyAiController
         float forwardSpeed = Vector3.Dot(enemy.Velocity, enemy.Forward);
         return new ShipCommand(MainThrust: forwardSpeed < _settings.PatrolCruiseSpeedMetersPerSecond);
     }
+
+    /// <summary>
+    /// The reactor's physical output is currently the only signature model:
+    /// 50 percent is visible at half of the full 2 km range, with linear interpolation.
+    /// </summary>
+    private float DetectionRangeFor(ShipState player) =>
+        _settings.DetectionRangeAtFullReactorMeters * Math.Clamp(player.Reactor.OperatingLevelPercent / 100f, 0f, 1f);
 
     private ShipCommand Approach(ShipState enemy, ShipState player)
     {

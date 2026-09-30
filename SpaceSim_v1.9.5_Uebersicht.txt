@@ -1,0 +1,111 @@
+SpaceSim V1.9.5 - Implementierungsuebersicht
+===============================================
+
+Version und Ziel
+---------------
+- Projektversion: 1.9.5.
+- V1.9.5 erweitert die Brueckenansicht um freie Kartenbewegung, kontaktbasierte
+  Gegnerinformationen und einen flugorientierten Autopiloten.
+- SpaceSim.Core bleibt fuer Physik, Reaktor, KI, Waffen und Schaden autoritativ.
+  Kartenansicht, Kontaktwahl und HUD sind reine Godot-Praesentation.
+
+Bedienung der Bruecke
+---------------------
+- F feuert die lokale Brueckenlanze einmal, wenn sie bereit ist.
+- Die Leertaste schaltet die taktische Kamera zwischen Schiffskopplung und freier
+  Ansicht um. Im freien Modus verschieben W/A/S/D ausschliesslich die Kamera;
+  sie erzeugen keine Schub- oder Drehbefehle fuer das Schiff.
+- Das Mausrad zoomt weiterhin unbegrenzt in die taktische Ansicht hinein oder
+  heraus. Ein zweiter Druck auf Leertaste koppelt die Kamera wieder an das Schiff.
+- P aktiviert oder deaktiviert den Autopiloten fuer den ausgewaehlten Kontakt.
+- Die Armarium-Leertaste bleibt dessen eigener Webstation-Feuerbefehl.
+
+Freie taktische Karte
+---------------------
+- Die Gegner-Randpfeile werden im freien Kameramodus ausgeblendet, weil sie nur
+  fuer die schiffszentrierte Ansicht sinnvoll sind.
+- Die gestrichelte Bug-/Kurslinie bleibt sichtbar. Sie beginnt immer am Schiff,
+  verlaeuft nie hinter dem Schiff und wird bis zum sichtbaren Kartenrand gezeichnet.
+- Strichlaenge, Luecke und Linienbreite werden mit dem Zoom gegen skaliert und
+  behalten damit ihre Bildschirmgroesse beim Herauszoomen.
+
+Gegnererkennung durch Reaktorsignatur
+-------------------------------------
+- Die gegnerische Patrouille verwendet die physische, aktuelle Reaktorleistung
+  des Spielerschiffs als vereinfachtes Erkennungssignal.
+- Bei 100 Prozent Reaktorleistung betraegt die Erkennungsreichweite 2.000 m.
+- Bei 50 Prozent Reaktorleistung betraegt sie 1.000 m.
+- Dazwischen gilt eine lineare Skalierung. Der Reaktor-Sollwert allein reicht
+  nicht; der reale Ramp-up bestimmt die Reichweite.
+- Nach der Erkennung bleibt die bestehende Reaktor-, Schild- und Kampfsequenz des
+  Gegners unveraendert: von 50 auf 100 Prozent hochfahren, Stationsleistung
+  anfordern, danach APPROACH/ATTACK/REPOSITION.
+
+Kontakte und Gegnernamen
+------------------------
+- Jedes vorhandene gegnerische Schiff besitzt einen festen, eindeutigen Namen
+  und eine Kontaktklasse. Aktuell: Kestrel-01 (Scout), Marauder-02 (Raider) und
+  Leviathan-03 (Destroyer).
+- Der Name wird direkt oberhalb des Gegner-Schiffs auf der gekoppelten wie auch
+  auf der freien taktischen Karte angezeigt.
+- Ein Linksklick auf ein sichtbares Gegner-Schiff waehlt diesen Kontakt aus. Die
+  Auswahl ist cyan markiert und bleibt eine lokale UI-Entscheidung.
+- Das alte linke Gegnerpanel wurde entfernt. Rechts zeigt CONTACTS fuer den
+  ausgewaehlten Gegner:
+  Name, Class, Distance, Relative Velocity, Reactor, Shields, Weapons und
+  Hull Integrity.
+- SHIELDS ist nur dann ONLINE (gruen), wenn Schildwert, Schildsystem und
+  Schildversorgung vorhanden sind; bei leerem Schild oder fehlender Versorgung
+  erscheint OFFLINE (rot).
+- WEAPONS zeigt CHARGING (gelb), bis die gegnerische Lanze bereit ist, und READY
+  (rot) bei voller Ladung.
+
+Autopilot
+---------
+- Der Autopilot liegt als eigener Core-Controller vor und nimmt beim Aktivieren
+  den aktuell ausgewaehlten Gegner als festes Ziel.
+- Seine drei Flugzustande sind APPROACH, ATTACK und REPOSITION. Er verwendet die
+  zentralen EnemyAiSettings des Gegners: bevorzugte Kampfentfernung, Vorhalteflug,
+  reale Reverse-Bremsleistung, Dreh-PD-Regler sowie den kollisionssicheren
+  tangentialen Fly-by.
+- Er gibt nur normale ShipCommands fuer MainThrust, ReverseThrust, YawLeft und
+  YawRight aus. Position, Geschwindigkeit und Rotation werden nie direkt gesetzt.
+- FireLance, AimLanceLeft und AimLanceRight bleiben unveraendert manuell. Die
+  Bruecke und das Armarium kontrollieren die Waffe weiterhin selbst.
+- Die HUD-Box oberhalb von CONTACTS zeigt AUTOPILOT: ACTIVE und TARGET mit dem
+  festgelegten Namen. Bei Zielzerstoerung oder Encounterwechsel wird er automatisch
+  deaktiviert.
+
+Neue und geaenderte Dateien
+---------------------------
+- Neu: SpaceSim.Core/AI/AutopilotController.cs
+- Geaendert: SpaceSim.Core/AI/EnemyAiController.cs,
+  EnemyAiSettings.cs und EnemyDifficulty.cs
+- Geaendert: SpaceSim.Core/Combat/EnemyShipState.cs und
+  SpaceSim.Core/Simulation/Simulation.cs
+- Geaendert: SpaceSim.Godot/Flight.cs, Input/KeyboardShipControl.cs,
+  Rendering/ArenaView.cs, Rendering/TacticalCameraSettings.cs,
+  UI/FlightHud.cs und project.godot
+- Geaendert: SpaceSim.Core.Tests/Program.cs und README.md
+
+Tests und Build
+---------------
+- Neuer Core-Test prueft die lineare Erkennung bei 50 Prozent/1.000 m und
+  100 Prozent/2.000 m.
+- Neuer Core-Test prueft eindeutige Gegnernamen und Kontaktklassen.
+- Neuer Core-Test prueft, dass der Autopilot dieselben Flugzustande verwendet
+  und niemals Feuer- oder Lafettenbefehle erzeugt.
+- Vollstaendiger Build: erfolgreich, 0 Warnungen, 0 Fehler.
+- Core- und Stations-Tests: 70/70 bestanden.
+- Godot-Headless-Smoke-Test: bestanden.
+
+Bekannte Grenzen
+---------------
+- Der Autopilot hat noch keinen eigenen Wegpunkt-, Docking- oder Warpmodus.
+- Das Ziel bleibt beim Aktivieren fest. Ein anderer Kontakt wird durch Anklicken
+  nur fuer CONTACTS ausgewaehlt; fuer ein neues Autopilotziel erst deaktivieren
+  und mit P erneut aktivieren.
+- Kontaktklassen sind derzeit Informationswerte. Sie veraendern nicht die
+  gemeinsame Schiffsphysik oder die Schwierigkeitsregel fuer die Feuertoleranz.
+- Die Erkennung bleibt absichtlich ein exakter Reichweitenvergleich. Sensoren,
+  Sichtlinien, Stealth und Fehler in Kontaktdaten folgen spaeter.

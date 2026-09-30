@@ -14,7 +14,7 @@ public sealed class KeyboardShipControl : IShipControl
     public void HandleInput(InputEvent input)
     {
         if (IsFocused && input is InputEventKey { Pressed: true, Echo: false } key &&
-            (key.PhysicalKeycode == Key.Space || key.Keycode == Key.Space))
+            (key.PhysicalKeycode == Key.F || key.Keycode == Key.F))
             _firePressed = true;
     }
 
@@ -24,15 +24,18 @@ public sealed class KeyboardShipControl : IShipControl
         _mainThrottle = 0f;
     }
 
-    public ShipCommand ReadCommand()
+    public ShipCommand ReadCommand() => ReadCommand(allowFlightControls: true);
+
+    /// <summary>The detached tactical camera can keep bridge fire input while reserving WASD for map movement.</summary>
+    public ShipCommand ReadCommand(bool allowFlightControls)
     {
         bool fire = _firePressed;
         _firePressed = false;
         if (!IsFocused) return default;
-        bool main = Godot.Input.IsPhysicalKeyPressed(Key.W);
-        bool reverse = Godot.Input.IsPhysicalKeyPressed(Key.S);
-        bool left = Godot.Input.IsPhysicalKeyPressed(Key.A);
-        bool right = Godot.Input.IsPhysicalKeyPressed(Key.D);
+        bool main = allowFlightControls && Godot.Input.IsPhysicalKeyPressed(Key.W);
+        bool reverse = allowFlightControls && Godot.Input.IsPhysicalKeyPressed(Key.S);
+        bool left = allowFlightControls && Godot.Input.IsPhysicalKeyPressed(Key.A);
+        bool right = allowFlightControls && Godot.Input.IsPhysicalKeyPressed(Key.D);
         _mainThrottle = Ramp(_mainThrottle, main);
         return new ShipCommand(main || _mainThrottle > 0f, reverse, left, right, fire,
             MainThrustIntensity: _mainThrottle);

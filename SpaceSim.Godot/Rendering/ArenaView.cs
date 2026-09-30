@@ -13,6 +13,12 @@ public partial class ArenaView : Node2D
     public WorldState World { get; set; } = null!;
     public Vector2 ShipPosition { get; set; }
     public Vector2 ShipForward { get; set; } = Vector2.Up;
+    /// <summary>World-space centre of the visible tactical camera rectangle.</summary>
+    public Vector2 CameraPosition { get; set; }
+    /// <summary>Detached mode suppresses ship-centred off-screen enemy guidance.</summary>
+    public bool IsFreeCamera { get; set; }
+    /// <summary>Presentation-only contact selection made from the bridge map.</summary>
+    public int? SelectedEnemyId { get; set; }
     /// <summary>Current Camera2D magnification; indicators use it to derive visible world bounds.</summary>
     public float CameraZoom { get; set; } = 1f;
 
@@ -54,7 +60,7 @@ public partial class ArenaView : Node2D
         if (World is null) return;
         DrawAimAndDrift();
         DrawEnemy();
-        DrawEnemyIndicator();
+        if (!IsFreeCamera) DrawEnemyIndicator();
         foreach (var target in World.Targets)
         {
             Vector2 center = ViewSettings.Project(target.Position);
@@ -115,6 +121,22 @@ public partial class ArenaView : Node2D
         _impacts.Clear();
     }
 
+    /// <summary>Returns the visible enemy under a bridge-map click in world pixel coordinates.</summary>
+    public bool TrySelectEnemy(Vector2 worldPosition, out int enemyId)
+    {
+        enemyId = 0;
+        if (World is null) return false;
+        float radius = 28f / MathF.Max(0.001f, CameraZoom);
+        var enemy = World.CurrentEnemies
+            .Select(candidate => new { Enemy = candidate, DistanceSquared = (ViewSettings.Project(candidate.Ship.Position) - worldPosition).LengthSquared() })
+            .Where(candidate => candidate.DistanceSquared <= radius * radius)
+            .OrderBy(candidate => candidate.DistanceSquared)
+            .FirstOrDefault();
+        if (enemy is null) return false;
+        enemyId = enemy.Enemy.EnemyId;
+        return true;
+    }
+
     private void DrawEnemy()
     {
         foreach (var enemy in World.CurrentEnemies)
@@ -138,11 +160,16 @@ public partial class ArenaView : Node2D
         DrawColoredPolygon(hull[..^1], new Color("3c1722"));
         DrawPolyline(hull, enemyColor, 1.8f, true);
         DrawLine(center, center + forward * 18, enemyColor, 2, true);
+        if (SelectedEnemyId == enemy.EnemyId)
+            DrawArc(center, 30, 0, MathF.Tau, 32, ViewSettings.Alpha(ViewSettings.Cyan, .8f), 1.5f, true);
+        Vector2 nameSize = ThemeDB.FallbackFont.GetStringSize(enemy.Name, fontSize: 12);
+        DrawString(ThemeDB.FallbackFont, center + new Vector2(-nameSize.X / 2f, -30), enemy.Name,
+            fontSize: 12, modulate: enemyColor);
         var ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
         if (ai?.LastCommand.MainThrust == true)
             DrawLine(center - forward * 15, center - forward * 32, new Color("ffb15c"), 4, true);
         DrawString(ThemeDB.FallbackFont, center + right * 25 + new Vector2(4, 4),
-            $"ENEMY {enemy.EnemyId}  {ai?.CurrentState.ToString().ToUpperInvariant()}  LANCE {enemy.Lance.ChargeFraction * 100:0}%",
+            $"{enemy.ShipClass.ToString().ToUpperInvariant()}  {ai?.CurrentState.ToString().ToUpperInvariant()}  LANCE {enemy.Lance.ChargeFraction * 100:0}%",
             fontSize: 12, modulate: enemyColor);
     }
 
@@ -182,26 +209,64 @@ public partial class ArenaView : Node2D
             ViewSettings.Cyan, 1, true);
     }
 
-    /// <summary>Draws the ship's bow axis to the actual visible edge in world coordinates.</summary>
+    /// <summary>Draws the bow axis through the current visible camera rectangle.</summary>
     private void DrawBowOrientationLine()
     {
         if (ShipForward.LengthSquared() < 0.000001f) return;
         Vector2 direction = ShipForward.Normalized();
-        Vector2 half = VisibleWorldHalfExtent(Vector2.Zero);
-        float xDistance = MathF.Abs(direction.X) < 0.000001f ? float.PositiveInfinity : half.X / MathF.Abs(direction.X);
-        float yDistance = MathF.Abs(direction.Y) < 0.000001f ? float.PositiveInfinity : half.Y / MathF.Abs(direction.Y);
-        float edgeDistance = MathF.Min(xDistance, yDistance);
-        if (!float.IsFinite(edgeDistance) || edgeDistance <= 0f) return;
+        if (!TryGetVisibleLineSegment(ShipPosition, direction, out float first, out float last)) return;
+        // The course guide always starts at the bow and never draws behind the ship,
+        // including while the tactical camera is detached.
+        first = MathF.Max(0f, first);
+        if (last <= first) return;
 
-        // Keep dash and gap visually stable while their world-space size follows the camera zoom.
+        // Keep dash, gap and thickness stable in screen pixels at every zoom level.
         float zoom = MathF.Max(0.001f, CameraZoom);
         float dashLength = 11f / zoom;
         float gapLength = 8f / zoom;
-        for (float start = 0f; start < edgeDistance; start += dashLength + gapLength)
+        float lineWidth = 1f / zoom;
+        for (float start = first; start < last; start += dashLength + gapLength)
         {
-            float end = MathF.Min(edgeDistance, start + dashLength);
+            float end = MathF.Min(last, start + dashLength);
             DrawLine(ShipPosition + direction * start, ShipPosition + direction * end,
-                ViewSettings.Alpha(ViewSettings.Cyan, 0.30f), 1, true);
+                ViewSettings.Alpha(ViewSettings.Cyan, 0.30f), lineWidth, true);
+        }
+    }
+
+    private bool TryGetVisibleLineSegment(Vector2 point, Vector2 direction, out float first, out float last)
+    {
+        Rect2 visible = VisibleWorldRect();
+        var intersections = new List<float>(4);
+        if (MathF.Abs(direction.X) > 0.000001f)
+        {
+            AddVerticalIntersection(visible.Position.X);
+            AddVerticalIntersection(visible.End.X);
+        }
+        if (MathF.Abs(direction.Y) > 0.000001f)
+        {
+            AddHorizontalIntersection(visible.Position.Y);
+            AddHorizontalIntersection(visible.End.Y);
+        }
+        if (intersections.Count < 2)
+        {
+            first = last = 0f;
+            return false;
+        }
+        first = intersections.Min();
+        last = intersections.Max();
+        return last - first > 0.0001f;
+
+        void AddVerticalIntersection(float x)
+        {
+            float t = (x - point.X) / direction.X;
+            float y = point.Y + direction.Y * t;
+            if (y >= visible.Position.Y - 0.001f && y <= visible.End.Y + 0.001f) intersections.Add(t);
+        }
+        void AddHorizontalIntersection(float y)
+        {
+            float t = (y - point.Y) / direction.Y;
+            float x = point.X + direction.X * t;
+            if (x >= visible.Position.X - 0.001f && x <= visible.End.X + 0.001f) intersections.Add(t);
         }
     }
 
@@ -223,4 +288,10 @@ public partial class ArenaView : Node2D
 
     private Vector2 VisibleWorldHalfExtent(Vector2 screenMargin) =>
         (GetViewportRect().Size / 2f - screenMargin) / MathF.Max(0.001f, CameraZoom);
+
+    private Rect2 VisibleWorldRect()
+    {
+        Vector2 half = VisibleWorldHalfExtent(Vector2.Zero);
+        return new Rect2(CameraPosition - half, half * 2f);
+    }
 }

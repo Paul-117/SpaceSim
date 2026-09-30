@@ -12,6 +12,10 @@ public partial class FlightHud : Control
     public ShipCommand Command { get; set; }
     public bool ArmariumOnline { get; set; }
     public bool IsFocused { get; set; } = true;
+    public bool IsFreeCamera { get; set; }
+    public int? SelectedEnemyId { get; set; }
+    public bool AutopilotActive { get; set; }
+    public string AutopilotTargetName { get; set; } = "-";
     public float CameraZoom { get; set; } = 1f;
     public Button WarpButton { get; } = CockpitButton.Create("Warp Drive");
     public event Action? WarpMapRequested;
@@ -52,7 +56,7 @@ public partial class FlightHud : Control
         DrawRect(new Rect2(0, height - 154, width, 154), new Color(.0196f, .0314f, .0549f, .96f));
         Text(new Vector2(30, 35), "SPACESIM", 23, ViewSettings.Text);
         Text(new Vector2(165, 34), $"/  {World.CurrentEncounter.Name.ToUpperInvariant()}", 13, ViewSettings.Muted);
-        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.9.4", 12, ViewSettings.Cyan);
+        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.9.5", 12, ViewSettings.Cyan);
         Text(new Vector2(width - 510, 33), ArmariumOnline ? "ARMARIUM ONLINE" : "ARMARIUM OFFLINE", 12,
             ArmariumOnline ? ViewSettings.Green : ViewSettings.Muted);
         DrawWarpLoadBar(width);
@@ -71,20 +75,11 @@ public partial class FlightHud : Control
         RightText(width - 30, height - 109, $"KURS {heading:000.0} DEG    SIM {World.TimeSeconds:0.0}s", 12, ViewSettings.Muted);
         DrawLine(new Vector2(30, height - 96), new Vector2(width - 30, height - 96), ViewSettings.Line, 1);
         var enemies = World.CurrentEnemies.ToArray();
-        if (enemies.FirstOrDefault() is { } enemy)
-        {
-            string state = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId)?.CurrentState.ToString().ToUpperInvariant() ?? "-";
-            Rect2 enemyPanel = new(30, 164, 340, 62);
-            Panel(enemyPanel);
-            Text(enemyPanel.Position + new Vector2(12, 22),
-                $"ENEMY {enemies.Length} / E{enemy.EnemyId} {state} / LANCE {enemy.Lance.ChargeFraction * 100:0}%",
-                11, new Color("ff6577"));
-            var ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
-            Text(enemyPanel.Position + new Vector2(12, 45),
-                $"{enemy.Difficulty.ToString().ToUpperInvariant()}  HULL {enemy.Ship.Hull.CurrentHull}/{enemy.Ship.Hull.MaximumHull}  SHD {enemy.Ship.Shield.CurrentShield:0}  {(ai?.IsPlayerDetected == true ? "COMBAT" : "PATROL")}",
-                10, new Color("ff6577"));
-        }
+        var enemy = enemies.FirstOrDefault(candidate => candidate.EnemyId == SelectedEnemyId) ?? enemies.FirstOrDefault();
+        if (enemy is not null) DrawContacts(width, enemy);
+        DrawAutopilot(width);
         if (!IsFocused) Text(new Vector2(width / 2 - 160, height / 2 + 70), "FENSTER INAKTIV  /  Eingabe aus", 14, ViewSettings.Amber);
+        else if (IsFreeCamera) Text(new Vector2(width / 2 - 170, height / 2 + 70), "KARTE FREI  /  WASD VERSCHIEBEN  /  LEERTASTE ZENTRIEREN", 12, ViewSettings.Cyan);
     }
 
     private void Metric(float x, float y, float width, string title, string value, string unit)
@@ -93,6 +88,44 @@ public partial class FlightHud : Control
         Text(new Vector2(x + 14, y + 21), title, 11, ViewSettings.Muted);
         Text(new Vector2(x + 14, y + 58), value, 27, ViewSettings.Text);
         Text(new Vector2(x + 24 + Font.GetStringSize(value, fontSize: 27).X, y + 57), unit, 12, ViewSettings.Muted);
+    }
+
+    private void DrawContacts(float width, SpaceSim.Core.Combat.EnemyShipState enemy)
+    {
+        Rect2 panel = new(width - 318, 164, 288, 230);
+        Panel(panel);
+        Text(panel.Position + new Vector2(12, 22), "CONTACTS", 12, ViewSettings.Cyan);
+        DrawContactLine(panel, 48, "NAME", enemy.Name, ViewSettings.Text);
+        DrawContactLine(panel, 70, "CLASS", enemy.ShipClass.ToString().ToUpperInvariant(), ViewSettings.Text);
+        float distance = (enemy.Ship.Position - World.Ship.Position).Length();
+        float relativeVelocity = (enemy.Ship.Velocity - World.Ship.Velocity).Length();
+        DrawContactLine(panel, 92, "DISTANCE", $"{distance:0} m", ViewSettings.Text);
+        DrawContactLine(panel, 114, "REL VELOCITY", $"{relativeVelocity:0.0} m/s", ViewSettings.Text);
+        DrawContactLine(panel, 142, "REACTOR", $"{enemy.Ship.Reactor.OperatingLevelPercent:0}%", ViewSettings.Text);
+        bool shieldsOnline = enemy.Ship.Shield.CurrentShield > 0.001f &&
+                             enemy.Ship.Systems.ShieldsCondition > 0.001f &&
+                             enemy.Ship.Power.ShieldsDraw > 0.001f;
+        DrawContactLine(panel, 164, "SHIELDS", shieldsOnline ? "ONLINE" : "OFFLINE",
+            shieldsOnline ? ViewSettings.Green : new Color("ff6577"));
+        bool lanceReady = enemy.Lance.IsReady;
+        DrawContactLine(panel, 186, "WEAPONS", lanceReady ? "READY" : "CHARGING",
+            lanceReady ? new Color("ff6577") : ViewSettings.Amber);
+        DrawContactLine(panel, 210, "HULL INTEGRITY", $"{enemy.Ship.Hull.CurrentHull}/{enemy.Ship.Hull.MaximumHull}", ViewSettings.Text);
+    }
+
+    private void DrawAutopilot(float width)
+    {
+        Rect2 panel = new(width - 318, 105, 288, 49);
+        Panel(panel);
+        Color stateColor = AutopilotActive ? ViewSettings.Green : ViewSettings.Muted;
+        Text(panel.Position + new Vector2(12, 20), $"AUTOPILOT: {(AutopilotActive ? "ACTIVE" : "STANDBY")}", 11, stateColor);
+        Text(panel.Position + new Vector2(12, 39), $"TARGET: {AutopilotTargetName}", 10, ViewSettings.Text);
+    }
+
+    private void DrawContactLine(Rect2 panel, float y, string label, string value, Color valueColor)
+    {
+        Text(panel.Position + new Vector2(12, y), $"{label}:", 10, ViewSettings.Muted);
+        Text(panel.Position + new Vector2(126, y), value, 11, valueColor);
     }
 
     private void Panel(Rect2 rect) => DrawStyleBox(_panelStyle, rect);
