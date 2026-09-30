@@ -19,3 +19,10 @@ h1 { margin: 0; font-size: clamp(1.7rem, 5vw, 3rem); letter-spacing: .12em; }
 footer { margin: 0; padding-top: 12px; border-top: 1px solid #28455b; display: flex; gap: 12px; align-items: center; color: #99b1c3; font-size: .82rem; letter-spacing: .1em; } footer #protocol { margin-left: auto; } kbd { padding: 4px 8px; border: 1px solid #6ee7ef; color: #6ee7ef; }
 @media (max-width: 560px) { .station { width: 100vw; border: 0; } footer { font-size: .7rem; gap: 7px; } .map-heading { font-size: .68rem; } }
 @media (max-height: 650px) { .station { grid-template-rows: auto minmax(70px, 1fr) auto minmax(120px, 2fr) auto; padding-block: 8px; gap: 6px; } header { padding-bottom: 8px; } h1 { font-size: 1.5rem; } .tactical-map-panel { padding-top: 7px; } footer { padding-top: 7px; } }
+
+.weapon-panel { display: grid; grid-template-columns: minmax(210px, .75fr) minmax(0, 1.25fr); gap: clamp(12px, 2vw, 28px); align-items: stretch; }
+.energy-panel { display: grid; align-content: center; gap: 8px; padding: 10px 14px; border: 1px solid #28455b; background: #07131e; color: #99b1c3; font-size: .76rem; letter-spacing: .1em; }
+.energy-panel strong { color: #6ee7ef; font-size: 1rem; letter-spacing: .04em; }
+.energy-panel p { margin: 0; color: #6ce3a0; font-size: .76rem; letter-spacing: .08em; }
+.energy-panel p.limited { color: #ffd06b; }.energy-panel p.offline { color: #ff7078; }
+@media (max-width: 560px) { .weapon-panel { grid-template-columns: minmax(150px, .8fr) minmax(0, 1.2fr); gap: 8px; } .energy-panel { padding: 8px; font-size: .62rem; } .energy-panel strong { font-size: .78rem; } .energy-panel p { font-size: .6rem; } }

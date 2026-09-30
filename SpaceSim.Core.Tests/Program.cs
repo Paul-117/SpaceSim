@@ -10,6 +10,7 @@ using SpaceSim.Core.Combat;
 using SpaceSim.Core.Power;
 using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
+using SpaceSim.Stations.Reactorium;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -226,7 +227,8 @@ var tests = new (string Name, Action Run)[]
         var empty = NewWeapons();
         ArmariumState noTarget = ArmariumStateBuilder.Build(empty.World);
         Check(!noTarget.TargetAvailable && noTarget.TargetBearingDegrees == 0f && noTarget.LanceCharge == 0f &&
-              noTarget.TargetDistanceMeters == 0f && noTarget.LanceTurretAngleDegrees == 0f,
+              noTarget.TargetDistanceMeters == 0f && noTarget.LanceTurretAngleDegrees == 0f &&
+              noTarget.AvailablePower == noTarget.MaximumPower && noTarget.LanceSystemCondition == 1f,
             "An empty encounter must not expose a target or world state.");
         Step(empty, 180);
         Check(ArmariumStateBuilder.Build(empty.World).LanceReady,
@@ -602,60 +604,155 @@ var tests = new (string Name, Action Run)[]
               fatal.Events.OfType<PlayerDestroyed>().Single().EnemyId == 2,
             "Fatal explosion events must preserve the source enemy and distance.");
     }),
-    ("Power allocation rejects overflow and negative allocations but accepts an atomic valid request", () =>
-    {
-        var sim = new Simulation(new SimulationSettings { TargetCount = 0 }, spawnEnemy: false);
-        var power = sim.World.Ship.Power;
-        sim.Step(default, default, new PowerAllocationCommand(5));
-        Check(!sim.Events.OfType<PowerAllocationChanged>().Any(), "Overflow allocation must be rejected.");
-        Near(power.PropulsionAllocation, 35);
-        sim.Step(default, default, new PowerAllocationCommand(-40));
-        Check(!sim.Events.OfType<PowerAllocationChanged>().Any(), "Negative allocation must be rejected.");
-        sim.Step(default, default, new PowerAllocationCommand(-5, 5));
-        Check(sim.Events.OfType<PowerAllocationChanged>().Single() is { Propulsion: 30, Weapons: 40, Shields: 30 },
-            "Valid allocation must be applied atomically.");
-        Near(power.AllocatedPower, 100);
-    }),
-    ("Propulsion power linearly scales thrust and torque while inertia persists at zero", () =>
-    {
-        var half = New();
-        half.Step(default, default, new PowerAllocationCommand(-50));
-        Step(half, 60, new ShipCommand(MainThrust: true, YawLeft: true));
-        Near(half.World.Ship.Velocity.Length(), 6f, 0.01f);
-        Near(half.World.Ship.AngularVelocity.Y, 0.3f, 0.01f);
-        half.Step(default, default, new PowerAllocationCommand(-50));
-        var velocity = half.World.Ship.Velocity;
-        var angular = half.World.Ship.AngularVelocity.Y;
-        Step(half, 60, new ShipCommand(MainThrust: true, YawLeft: true));
-        NearVector(half.World.Ship.Velocity, velocity, 0.001f);
-        Near(half.World.Ship.AngularVelocity.Y, angular, 0.001f);
-    }),
-    ("Weapons power controls charge rate and preserves existing lance charge", () =>
+    ("Reactorium allocations create independent player station budgets", () =>
     {
         var sim = new Simulation(new SimulationSettings
         {
             TargetCount = 0,
-            Power = new PowerSettings { DefaultPropulsionPower = 0, DefaultWeaponsPower = 50, DefaultShieldsPower = 0 }
+            Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 40f }
         }, spawnEnemy: false);
-        Step(sim, 359);
-        Check(!sim.World.Lance.IsReady, "Fifty percent weapons power must need six seconds.");
+        var power = sim.World.Ship.Power;
+        sim.Step(new ShipCommand(MainThrust: true), default, new ReactorCommand(Allocation: new PowerAllocation(100f, 0f, 0f)));
+        Near(power.MaximumPropulsionDraw, 50f);
+        Near(power.MaximumWeaponsDraw, 40f);
+        Near(power.MaximumShieldsDraw, 35f);
+        Near(power.PropulsionAllocationPercent, 100f);
+        Near(power.WeaponsAllocationPercent, 0f);
+        Near(power.ShieldsAllocationPercent, 0f);
+        Near(power.PropulsionAvailable, 50f);
+        Near(power.RequestedPower, 90f);
+        Near(power.DemandScale, 1f);
+        Near(power.CurrentDraw, 50f);
+        Near(sim.World.Ship.Reactor.CurrentDraw, 50f);
+    }),
+    ("Reactorium rejects allocations above one hundred percent and honors station PU limits", () =>
+    {
+        var sim = new Simulation(new SimulationSettings { TargetCount = 0 }, spawnEnemy: false);
+        sim.Step(default, default, new ReactorCommand(Allocation: new PowerAllocation(100f, 0f, 0f)));
+        var power = sim.World.Ship.Power;
+        Near(power.PropulsionAvailable, 50f);
+        Near(power.PropulsionAllocationPercent, 40f);
+        sim.Step(default, default, new ReactorCommand(Allocation: new PowerAllocation(70f, 20f, 20f)));
+        Near(power.PropulsionAllocationPercent, 40f);
+        Near(power.ShieldsAllocationPercent, 0f);
+        Near(power.WeaponsAllocationPercent, 0f);
+    }),
+    ("Thirty auxiliary PU are reserved before the main thruster receives power", () =>
+    {
+        var sim = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = PropulsionOnlyPower() with { ReactorRampSeconds = .001f }
+        }, spawnEnemy: false);
+        Step(sim, 180);
+        sim.Step(new ShipCommand(MainThrust: true), default, new ReactorCommand(28f, new PowerAllocation(100f, 0f, 0f)));
+        var power = sim.World.Ship.Power;
+        Near(power.PropulsionAvailable, 35f);
+        Near(power.PropulsionDraw, 35f);
+        Near(power.AuxiliaryThrusterDraw, 30f);
+        Near(power.MainThrusterDraw, 5f);
+        Near(power.MainThrusterAvailable, 5f);
+        Near(power.MainThrusterPowerFactor, .25f);
+    }),
+    ("Below thirty PU reverse and yaw thrusters scale linearly while main thrust is unavailable", () =>
+    {
+        var sim = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = PropulsionOnlyPower() with { ReactorRampSeconds = .001f }
+        }, spawnEnemy: false);
+        Step(sim, 180);
+        sim.Step(new ShipCommand(MainThrust: true), default, new ReactorCommand(20f, new PowerAllocation(100f, 0f, 0f)));
+        Near(sim.World.Ship.Power.AuxiliaryThrusterPowerFactor, 5f / 6f, .001f);
+        Near(sim.World.Ship.Power.MainThrusterPowerFactor, 0f);
+        Step(sim, 60, new ShipCommand(ReverseThrust: true));
+        NearVector(sim.World.Ship.Velocity, new Vector3(0f, 0f, 5f), .01f);
+        Step(sim, 60, new ShipCommand(YawLeft: true));
+        Near(sim.World.Ship.AngularVelocity.Y, .5f, .01f);
+    }),
+    ("Auxiliary thrusters retain priority over the main thruster while inertia persists at zero", () =>
+    {
+        var half = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = PropulsionOnlyPower() with { DefaultReactorOperatingLevelPercent = 20f }
+        }, spawnEnemy: false);
+        half.Step(new ShipCommand(MainThrust: true), default, new ReactorCommand(Allocation: new PowerAllocation(100f, 0f, 0f)));
+        Step(half, 689, new ShipCommand(MainThrust: true));
+        Near(half.World.Ship.Velocity.Length(), 0f, 0.01f);
+        Near(half.World.Ship.Power.AuxiliaryThrusterDraw, 25f, 0.01f);
+        Near(half.World.Ship.Power.MainThrusterDraw, 0f, 0.01f);
+        var zero = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = PropulsionOnlyPower() with { DefaultReactorOperatingLevelPercent = 0f }
+        }, new ShipInitialState(Velocity: new Vector3(7f, 0f, 0f), YawRateRadiansPerSecond: .3f), spawnEnemy: false);
+        Vector3 velocity = zero.World.Ship.Velocity;
+        float angular = zero.World.Ship.AngularVelocity.Y;
+        Step(zero, 60, new ShipCommand(MainThrust: true, YawLeft: true));
+        NearVector(zero.World.Ship.Velocity, velocity, 0.001f);
+        Near(zero.World.Ship.AngularVelocity.Y, angular, 0.001f);
+    }),
+    ("Armarium allocation controls weapon charging without changing station limits", () =>
+    {
+        var sim = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 16f }
+        }, spawnEnemy: false);
+        sim.Step(default, default, new ReactorCommand(Allocation: new PowerAllocation(0f, 0f, 100f)));
+        Step(sim, 358);
+        Check(!sim.World.Lance.IsReady, "Half Armarium power must not charge a lance in under six seconds.");
         Step(sim, 1);
-        Check(sim.World.Lance.IsReady, "Fifty percent weapons power must finish after six seconds.");
-        var stopped = NewWeapons();
+        Check(sim.World.Lance.IsReady, "Twenty allocated PU must charge the lance in six seconds.");
+        var stopped = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = WeaponsOnlyPower() with { ReactorRampSeconds = .001f }
+        }, spawnEnemy: false);
         Step(stopped, 90);
         float charge = stopped.World.Lance.ChargeFraction;
-        stopped.Step(default, default, new PowerAllocationCommand(WeaponsDelta: -100));
+        stopped.Step(default, default, new ReactorCommand(0f));
         Step(stopped, 300);
         Near(stopped.World.Lance.ChargeFraction, charge, 0.0001f);
-        stopped.Step(default, default, new PowerAllocationCommand(WeaponsDelta: 100));
+        stopped.Step(default, default, new ReactorCommand(100f));
         Step(stopped, 90);
         Check(stopped.World.Lance.IsReady, "Restored weapons power must continue from retained charge.");
+    }),
+    ("Reactor ramps from zero to full output in sixty simulation seconds", () =>
+    {
+        var sim = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 0f }
+        }, spawnEnemy: false);
+        sim.Step(default, default, new ReactorCommand(100f));
+        Near(sim.World.Ship.Reactor.OperatingLevelPercent, 100f / 3600f, .0001f);
+        Step(sim, 3598);
+        Check(sim.World.Ship.Reactor.OperatingLevelPercent < 100f, "Reactor must not reach full output before sixty seconds.");
+        Step(sim, 1);
+        Near(sim.World.Ship.Reactor.OperatingLevelPercent, 100f, .001f);
+        Near(sim.World.Ship.Reactor.AvailablePower, 125f, .01f);
+    }),
+    ("Fuel depletion stops the authoritative reactor and all delivered power", () =>
+    {
+        var sim = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = new PowerSettings { ReactorFuelCapacity = .01f }
+        }, spawnEnemy: false);
+        Step(sim, 60, new ShipCommand(MainThrust: true));
+        Check(sim.World.Ship.Reactor.IsFuelDepleted, "The configured fuel reserve must deplete.");
+        Near(sim.World.Ship.Reactor.AvailablePower, 0f);
+        Near(sim.World.Ship.Reactor.OperatingLevelPercent, 0f);
+        Near(sim.World.Ship.Power.CurrentDraw, 0f);
+        Near(sim.World.Ship.Power.PropulsionDraw, 0f);
     }),
     ("A ready lance fires after weapons power is removed and still resets charge", () =>
     {
         var sim = WithTargets(new Vector3(0, 0, -300));
         Step(sim, 180);
-        sim.Step(default, default, new PowerAllocationCommand(WeaponsDelta: -100));
+        sim.Step(default, default, new ReactorCommand(0f));
         sim.Step(new ShipCommand(FireLance: true));
         Check(sim.Events.OfType<WeaponFired>().Any() && sim.World.Targets.Count == 0, "Ready lance must fire without weapons power.");
         Near(sim.World.Lance.ChargeFraction, 0);
@@ -689,7 +786,7 @@ var tests = new (string Name, Action Run)[]
         JumpToCombat(sim);
         for (int i = 0; i < 3_600 && sim.World.Ship.Shield.CurrentShield > 0f; i++) sim.Step(default);
         Check(sim.World.Ship.Shield.CurrentShield == 0f && sim.World.GameState == GameState.Running,
-            $"First enemy lance hit must deplete the player shield without GameOver (state {sim.World.CurrentEncounter.EnemyAi!.CurrentState}, distance {sim.World.CurrentEncounter.EnemyAi.LastContext.DistanceToPlayer:0}, closing {sim.World.CurrentEncounter.EnemyAi.LastContext.ClosingSpeed:0}, velocity {sim.World.CurrentEnemy!.Ship.Velocity.Length():0}, power {sim.World.CurrentEnemy!.Ship.Power.PropulsionAllocation:0}, aim {MathF.Abs(sim.World.CurrentEncounter.EnemyAi.LastContext.EnemyAimError) * 180 / MathF.PI:0}).");
+            $"First enemy lance hit must deplete the player shield without GameOver (state {sim.World.CurrentEncounter.EnemyAi!.CurrentState}, distance {sim.World.CurrentEncounter.EnemyAi.LastContext.DistanceToPlayer:0}, closing {sim.World.CurrentEncounter.EnemyAi.LastContext.ClosingSpeed:0}, velocity {sim.World.CurrentEnemy!.Ship.Velocity.Length():0}, power {sim.World.CurrentEnemy!.Ship.Power.PropulsionDraw:0}, aim {MathF.Abs(sim.World.CurrentEncounter.EnemyAi.LastContext.EnemyAimError) * 180 / MathF.PI:0}).");
         Check(sim.Events.OfType<ShieldHit>().Any(hit => hit.TargetOwner == WeaponOwner.Player),
             "Player shield hit event is required.");
     }),
@@ -702,8 +799,8 @@ var tests = new (string Name, Action Run)[]
         var ai = sim.World.CurrentEncounter.EnemyAi!;
         Check(ai.CurrentRiskLevel == EnemyRiskLevel.Aggressive && ai.CurrentState != EnemyAiState.Evade,
             "A full shield and full hull must not evade just because the player lance is ready.");
-        Check(enemy.Ship.Power.WeaponsAllocation == sim.Settings.Power.AttackProfile.Weapons ||
-              enemy.Ship.Power.WeaponsAllocation == sim.Settings.Power.RepositionProfile.Weapons,
+        Check(enemy.Ship.Power.WeaponsRequested == sim.Settings.Power.AttackProfile.Weapons ||
+              enemy.Ship.Power.WeaponsRequested == sim.Settings.Power.RepositionProfile.Weapons,
             "The aggressive AI must still use an ordinary configured power profile.");
     }),
     ("Zero shield allocation prevents recharge and recharge never exceeds maximum", () =>
@@ -757,11 +854,17 @@ var tests = new (string Name, Action Run)[]
         var sim = New();
         Step(sim, 3000, new ShipCommand(MainThrust: true));
         Near(sim.World.Ship.Velocity.Length(), 500f, 0.1f);
-        sim.Step(default, default, new PowerAllocationCommand(-50));
+        sim.Step(default, default, new ReactorCommand(20f));
         Step(sim, 60, new ShipCommand(MainThrust: true));
         Check(sim.World.Ship.Velocity.Length() >= 499f, "Reducing power must not clamp existing velocity.");
         Step(sim, 60, new ShipCommand(ReverseThrust: true));
         Check(sim.World.Ship.Velocity.Length() < 499f, "Reverse thrust must brake while overspeed.");
+    }),
+    ("Bridge main throttle timings use the configured five-second rise and three-second fall", () =>
+    {
+        var power = new PowerSettings();
+        Near(power.BridgeMainThrottleRiseSeconds, 5f);
+        Near(power.BridgeMainThrottleFallSeconds, 3f);
     }),
     ("Enemy risk assessment is deterministic and health aware", () =>
     {
@@ -819,21 +922,14 @@ static Simulation CombatSimulation(ShipInitialState player = default, ShipInitia
 static Simulation ExplosionScenario(float distance) => CombatSimulation(
     enemy: new ShipInitialState(new Vector3(0, 0, -distance)),
     shield: new ShieldSettings { LanceDamage = 200f }, hull: new HullSettings { MaximumHull = 1 });
-static PowerSettings PropulsionOnlyPower() => new()
-{
-    DefaultPropulsionPower = 100f, DefaultWeaponsPower = 0f, DefaultShieldsPower = 0f
-};
-static PowerSettings WeaponsOnlyPower() => new()
-{
-    DefaultPropulsionPower = 0f, DefaultWeaponsPower = 100f, DefaultShieldsPower = 0f
-};
+static PowerSettings PropulsionOnlyPower() => new();
+static PowerSettings WeaponsOnlyPower() => new();
 static PowerSettings CombatPower() => new()
 {
-    DefaultPropulsionPower = 0f, DefaultWeaponsPower = 100f, DefaultShieldsPower = 0f,
-    AttackProfile = new PowerProfile(0f, 100f, 0f),
-    DefendProfile = new PowerProfile(0f, 0f, 100f),
-    EvadeProfile = new PowerProfile(60f, 10f, 30f),
-    RepositionProfile = new PowerProfile(60f, 40f, 0f),
+    AttackProfile = new PowerProfile(0f, 40f, 0f),
+    DefendProfile = new PowerProfile(0f, 0f, 35f),
+    EvadeProfile = new PowerProfile(50f, 10f, 30f),
+    RepositionProfile = new PowerProfile(50f, 40f, 0f),
     MinimumProfileDuration = 1f
 };
 static void JumpToCombat(Simulation sim)
@@ -853,14 +949,18 @@ static void Step(Simulation simulation, int count, ShipCommand command = default
 static async Task StationServerSmokeAsync()
 {
     var commands = new ArmariumCommandBuffer();
+    var reactorCommands = new ReactoriumCommandBuffer();
     var assets = new Dictionary<string, string>
     {
         ["index.html"] = "<main>ARMARIUM</main>",
         ["armarium.css"] = "body{}",
-        ["armarium.js"] = ""
+        ["armarium.js"] = "",
+        ["reactorium/index.html"] = "<main>REACTORIUM</main>"
     };
-    using var server = new StationServer(new StationServerOptions { Port = 0, StateUpdatesPerSecond = 30 }, assets, commands);
-    server.UpdateState(new ArmariumState(true, -12.4f, 640f, 0.72f, false, 2.5f, 3, -12.4f, 42));
+    using var server = new StationServer(new StationServerOptions { Port = 0, StateUpdatesPerSecond = 30 }, assets, commands, reactorCommands);
+    server.UpdateState(new ArmariumState(true, -12.4f, 640f, 0.72f, false, 2.5f, 3, -12.4f, 32f, 40f, 1f, 42));
+    server.UpdateReactoriumState(new ReactoriumState(75f, 70f, 87.5f, 125f, 50f, 100f, 100f, 3.5f,
+        40f, 28f, 32f, 35f, 24.5f, 28f, 50f, 35f, 40f, 42));
     server.Start();
     using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
     string page = await http.GetStringAsync(server.ArmariumUrl);
@@ -882,7 +982,9 @@ static async Task StationServerSmokeAsync()
           state.RootElement.GetProperty("targetHitSequence").GetInt64() == 3 &&
           MathF.Abs(state.RootElement.GetProperty("lastTargetHitBearingDegrees").GetSingle() + 12.4f) < 0.001f &&
           MathF.Abs(state.RootElement.GetProperty("targetDistanceMeters").GetSingle() - 640f) < 0.001f &&
-          MathF.Abs(state.RootElement.GetProperty("targetBearingDegrees").GetSingle() + 12.4f) < 0.001f,
+          MathF.Abs(state.RootElement.GetProperty("targetBearingDegrees").GetSingle() + 12.4f) < 0.001f &&
+          MathF.Abs(state.RootElement.GetProperty("availablePower").GetSingle() - 32f) < 0.001f &&
+          MathF.Abs(state.RootElement.GetProperty("maximumPower").GetSingle() - 40f) < 0.001f,
         "Station server must transmit only the current Armarium snapshot.");
     await SendWebSocketJsonAsync(socket, new { type = "fire_lance" });
     bool received = SpinWait.SpinUntil(() => commands.ReadCommand().FireLance, TimeSpan.FromSeconds(1));
@@ -890,6 +992,28 @@ static async Task StationServerSmokeAsync()
     await SendWebSocketJsonAsync(socket, new { type = "turret", direction = "left", active = true });
     bool turretReceived = SpinWait.SpinUntil(() => commands.ReadCommand().AimLanceLeft, TimeSpan.FromSeconds(1));
     Check(turretReceived, "Station turret input must reach the thread-safe command buffer.");
+
+    string reactorPage = await http.GetStringAsync(server.ReactoriumUrl);
+    Check(reactorPage.Contains("REACTORIUM"), "Station server must serve the Reactorium page.");
+    using var reactorSocket = new ClientWebSocket();
+    await reactorSocket.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/station"), CancellationToken.None);
+    await SendWebSocketJsonAsync(reactorSocket, new { type = "hello", station = "reactorium", protocolVersion = StationProtocol.Version });
+    using JsonDocument reactorWelcome = JsonDocument.Parse(await ReceiveWebSocketTextAsync(reactorSocket));
+    Check(reactorWelcome.RootElement.GetProperty("station").GetString() == "reactorium" && server.IsReactoriumOnline,
+        "Station server must accept a Reactorium handshake.");
+    using JsonDocument reactorState = JsonDocument.Parse(await ReceiveWebSocketTextAsync(reactorSocket));
+    Check(reactorState.RootElement.GetProperty("type").GetString() == "reactorium_state" &&
+          MathF.Abs(reactorState.RootElement.GetProperty("outputPower").GetSingle() - 87.5f) < 0.001f &&
+          MathF.Abs(reactorState.RootElement.GetProperty("targetOperatingLevelPercent").GetSingle() - 75f) < 0.001f,
+        "Reactorium must receive only its own reactor snapshot.");
+    await SendWebSocketJsonAsync(reactorSocket, new { type = "reactor_level", levelPercent = 40f });
+    Check(SpinWait.SpinUntil(() => reactorCommands.TryReadOperatingLevel(out float level) && MathF.Abs(level - 40f) < 0.001f,
+        TimeSpan.FromSeconds(1)), "Reactorium level commands must reach the simulation buffer.");
+    await SendWebSocketJsonAsync(reactorSocket, new { type = "power_allocation", bridgePercent = 40f, shieldsPercent = 28f, armariumPercent = 32f });
+    Check(SpinWait.SpinUntil(() => reactorCommands.TryReadAllocation(out PowerAllocation allocation) &&
+        MathF.Abs(allocation.BridgePercent - 40f) < 0.001f && MathF.Abs(allocation.ShieldsPercent - 28f) < 0.001f &&
+        MathF.Abs(allocation.ArmariumPercent - 32f) < 0.001f, TimeSpan.FromSeconds(1)),
+        "Reactorium allocation commands must reach the simulation buffer atomically.");
 }
 static async Task SendWebSocketJsonAsync(ClientWebSocket socket, object value)
 {

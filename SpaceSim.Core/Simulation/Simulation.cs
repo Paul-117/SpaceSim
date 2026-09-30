@@ -57,14 +57,18 @@ public sealed class Simulation
     }
 
     public void Step(ShipCommand command, NavigationCommand navigation = default,
-        PowerAllocationCommand powerAllocation = default)
+        ReactorCommand reactorCommand = default)
     {
         _events.Clear();
         if (World.GameState == GameState.GameOver) return;
 
-        if (PowerDistributionSystem.TryApply(World.Ship.Power, powerAllocation))
-            _events.Add(new PowerAllocationChanged(World.Ship.Power.PropulsionAllocation,
-                World.Ship.Power.WeaponsAllocation, World.Ship.Power.ShieldsAllocation));
+        if (reactorCommand.OperatingLevelPercent is float level)
+            PowerDistributionSystem.SetReactorOperatingLevel(World.Ship.Reactor, level);
+        if (reactorCommand.Allocation is PowerAllocation allocation)
+            PowerDistributionSystem.SetPlayerAllocation(World.Ship.Power, allocation);
+
+        PowerDistributionSystem.StepReactor(World.Ship.Reactor, Settings.Power);
+        PowerDistributionSystem.ApplyPlayerDemand(World.Ship, World.Lance, command);
         ShieldSystem.Recharge(World.Ship.Shield, World.Ship.Power.ShieldsPowerFactor * World.Ship.Systems.ShieldsCondition, Settings.Shield);
         LanceSystem.Charge(World.Lance, Settings, World.Ship.Power.WeaponsPowerFactor * World.Ship.Systems.WeaponsCondition);
         LanceAimSystem.Step(World.LanceAim, command, Settings);
@@ -75,7 +79,8 @@ public sealed class Simulation
             EnemyAiController? ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
             enemyCommands[enemy.EnemyId] = ai?.Tick(enemy, World.Ship, World.Lance,
                 Settings.LanceRangeMeters, World.GameState) ?? default;
-            if (ai is not null) PowerDistributionSystem.ApplyProfile(enemy.Ship.Power, ai.CurrentPowerProfile);
+            PowerDistributionSystem.StepReactor(enemy.Ship.Reactor, Settings.Power);
+            if (ai is not null) PowerDistributionSystem.ApplyProfile(enemy.Ship, ai.CurrentPowerProfile);
             ShieldSystem.Recharge(enemy.Ship.Shield, enemy.Ship.Power.ShieldsPowerFactor * enemy.Ship.Systems.ShieldsCondition, Settings.Shield);
             LanceSystem.Charge(enemy.Lance, Settings, enemy.Ship.Power.WeaponsPowerFactor * enemy.Ship.Systems.WeaponsCondition);
         }
@@ -115,7 +120,7 @@ public sealed class Simulation
     }
 
     private ShipState CreateShip(ShipInitialState initial) => new(Settings.ShipMassKg, Settings.YawMomentOfInertia,
-        PowerDistributionSystem.Create(Settings.Power), ShieldSystem.Create(Settings.Shield),
+        PowerDistributionSystem.CreateReactor(Settings.Power), PowerDistributionSystem.Create(Settings.Power), ShieldSystem.Create(Settings.Shield),
         HullSystem.Create(Settings.Hull), new SubsystemState())
     {
         Position = initial.Position,
@@ -131,7 +136,7 @@ public sealed class Simulation
         profile.Ai.Validate();
         profile.Power.Validate();
         ShipState ship = CreateShip(initial);
-        PowerDistributionSystem.ApplyProfile(ship.Power, profile.Power.DefaultProfile);
+        PowerDistributionSystem.ApplyProfile(ship, profile.Power.DefaultProfile);
         encounter.AddEnemy(new EnemyShipState(enemyId, ship, difficulty),
             new EnemyAiController(profile.Ai, profile.Power, difficulty, seed));
     }

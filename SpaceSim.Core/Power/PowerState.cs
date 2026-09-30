@@ -1,43 +1,69 @@
 namespace SpaceSim.Core.Power;
 
-/// <summary>Authoritative reactor output allocation for one ship.</summary>
+/// <summary>
+/// Demand, manually assigned station budgets and delivered power for one ship.
+/// </summary>
 public sealed class PowerState
 {
-    public float AvailablePower { get; }
-    public float NominalSystemPower { get; }
-    public float AdjustmentStep { get; }
-    public float PropulsionAllocation { get; internal set; }
-    public float WeaponsAllocation { get; internal set; }
-    public float ShieldsAllocation { get; internal set; }
-    public float AllocatedPower => PropulsionAllocation + WeaponsAllocation + ShieldsAllocation;
-    public float UnallocatedPower => AvailablePower - AllocatedPower;
-    public float PropulsionPowerFactor => Math.Clamp(PropulsionAllocation / NominalSystemPower, 0f, 1f);
-    public float WeaponsPowerFactor => Math.Clamp(WeaponsAllocation / NominalSystemPower, 0f, 1f);
-    public float ShieldsPowerFactor => Math.Clamp(ShieldsAllocation / NominalSystemPower, 0f, 1f);
+    public float MaximumPropulsionDraw { get; }
+    public float AuxiliaryThrusterDrawPerAxis { get; }
+    public float AuxiliaryThrusterReserveDraw => AuxiliaryThrusterDrawPerAxis * 3f;
+    public float MaximumMainThrusterDraw => MaximumPropulsionDraw - AuxiliaryThrusterReserveDraw;
+    public float MaximumWeaponsDraw { get; }
+    public float MaximumShieldsDraw { get; }
+    /// <summary>Bridge allocation as a percentage of the reactor's current output.</summary>
+    public float PropulsionAllocationPercent { get; internal set; }
+    /// <summary>Armarium allocation as a percentage of the reactor's current output.</summary>
+    public float WeaponsAllocationPercent { get; internal set; }
+    /// <summary>Shield station allocation as a percentage of the reactor's current output.</summary>
+    public float ShieldsAllocationPercent { get; internal set; }
+    public float PropulsionRequested { get; internal set; }
+    public float WeaponsRequested { get; internal set; }
+    public float ShieldsRequested { get; internal set; }
+    public float PropulsionDraw { get; internal set; }
+    /// <summary>Aggregate reserved power for reverse, left yaw and right yaw thrusters.</summary>
+    public float AuxiliaryThrusterDraw { get; internal set; }
+    public float MainThrusterDraw { get; internal set; }
+    public float WeaponsDraw { get; internal set; }
+    public float ShieldsDraw { get; internal set; }
+    public float RequestedPower => PropulsionRequested + WeaponsRequested + ShieldsRequested;
+    public float CurrentDraw => PropulsionDraw + WeaponsDraw + ShieldsDraw;
+    /// <summary>Legacy profile scaling for AI ships; player stations use explicit allocations.</summary>
+    public float DemandScale { get; internal set; } = 1f;
+    /// <summary>Bridge power budget currently allocated by the Reactorium.</summary>
+    public float PropulsionAvailable { get; internal set; }
+    public float WeaponsAvailable { get; internal set; }
+    public float ShieldsAvailable { get; internal set; }
+    public float PropulsionPowerFactor => MaximumPropulsionDraw <= 0f ? 0f : PropulsionDraw / MaximumPropulsionDraw;
+    public float AuxiliaryThrusterPowerFactor => AuxiliaryThrusterReserveDraw <= 0f ? 0f : AuxiliaryThrusterDraw / AuxiliaryThrusterReserveDraw;
+    public float MainThrusterPowerFactor => MaximumMainThrusterDraw <= 0f ? 0f : MainThrusterDraw / MaximumMainThrusterDraw;
+    public float MainThrusterAvailable => Math.Max(0f, PropulsionAvailable - AuxiliaryThrusterReserveDraw);
+    public float WeaponsPowerFactor => MaximumWeaponsDraw <= 0f ? 0f : WeaponsDraw / MaximumWeaponsDraw;
+    public float ShieldsPowerFactor => MaximumShieldsDraw <= 0f ? 0f : ShieldsDraw / MaximumShieldsDraw;
 
-    internal PowerState(float availablePower, float nominalSystemPower, float adjustmentStep, PowerProfile profile)
+    internal PowerState(float maximumPropulsionDraw, float auxiliaryThrusterDrawPerAxis, float maximumWeaponsDraw, float maximumShieldsDraw)
     {
-        AvailablePower = availablePower;
-        NominalSystemPower = nominalSystemPower;
-        AdjustmentStep = adjustmentStep;
-        PropulsionAllocation = profile.Propulsion;
-        WeaponsAllocation = profile.Weapons;
-        ShieldsAllocation = profile.Shields;
+        MaximumPropulsionDraw = maximumPropulsionDraw;
+        AuxiliaryThrusterDrawPerAxis = auxiliaryThrusterDrawPerAxis;
+        MaximumWeaponsDraw = maximumWeaponsDraw;
+        MaximumShieldsDraw = maximumShieldsDraw;
+        float totalStationCapacity = maximumPropulsionDraw + maximumWeaponsDraw + maximumShieldsDraw;
+        PropulsionAllocationPercent = maximumPropulsionDraw / totalStationCapacity * 100f;
+        WeaponsAllocationPercent = maximumWeaponsDraw / totalStationCapacity * 100f;
+        ShieldsAllocationPercent = 100f - PropulsionAllocationPercent - WeaponsAllocationPercent;
     }
 }
 
-/// <summary>A complete, valid allocation used for defaults and enemy tactics.</summary>
+/// <summary>Requested station draws used by enemy station controllers.</summary>
 public readonly record struct PowerProfile(float Propulsion, float Weapons, float Shields);
 
-/// <summary>A neutral, atomic allocation request. Godot and AI do not mutate PowerState.</summary>
-public readonly record struct PowerAllocationCommand(
-    float PropulsionDelta = 0f,
-    float WeaponsDelta = 0f,
-    float ShieldsDelta = 0f)
+/// <summary>One Reactorium operating-level intent, applied only by the authoritative simulation.</summary>
+public readonly record struct PowerAllocation(float BridgePercent, float ShieldsPercent, float ArmariumPercent)
 {
-    public bool IsEmpty => PropulsionDelta == 0f && WeaponsDelta == 0f && ShieldsDelta == 0f;
-    public PowerAllocationCommand Combine(PowerAllocationCommand other) => new(
-        PropulsionDelta + other.PropulsionDelta,
-        WeaponsDelta + other.WeaponsDelta,
-        ShieldsDelta + other.ShieldsDelta);
+    public float TotalPercent => BridgePercent + ShieldsPercent + ArmariumPercent;
+    public bool IsValid => float.IsFinite(BridgePercent) && float.IsFinite(ShieldsPercent) && float.IsFinite(ArmariumPercent) &&
+        BridgePercent >= 0f && ShieldsPercent >= 0f && ArmariumPercent >= 0f && TotalPercent <= 100.001f;
 }
+
+/// <summary>One Reactorium intent, applied only by the authoritative simulation.</summary>
+public readonly record struct ReactorCommand(float? OperatingLevelPercent = null, PowerAllocation? Allocation = null);

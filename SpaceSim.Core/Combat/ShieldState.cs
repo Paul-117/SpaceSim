@@ -1,6 +1,6 @@
 namespace SpaceSim.Core.Combat;
 
-/// <summary>One ship-wide shield. Allocation changes recharge speed, never its maximum.</summary>
+/// <summary>One ship-wide shield. Its station draw changes recharge speed, never its maximum.</summary>
 public sealed class ShieldState
 {
     public float CurrentShield { get; internal set; }

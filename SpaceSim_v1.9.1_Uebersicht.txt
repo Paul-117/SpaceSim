@@ -1,0 +1,63 @@
+SpaceSim V1.9.1 - Bridge UI and Thruster Response
+==================================================
+
+Bridge UI
+---------
+- Treffer-Gesamtübersicht und Lanzenbox wurden aus der Brücke entfernt.
+- Das ENERGY-Fenster oben rechts ist entfernt.
+- POS, SCALE, Schiffsintegrität, Kurs und Simulationszeit stehen unten rechts.
+- Die unten links um ein Viertel ihrer Höhe angehobene Box beginnt mit AVAILABLE
+  ENERGY in PU. Es folgen STARBOARD, PORT und REVERSE THRUSTERS, danach MAIN
+  THRUSTERS. Der blaue Thrust-Balken befindet sich am unteren Rand und zeigt die
+  tatsächlich wirksame Vorwärtsleistung von W.
+- Jede Triebwerksgruppe zeigt den Energie-Status: ONLINE ist grün bei voller
+  Leistung, LIMITED gelb bei Drosselung und OFFLINE rot bei 0 Leistung. Main
+  Thrusters sind nur bei 50 verfügbaren PU ONLINE; die Hilfstriebwerke brauchen
+  gemeinsam 30 PU.
+- Der Warp Drive ist oben mittig angeordnet. Die anklickbare Warp-Box ist zugleich
+  ein Ladebalken; der frühere Text mit Warp-Prozentwert oder READY ist entfernt.
+- Die SPEED-Anzeige enthält keinen OVERSPEED-Zusatz mehr; der frühere
+  Trägheitsflug-Hinweis wurde ebenfalls aus der Brücke entfernt.
+
+Gameplay
+--------
+- Bridge-Main-Throttle-Rise: 5 Sekunden von 0 auf 100 Prozent mit W.
+- Bridge-Main-Throttle-Fall: 3 Sekunden von 100 auf 0 nach Loslassen von W.
+- S sowie A/D sind sofortige Inputs mit voller normaler Command-Intensität.
+- Die Einstellungen stehen zentral in PowerSettings als BridgeMainThrottleRiseSeconds
+  und BridgeMainThrottleFallSeconds.
+- Die Antriebsstation reserviert permanent 30 PU: S, A und D erhalten jeweils
+  10 PU Priorität. Erst danach kann W die verbleibenden maximal 20 PU erhalten.
+- Bei 35 PU verfügbarer Stationsleistung erhält W 5 PU. Unter 30 PU erhält W keine
+  Leistung; S, A und D werden gleichmäßig und linear gedrosselt.
+
+Reactorium Power Allocation
+---------------------------
+- Das Reactorium besitzt Slider fuer BRUECKE, SCHILDE und ARMARIUM.
+- Die Slider sind Anteile des aktuellen Reaktor-Outputs. Neben jedem Slider stehen
+  das autoritativ berechnete Stationsbudget und das Stationsmaximum in PU.
+- Die anfaengliche Verteilung betraegt 40 % Bruecke, 28 % Schilde und 32 % Armarium.
+  Bei 125 PU ergibt das 50 / 35 / 40 PU.
+- Kein Slider ueberschreitet die Summe von 100 % oder das aktuelle PU-Limit seiner
+  Station. Freie, nicht zugewiesene Prozent werden nicht automatisch verteilt.
+- Der Reactorium-Webclient sendet ausschliesslich eine vollstaendige
+  power_allocation-Absicht. Der Core prueft und uebernimmt sie im naechsten Tick.
+
+Technik
+--------
+- Der Core bleibt autoritativ. Die Schubkurve wird ausschließlich im lokalen
+  Brücken-Inputadapter erzeugt und als normale Command-Intensität an den Core
+  übergeben.
+- ThrusterStatusPanel ist reine Darstellung. Sein Balken visualisiert
+  W-Input, Energieversorgung und Subsystemzustand. Er zeigt daher die niedrigere
+  Main-Thruster-Leistung, wenn nach der 30-PU-Reserve nicht genügend Energie bleibt.
+- Projektversion: 1.9.1. Kein Git-Tag wurde erzeugt.
+
+Validierung
+----------
+- Debug-Build: 0 Warnungen, 0 Fehler.
+- Core- und Stations-Tests: 66/66 bestanden.
+- Die bisherige Godot-Smoketest-Suite ist weiterhin verfügbar. Ein lokaler
+  Headless-Capture konnte in dieser Umgebung nicht geschrieben werden, weil Godot
+  keinen Zugriff auf seine user://-Logablage erhielt; die UI-Kompilierung war davon
+  nicht betroffen.

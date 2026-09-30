@@ -1,0 +1,68 @@
+SpaceSim V1.9.0 - Reactorium and Station Demand
+================================================
+
+Reactorium
+----------
+- Das Reactorium ist als zweite Browser-Station an den bestehenden StationServer
+  angeschlossen.
+- URL lokal: http://127.0.0.1:47870/reactorium/
+- Der Betriebslevel 0 bis 100 Prozent wird per WebSocket als reactor_level
+  Command als Sollwert an den Haupt-PC gesendet.
+- Der Core verarbeitet den Command im naechsten Simulationstick und fährt die
+  reale Leistung mit 100 Prozentpunkten in 60 Simulationssekunden nach.
+- Bei 100 Prozent liefert der Reaktor 125 PU; die Leistung skaliert linear.
+- Der Reaktor startet mit 100 U Fuel. Bei aktiver Leistung verbraucht er 0,2 bis
+  7,0 U/MIN (quadratisch abhängig vom tatsächlichen Betriebslevel). Bei Fuel 0
+  schaltet der Core ihn ab; Output und alle gelieferten Draws fallen auf 0.
+- Das Reactorium visualisiert den Core-Snapshot wieder mit dem wabbernden
+  Reaktorkern aus dem bereitgestellten Stationsprototyp.
+
+Station Demand
+--------------
+- Die globale Power-Distribution der Bruecke wurde entfernt.
+- Propulsion fordert maximal 50 PU an.
+- Weapons fordert beim Laden der Lanze maximal 40 PU an; bei voll geladener
+  Lanze wird kein Waffen-Draw angefordert.
+- Shields fordert beim Regenerieren maximal 35 PU an. Bei vollem Schild oder
+  Recharge Delay wird kein Schild-Draw angefordert.
+- Uebersteigt die Summe aller Draws die aktuelle Reaktorleistung, skaliert der
+  Core alle Draws proportional. Keine Station besitzt eine versteckte Prioritaet.
+- Gegner besitzen ebenfalls einen Reaktor mit 125 PU und nutzen ihre bisherigen
+  KI-Power-Profile als interne Stationsanforderungen.
+
+Bruecke und Gassteuerung
+------------------------
+- Die Power-Distribution-Box wurde durch PROPULSION-Telemetrie ersetzt.
+- AVAILABLE zeigt die bei der aktuellen proportionalen Drosselung verfuegbare
+  Propulsion-Leistung im Verhaeltnis zum Stationsmaximum 50 PU.
+- CURRENT DRAW zeigt den tatsaechlich gelieferten Antriebs-Draw.
+- REACTOR zeigt die aktuelle Ausgangsleistung und das Maximum 125 PU.
+- W, A, S und D rampen beim Gedrueckthalten als Gaspedal auf. Beim Loslassen
+  geht die jeweilige Anforderung auf null; vorhandene lineare und rotatorische
+  Traegheit bleibt erhalten.
+- Gleichzeitige Antriebsbefehle teilen die gemeinsame Maximalanforderung von
+  50 PU statt sie zu ueberschreiten.
+
+Netzwerk
+--------
+- StationProtocol ist jetzt Version 7.
+- Neben armarium akzeptiert der Server station: reactorium.
+- Reactorium erhaelt nur reactorium_state mit Sollwert, realem Betriebslevel,
+  Output, Draw, Fuel, FuelCapacity, FuelUsage und SimulationTick.
+- Der Browser besitzt keine direkte Autoritaet ueber WorldState oder Leistung.
+
+Tests und Validierung
+---------------------
+- Vollstaendiger Debug-Build: 0 Warnungen, 0 Fehler.
+- Core- und Stations-Tests: 62/62 bestanden.
+- Der Station-Smoke-Test prueft Armarium und Reactorium: HTTP-Auslieferung,
+  Handshake, Snapshot und buffered reactor_level Command.
+- JavaScript-Syntax fuer Armarium und Reactorium wurde mit node --check geprueft.
+
+Bekannte Grenzen
+---------------
+- Fuel kann noch nicht betankt werden. Nach Fuel 0 bleibt der Reaktor bis zum
+  Neustart abgeschaltet.
+- Es gibt noch keine externen Weapons- oder Shields-Stationen. Ihre Draws werden
+  in V1.9 automatisch aus ihrem aktuellen Zustand abgeleitet.
+- Mehrere Stationsclients besitzen noch keine Authentifizierung oder Rechte.

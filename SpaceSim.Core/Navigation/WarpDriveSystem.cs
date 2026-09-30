@@ -30,7 +30,6 @@ internal static class WarpDriveSystem
         world.Ship.Velocity = Vector3.Zero;
         world.Ship.Rotation = Quaternion.Identity;
         world.Ship.AngularVelocity = Vector3.Zero;
-        PowerDistributionSystem.ApplyProfile(world.Ship.Power, settings.Power.DefaultProfile);
         world.Ship.Systems.Repair();
         world.Ship.Shield.CurrentShield = world.Ship.Shield.MaximumShield;
         world.Ship.Shield.RechargeDelayRemaining = 0f;

@@ -1,4 +1,4 @@
-# Station Protocol v6
+# Station Protocol v7
 
 Der SpaceSim-Haupt-PC ist der alleinige Simulationsserver. Browser-Stationen senden
 nur Bedienabsichten und erhalten kleine, stationsspezifische Snapshots.
@@ -7,7 +7,7 @@ nur Bedienabsichten und erhalten kleine, stationsspezifische Snapshots.
 
 - HTTP: `http://<host>:47870/armarium/`
 - WebSocket: `ws://<host>:47870/station`
-- Protokollversion: `6`
+- Protokollversion: `7`
 - Textnachrichten: UTF-8 JSON mit camelCase-Feldern
 
 ## Client zu Server
@@ -17,14 +17,14 @@ nur Bedienabsichten und erhalten kleine, stationsspezifische Snapshots.
 Muss die erste WebSocket-Nachricht sein.
 
 ```json
-{ "type": "hello", "station": "armarium", "protocolVersion": 6 }
+{ "type": "hello", "station": "armarium", "protocolVersion": 7 }
 ```
 
 | Feld | Typ | Bedeutung |
 | --- | --- | --- |
 | `type` | string | Immer `hello`. |
 | `station` | string | Immer `armarium`. |
-| `protocolVersion` | integer | Muss `6` sein. |
+| `protocolVersion` | integer | Muss `7` sein. |
 
 Bei falscher Stationskennung oder Version sendet der Server `error` und beendet die
 Stationsverbindung.
@@ -34,6 +34,9 @@ Stationsverbindung.
 ```json
 { "type": "fire_lance" }
 ```
+
+Im Armarium sendet die **Leertaste** genau einen solchen Befehl; gedrückt gehaltene
+Tasten erzeugen durch die Repeat-Sperre kein Dauerfeuer.
 
 Der Server puffert die Absicht als einmaligen Fire-Impuls. Er prueft die Lanzenladung
 nicht im Netzwerkcode; die normale Simulation entscheidet im folgenden Tick, ob ein
@@ -62,7 +65,7 @@ relativ zur Schiffsnase begrenzt.
 ### `welcome`
 
 ```json
-{ "type": "welcome", "station": "armarium", "protocolVersion": 6 }
+{ "type": "welcome", "station": "armarium", "protocolVersion": 7 }
 ```
 
 Bestetigt eine kompatible Stationsverbindung.
@@ -106,10 +109,76 @@ beschraenkt.
 ### `error`
 
 ```json
-{ "type": "error", "code": "protocol_mismatch", "message": "Expected ARMARIUM protocol 6." }
+{ "type": "error", "code": "protocol_mismatch", "message": "Expected a supported station using protocol 7." }
 ```
 
 | Feld | Typ | Bedeutung |
 | --- | --- | --- |
 | `code` | string | Maschinenlesbarer Fehlercode. |
 | `message` | string | Lesbare Fehlerbeschreibung. |
+
+## Reactorium (V1.9)
+
+Das Reactorium verwendet denselben HTTP-/WebSocket-Server unter
+`http://<host>:47870/reactorium/` und meldet sich mit `station: "reactorium"` an.
+
+### Reactorium Client zu Server
+
+```json
+{ "type": "hello", "station": "reactorium", "protocolVersion": 7 }
+```
+
+```json
+{ "type": "reactor_level", "levelPercent": 75 }
+```
+
+`levelPercent` wird auf 0 bis 100 begrenzt. Der Command ist nur eine Absicht; der
+Simulations-Thread setzt die Reaktorleistung im naechsten Tick.
+
+```json
+{ "type": "power_allocation", "bridgePercent": 40, "shieldsPercent": 28, "armariumPercent": 32 }
+```
+
+Die drei Werte sind Prozent des aktuellen Reaktor-Outputs. Sie dürfen zusammen
+höchstens 100 ergeben. Der Server puffert nur die Absicht; der Core prüft die
+Werte und setzt die Zuweisung im nächsten Simulationstick.
+
+### Reactorium Server zu Client
+
+```json
+{
+  "type": "reactorium_state",
+  "targetOperatingLevelPercent": 75,
+  "operatingLevelPercent": 68.3,
+  "outputPower": 85.38,
+  "maximumOutputPower": 125,
+  "currentDraw": 50,
+  "fuel": 93.4,
+  "fuelCapacity": 100,
+  "fuelUsagePerMinute": 3.4,
+  "bridgePercent": 40,
+  "shieldsPercent": 28,
+  "armariumPercent": 32,
+  "bridgePower": 50,
+  "shieldsPower": 35,
+  "armariumPower": 40,
+  "bridgeMaximumPower": 50,
+  "shieldsMaximumPower": 35,
+  "armariumMaximumPower": 40,
+  "simulationTick": 1234
+}
+```
+
+`targetOperatingLevelPercent` ist der vom Reactorium angeforderte Sollwert.
+`operatingLevelPercent` ist die reale, vom Core gerampte Reaktorleistung. Der
+Weg von 0 auf 100 Prozent dauert 60 Simulationssekunden. Bei 100 Prozent liefert
+der Reaktor 125 PU.
+
+Die `*Percent`-Felder beschreiben die zugewiesenen Anteile. Die `*Power`-Felder
+sind die daraus resultierenden, pro Station begrenzten PU-Budgets. Die jeweiligen
+`*MaximumPower`-Felder sind die festen Stationsgrenzen für die Slider-Anzeige.
+
+`fuel` und `fuelCapacity` werden in Fuel Units übertragen. Der Core verbraucht
+bei jeder aktiven Reaktorleistung Fuel und überträgt die aktuelle Rate mit
+`fuelUsagePerMinute`. Bei Fuel 0 schaltet der Core den Reaktor aus; Output und
+gelieferte Leistung sind dann 0. Der Webclient entscheidet dies nicht selbst.

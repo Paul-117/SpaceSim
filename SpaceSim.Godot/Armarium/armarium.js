@@ -1,5 +1,5 @@
 (() => {
-  const protocolVersion = 6;
+  const protocolVersion = 7;
   const visibleBearingDegrees = 7.5;
   const tacticalMapRadiusMeters = 1000;
   const tacticalMapHalfAngleDegrees = 30;
@@ -14,10 +14,12 @@
   const lanceLabel = document.getElementById("lance-label");
   const chargeFill = document.getElementById("charge-fill");
   const turretStatus = document.getElementById("turret-status");
+  const availableEnergy = document.getElementById("available-energy");
+  const lanceSystemStatus = document.getElementById("lance-system-status");
   const mapStatus = document.getElementById("map-status");
   let socket = null;
   let heldTurretDirection = null;
-  let state = { targetAvailable: false, targetBearingDegrees: 0, targetDistanceMeters: 0, lanceCharge: 0, lanceReady: false, lanceTurretAngleDegrees: 0, targetHitSequence: 0, lastTargetHitBearingDegrees: 0 };
+  let state = { targetAvailable: false, targetBearingDegrees: 0, targetDistanceMeters: 0, lanceCharge: 0, lanceReady: false, lanceTurretAngleDegrees: 0, targetHitSequence: 0, lastTargetHitBearingDegrees: 0, availablePower: 0, maximumPower: 40, lanceSystemCondition: 1 };
   let displayedTargetBearing = 0;
   let displayedTurretAngle = 0;
   let lastTargetHitSequence = null;
@@ -156,6 +158,12 @@
     lastTargetHitSequence = next.targetHitSequence;
     const percent = Math.round(Math.max(0, Math.min(1, state.lanceCharge)) * 100);
     lanceLabel.textContent = state.lanceReady ? "READY" : `${percent} %`; chargeFill.style.width = `${percent}%`;
+    availableEnergy.textContent = `${state.availablePower.toFixed(1)} / ${state.maximumPower.toFixed(0)} PU`;
+    const powerFactor = state.maximumPower <= 0 ? 0 : state.availablePower / state.maximumPower;
+    const effectiveFactor = powerFactor * state.lanceSystemCondition;
+    const lanceStatus = effectiveFactor >= .999 ? "ONLINE" : effectiveFactor > 0 ? "LIMITED" : "OFFLINE";
+    lanceSystemStatus.textContent = `LANCE STATUS: ${lanceStatus}`;
+    lanceSystemStatus.className = lanceStatus === "ONLINE" ? "" : lanceStatus === "LIMITED" ? "limited" : "offline";
     turretStatus.textContent = `TURRET ${state.lanceTurretAngleDegrees >= 0 ? "+" : ""}${state.lanceTurretAngleDegrees.toFixed(1)}° / ±5°`;
     targetStatus.textContent = state.targetAvailable ? "TARGET ACQUIRED" : "NO TARGET";
   }
@@ -182,8 +190,10 @@
       if (!event.repeat) { heldTurretDirection = direction; sendTurret(direction, true); }
       return;
     }
-    if (event.key.toLowerCase() === "f" && !event.repeat && socket?.readyState === WebSocket.OPEN)
+    if (event.code === "Space" && !event.repeat && socket?.readyState === WebSocket.OPEN) {
+      event.preventDefault();
       socket.send(JSON.stringify({ type: "fire_lance" }));
+    }
   });
   document.addEventListener("keyup", event => {
     const direction = event.key === "ArrowLeft" ? "left" : event.key === "ArrowRight" ? "right" : null;

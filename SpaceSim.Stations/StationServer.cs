@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using SpaceSim.Stations.Armarium;
+using SpaceSim.Stations.Reactorium;
 
 namespace SpaceSim.Stations;
 
@@ -25,11 +26,14 @@ public sealed class StationServer : IDisposable
     private readonly StationServerOptions _options;
     private readonly IReadOnlyDictionary<string, string> _assets;
     private readonly ArmariumCommandBuffer _armariumCommands;
+    private readonly ReactoriumCommandBuffer _reactoriumCommands;
     private readonly Action<string>? _log;
     private readonly ConcurrentDictionary<int, StationConnection> _connections = new();
     private readonly CancellationTokenSource _stopping = new();
     private readonly TcpListener _listener;
-    private ArmariumState _latestState = new(false, 0f, 0f, 0f, false, 0f, 0, 0f, 0);
+    private ArmariumState _latestState = new(false, 0f, 0f, 0f, false, 0f, 0, 0f, 0f, 0f, 1f, 0);
+    private ReactoriumState _latestReactoriumState = new(100f, 100f, 125f, 125f, 0f, 100f, 100f, 0f,
+        40f, 28f, 32f, 50f, 35f, 40f, 50f, 35f, 40f, 0);
     private Task? _acceptTask;
     private Task? _broadcastTask;
     private int _nextConnectionId;
@@ -37,20 +41,27 @@ public sealed class StationServer : IDisposable
     private bool _started;
 
     public StationServer(StationServerOptions options, IReadOnlyDictionary<string, string> assets,
-        ArmariumCommandBuffer armariumCommands, Action<string>? log = null)
+        ArmariumCommandBuffer armariumCommands, ReactoriumCommandBuffer reactoriumCommands, Action<string>? log = null)
     {
         _options = options;
         _options.Validate();
         _assets = assets;
         _armariumCommands = armariumCommands;
+        _reactoriumCommands = reactoriumCommands;
         _log = log;
         _listener = new TcpListener(IPAddress.Any, options.Port);
     }
 
+    public StationServer(StationServerOptions options, IReadOnlyDictionary<string, string> assets,
+        ArmariumCommandBuffer armariumCommands, Action<string>? log = null)
+        : this(options, assets, armariumCommands, new ReactoriumCommandBuffer(), log) { }
+
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
     public string ArmariumUrl => $"http://127.0.0.1:{Port}/armarium/";
+    public string ReactoriumUrl => $"http://127.0.0.1:{Port}/reactorium/";
     /// <summary>True once an Armarium browser has completed its protocol handshake.</summary>
-    public bool IsArmariumOnline => _connections.Values.Any(connection => connection.IsAccepted);
+    public bool IsArmariumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.ArmariumStation);
+    public bool IsReactoriumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.ReactoriumStation);
 
     public void Start()
     {
@@ -63,6 +74,7 @@ public sealed class StationServer : IDisposable
     }
 
     public void UpdateState(ArmariumState state) => Volatile.Write(ref _latestState, state);
+    public void UpdateReactoriumState(ReactoriumState state) => Volatile.Write(ref _latestReactoriumState, state);
 
     public void Dispose()
     {
@@ -123,7 +135,7 @@ public sealed class StationServer : IDisposable
             if (connection is not null)
             {
                 _connections.TryRemove(connection.Id, out _);
-                _armariumCommands.ClearTurret();
+                if (connection.Station == StationProtocol.ArmariumStation) _armariumCommands.ClearTurret();
                 connection.Dispose();
             }
             client.Dispose();
@@ -147,25 +159,32 @@ public sealed class StationServer : IDisposable
 
             if (!connection.IsAccepted)
             {
-                if (command.Type != "hello" || !string.Equals(command.Station, StationProtocol.ArmariumStation,
-                    StringComparison.OrdinalIgnoreCase) || command.ProtocolVersion != StationProtocol.Version)
+                bool knownStation = string.Equals(command.Station, StationProtocol.ArmariumStation, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(command.Station, StationProtocol.ReactoriumStation, StringComparison.OrdinalIgnoreCase);
+                if (command.Type != "hello" || !knownStation || command.ProtocolVersion != StationProtocol.Version)
                 {
                     await connection.SendJsonAsync(new StationError("protocol_mismatch",
-                        $"Expected ARMARIUM protocol {StationProtocol.Version}."), cancellationToken);
+                        $"Expected a supported station using protocol {StationProtocol.Version}."), cancellationToken);
                     return;
                 }
                 connection.IsAccepted = true;
-                await connection.SendJsonAsync(new StationWelcome(StationProtocol.ArmariumStation, StationProtocol.Version), cancellationToken);
+                connection.Station = command.Station!.ToLowerInvariant();
+                await connection.SendJsonAsync(new StationWelcome(connection.Station, StationProtocol.Version), cancellationToken);
                 continue;
             }
 
-            if (command.Type == "fire_lance") _armariumCommands.RequestFire();
-            else if (command.Type == "turret" && command.Active is bool active)
+            if (connection.Station == StationProtocol.ArmariumStation && command.Type == "fire_lance") _armariumCommands.RequestFire();
+            else if (connection.Station == StationProtocol.ArmariumStation && command.Type == "turret" && command.Active is bool active)
             {
                 int direction = string.Equals(command.Direction, "left", StringComparison.OrdinalIgnoreCase) ? -1 :
                     string.Equals(command.Direction, "right", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
                 _armariumCommands.SetTurretDirection(active ? direction : 0);
             }
+            else if (connection.Station == StationProtocol.ReactoriumStation && command.Type == "reactor_level" && command.LevelPercent is float level)
+                _reactoriumCommands.SetOperatingLevel(level);
+            else if (connection.Station == StationProtocol.ReactoriumStation && command.Type == "power_allocation" &&
+                command.BridgePercent is float bridge && command.ShieldsPercent is float shields && command.ArmariumPercent is float armarium)
+                _reactoriumCommands.SetAllocation(bridge, shields, armarium);
         }
     }
 
@@ -177,10 +196,11 @@ public sealed class StationServer : IDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(period, cancellationToken);
-                ArmariumState state = Volatile.Read(ref _latestState);
-                var message = new ArmariumStateMessage(state, Interlocked.Increment(ref _sequence));
                 foreach (StationConnection connection in _connections.Values.Where(connection => connection.IsAccepted))
                 {
+                    object message = connection.Station == StationProtocol.ReactoriumStation
+                        ? new ReactoriumStateMessage(Volatile.Read(ref _latestReactoriumState), Interlocked.Increment(ref _sequence))
+                        : new ArmariumStateMessage(Volatile.Read(ref _latestState), Interlocked.Increment(ref _sequence));
                     try { await connection.SendJsonAsync(message, cancellationToken); }
                     catch (IOException) { connection.Dispose(); _connections.TryRemove(connection.Id, out _); }
                 }
@@ -198,9 +218,12 @@ public sealed class StationServer : IDisposable
             await stream.WriteAsync(Encoding.ASCII.GetBytes(redirect), cancellationToken);
             return;
         }
-        string asset = path == "/armarium/" ? "index.html" : path.StartsWith("/armarium/", StringComparison.Ordinal)
-            ? path[10..] : string.Empty;
-        if (!_assets.TryGetValue(asset, out string? content))
+        string asset = path == "/armarium/" ? "armarium/index.html" : path.StartsWith("/armarium/", StringComparison.Ordinal)
+            ? "armarium/" + path[10..] : path == "/reactorium/" ? "reactorium/index.html" :
+            path.StartsWith("/reactorium/", StringComparison.Ordinal) ? "reactorium/" + path[12..] : string.Empty;
+        if (!_assets.TryGetValue(asset, out string? content) && asset.StartsWith("armarium/", StringComparison.Ordinal))
+            _assets.TryGetValue(asset[9..], out content);
+        if (content is null)
         {
             await WriteHttpAsync(stream, "404 Not Found", "Not found", "text/plain", cancellationToken);
             return;
@@ -299,6 +322,7 @@ public sealed class StationServer : IDisposable
         public TcpClient Client { get; } = client;
         public NetworkStream Stream { get; } = stream;
         public bool IsAccepted { get; set; }
+        public string? Station { get; set; }
 
         public async Task SendJsonAsync<T>(T message, CancellationToken cancellationToken)
         {
@@ -324,7 +348,8 @@ public sealed class StationServer : IDisposable
 
     private sealed record HttpRequest(string Path, IReadOnlyDictionary<string, string> Headers, bool IsWebSocket);
     private sealed record StationClientMessage(string? Type, string? Station, int? ProtocolVersion,
-        string? Direction, bool? Active);
+        string? Direction, bool? Active, float? LevelPercent, float? BridgePercent, float? ShieldsPercent,
+        float? ArmariumPercent);
     private sealed record StationWelcome(string Station, int ProtocolVersion) { public string Type { get; } = "welcome"; }
     private sealed record StationError(string Code, string Message) { public string Type { get; } = "error"; }
     private sealed record ArmariumStateMessage(ArmariumState State, long ConnectionSequence)
@@ -338,6 +363,31 @@ public sealed class StationServer : IDisposable
         public float LanceTurretAngleDegrees => State.LanceTurretAngleDegrees;
         public long TargetHitSequence => State.TargetHitSequence;
         public float LastTargetHitBearingDegrees => State.LastTargetHitBearingDegrees;
+        public float AvailablePower => State.AvailablePower;
+        public float MaximumPower => State.MaximumPower;
+        public float LanceSystemCondition => State.LanceSystemCondition;
+        public long SimulationTick => State.SimulationTick;
+    }
+    private sealed record ReactoriumStateMessage(ReactoriumState State, long ConnectionSequence)
+    {
+        public string Type { get; } = "reactorium_state";
+        public float TargetOperatingLevelPercent => State.TargetOperatingLevelPercent;
+        public float OperatingLevelPercent => State.OperatingLevelPercent;
+        public float OutputPower => State.OutputPower;
+        public float MaximumOutputPower => State.MaximumOutputPower;
+        public float CurrentDraw => State.CurrentDraw;
+        public float Fuel => State.Fuel;
+        public float FuelCapacity => State.FuelCapacity;
+        public float FuelUsagePerMinute => State.FuelUsagePerMinute;
+        public float BridgePercent => State.BridgePercent;
+        public float ShieldsPercent => State.ShieldsPercent;
+        public float ArmariumPercent => State.ArmariumPercent;
+        public float BridgePower => State.BridgePower;
+        public float ShieldsPower => State.ShieldsPower;
+        public float ArmariumPower => State.ArmariumPower;
+        public float BridgeMaximumPower => State.BridgeMaximumPower;
+        public float ShieldsMaximumPower => State.ShieldsMaximumPower;
+        public float ArmariumMaximumPower => State.ArmariumMaximumPower;
         public long SimulationTick => State.SimulationTick;
     }
 }

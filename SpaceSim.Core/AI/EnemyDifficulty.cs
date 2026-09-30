@@ -42,9 +42,9 @@ internal static class EnemyDifficultyProfiles
             },
             normalPower with
             {
-                AttackProfile = new PowerProfile(20f, 45f, 35f),
-                EvadeProfile = new PowerProfile(45f, 15f, 40f),
-                RepositionProfile = new PowerProfile(45f, 25f, 30f)
+                AttackProfile = new PowerProfile(50f, 35f, 25f),
+                EvadeProfile = new PowerProfile(50f, 10f, 25f),
+                RepositionProfile = new PowerProfile(50f, 20f, 25f)
             }),
         EnemyDifficulty.Hard => new EnemyDifficultyProfile(
             normalAi with
@@ -72,10 +72,10 @@ internal static class EnemyDifficultyProfiles
             },
             normalPower with
             {
-                AttackProfile = new PowerProfile(20f, 70f, 10f),
-                EvadeProfile = new PowerProfile(70f, 10f, 20f),
-                RepositionProfile = new PowerProfile(65f, 25f, 10f),
-                DefendProfile = new PowerProfile(20f, 15f, 65f)
+                AttackProfile = new PowerProfile(50f, 40f, 10f),
+                EvadeProfile = new PowerProfile(50f, 10f, 20f),
+                RepositionProfile = new PowerProfile(50f, 25f, 10f),
+                DefendProfile = new PowerProfile(30f, 15f, 35f)
             }),
         _ => new EnemyDifficultyProfile(normalAi, normalPower)
     };

@@ -10,5 +10,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="Armarium/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Reactorium/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

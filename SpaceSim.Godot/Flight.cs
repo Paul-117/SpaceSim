@@ -10,6 +10,7 @@ using SpaceSim.GodotClient.Testing;
 using SpaceSim.GodotClient.Audio;
 using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
+using SpaceSim.Stations.Reactorium;
 using NVector3 = System.Numerics.Vector3;
 using NQuaternion = System.Numerics.Quaternion;
 
@@ -24,14 +25,14 @@ public partial class Flight : Node
     private readonly Camera2D _camera = new();
     private readonly Starfield _stars = new();
     private readonly FlightHud _hud = new();
-    private readonly PowerDistributionPanel _powerPanel = new();
+    private readonly ThrusterStatusPanel _thrusterPanel = new();
     private readonly StarMap _starMap = new();
     private readonly GameOverOverlay _gameOver = new();
     private readonly SoundEffects _sounds = new();
     private readonly ArmariumCommandBuffer _armariumCommands = new();
+    private readonly ReactoriumCommandBuffer _reactoriumCommands = new();
     private StationServer? _stationServer;
     private NavigationCommand _pendingNavigation;
-    private PowerAllocationCommand _pendingPower;
     private NVector3 _previousPosition;
     private NQuaternion _previousRotation;
     private ShipCommand _lastCommand;
@@ -59,11 +60,12 @@ public partial class Flight : Node
         _enemySmokeTest = OS.GetCmdlineUserArgs().Contains("--enemy-smoke-test");
         _capturePath = OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith("--capture="))?[10..];
         _simulation = CreateSimulation();
+        _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
+        _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
         BindWorld();
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
         _hud.WarpMapRequested += () => _starMap.Open();
-        _powerPanel.AdjustmentRequested += command => _pendingPower = _pendingPower.Combine(command);
         _starMap.JumpRequested += id => _pendingNavigation = new NavigationCommand(id);
         _gameOver.RestartRequested += RestartGame;
         var backdrop = new CanvasLayer { Layer = -10 };
@@ -78,12 +80,12 @@ public partial class Flight : Node
         var cockpit = new CanvasLayer { Layer = 10 };
         AddChild(cockpit);
         cockpit.AddChild(_hud);
-        cockpit.AddChild(_powerPanel);
+        cockpit.AddChild(_thrusterPanel);
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
         StartStationServer();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.8.4 | Core 60 Hz | Armarium target aid and hit pulse enabled");
+        GD.Print("SpaceSim 1.9.1 | Core 60 Hz | Armarium and Reactorium station server enabled");
     }
 
     private Simulation CreateSimulation()
@@ -104,7 +106,7 @@ public partial class Flight : Node
         _arena.World = _simulation.World;
         _hud.World = _simulation.World;
         _hud.Settings = _simulation.Settings;
-        _powerPanel.World = _simulation.World;
+        _thrusterPanel.World = _simulation.World;
         _starMap.World = _simulation.World;
     }
 
@@ -114,14 +116,19 @@ public partial class Flight : Node
         {
             var assets = new Dictionary<string, string>
             {
-                ["index.html"] = Godot.FileAccess.GetFileAsString("res://Armarium/index.html"),
-                ["armarium.css"] = Godot.FileAccess.GetFileAsString("res://Armarium/armarium.css"),
-                ["armarium.js"] = Godot.FileAccess.GetFileAsString("res://Armarium/armarium.js")
+                ["armarium/index.html"] = Godot.FileAccess.GetFileAsString("res://Armarium/index.html"),
+                ["armarium/armarium.css"] = Godot.FileAccess.GetFileAsString("res://Armarium/armarium.css"),
+                ["armarium/armarium.js"] = Godot.FileAccess.GetFileAsString("res://Armarium/armarium.js"),
+                ["reactorium/index.html"] = Godot.FileAccess.GetFileAsString("res://Reactorium/index.html"),
+                ["reactorium/reactorium.css"] = Godot.FileAccess.GetFileAsString("res://Reactorium/reactorium.css"),
+                ["reactorium/reactorium.js"] = Godot.FileAccess.GetFileAsString("res://Reactorium/reactorium.js")
             };
-            _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, GD.Print);
+            _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, _reactoriumCommands, GD.Print);
             _stationServer.Start();
             PublishArmariumState();
+            _stationServer.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
             GD.Print($"Armarium available at {_stationServer.ArmariumUrl}");
+            GD.Print($"Reactorium available at {_stationServer.ReactoriumUrl}");
         }
         catch (Exception exception)
         {
@@ -195,17 +202,6 @@ public partial class Flight : Node
         }
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
-        if (_smokeTest)
-        {
-            if (_simulation.World.Tick == 0) _powerPanel.PropulsionMinus.EmitSignal(Button.SignalName.Pressed);
-            if (_simulation.World.Tick == 1) _powerPanel.WeaponsPlus.EmitSignal(Button.SignalName.Pressed);
-            if (_simulation.World.Tick == 3)
-            {
-                var power = _simulation.World.Ship.Power;
-                _powerSmokeAdjusted = power.PropulsionAllocation == 30f && power.WeaponsAllocation == 40f &&
-                                      power.ShieldsAllocation == 30f;
-            }
-        }
         if (_warpScenario is null) _lastCommand = _smokeTest
             ? new ShipCommand(MainThrust: _simulation.World.Tick >= 181, YawLeft: _simulation.World.Tick >= 451,
                 FireLance: _simulation.World.Tick == 450)
@@ -216,11 +212,15 @@ public partial class Flight : Node
             if (_simulation.World.Tick == 600) _pendingNavigation = new NavigationCommand(3);
         }
         ApplyArmariumControl();
-        _simulation.Step(_lastCommand, _pendingNavigation, _pendingPower);
+        float? reactorLevel = _reactoriumCommands.TryReadOperatingLevel(out float requestedLevel) ? requestedLevel : null;
+        PowerAllocation? allocation = _reactoriumCommands.TryReadAllocation(out PowerAllocation requestedAllocation)
+            ? requestedAllocation : null;
+        ReactorCommand reactorCommand = new(reactorLevel, allocation);
+        _simulation.Step(_lastCommand, _pendingNavigation, reactorCommand);
         _pendingNavigation = default;
-        _pendingPower = default;
         RecordArmariumTargetHit();
         PublishArmariumState();
+        _stationServer?.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
         if (_simulation.Events.OfType<EncounterChanged>().Any())
         {
             // Do not interpolate across different local coordinate systems.
@@ -263,7 +263,7 @@ public partial class Flight : Node
                 bool passed = _smokeSawShot && _smokeSawHit && _simulation.World.HitCount == 1 &&
                               _simulation.World.Ship.Velocity.Length() > 1f &&
                               _simulation.World.Ship.AngularVelocity.Y > 0f;
-                passed &= _simulation.World.Targets.Count == 0 && _powerSmokeAdjusted && _powerPanel.GetChildCount() > 0;
+                passed &= _simulation.World.Targets.Count == 0 && _thrusterPanel.GetParent() is not null;
                 GD.Print(passed ? "SMOKE PASS: power UI, shields, fixed ticks, thrust, rotation, lance, hit, no respawn." : "SMOKE FAIL");
                 GetTree().Quit(passed ? 0 : 1);
             }
@@ -298,18 +298,18 @@ public partial class Flight : Node
     private void RestartGame()
     {
         _simulation = CreateSimulation();
+        _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
+        _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
         BindWorld();
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
         _lastCommand = default;
         _pendingNavigation = default;
-        _pendingPower = default;
         _arena.ResetVisuals();
         _sounds.ResetForNewSession();
         _starMap.Close();
         _gameOver.Hide();
         _enemyGameOverFrames = 0;
-        _powerSmokeAdjusted = false;
         _armariumCommands.Clear();
         if (_enemySmokeTest) _enemySmokeRestarted = true;
     }
@@ -334,6 +334,7 @@ public partial class Flight : Node
         _arena.CameraZoom = _cameraZoom;
         _hud.CameraZoom = _cameraZoom;
         _hud.Command = _lastCommand;
+        _thrusterPanel.Command = _lastCommand;
         _hud.ArmariumOnline = _stationServer?.IsArmariumOnline == true;
         _hud.IsFocused = _keyboard.IsFocused;
         bool captureReady = _enemySmokeTest

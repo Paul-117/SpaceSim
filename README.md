@@ -1,4 +1,4 @@
-# SpaceSim 1.8.4
+# SpaceSim 1.9.1
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
@@ -46,7 +46,7 @@ Ein erfolgreicher Warp repariert alle drei Subsysteme und füllt den Schild auf,
 repariert aber keine Hull Integrity. Das Speed Limit ist gameplaybedingt:
 `500 m/s x PropulsionPowerFactor x PropulsionCondition`. Es begrenzt nur weitere
 beschleunigende Hauptschubimpulse. Eine bereits höhere Geschwindigkeit bleibt
-dank Traegheit erhalten, wird als OVERSPEED gezeigt und kann mit Rueckschub
+dank Traegheit erhalten und kann mit Rueckschub
 abgebaut werden.
 
 ## Schnellstart unter Windows
@@ -54,7 +54,7 @@ abgebaut werden.
 **`Start.cmd` doppelklicken.** Das Skript baut das Projekt und startet das Spiel.
 Alternativ im Workspace:
 
-Der aktuelle Arbeitsstand ist **1.8.4**. Er umfasst die V1.6.1-Verbesserungen sowie die externe Waffenstation **Armarium** mit einer begrenzten Lanzenlafette und einer taktischen Sektorkarte. Der Stand ist fuer `v1.8.4` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Der aktuelle Arbeitsstand ist **1.9.1**. Er umfasst die externe Waffenstation **Armarium**, das angeschlossene **Reactorium** und die überarbeitete Brückenansicht. Der Stand ist fuer `v1.9.1` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1
@@ -109,7 +109,7 @@ innerhalb von 1.600 m stoppt den Strahl. Ein Treffer zählt sofort und entfernt 
 Ziel dauerhaft für diese Sitzung. Der sichtbare Strahl bleibt nur 0,16 Sekunden
 bestehen. Auch beim Wegfliegen oder Zurückspringen werden keine Ziele ersetzt.
 
-## Armarium Station Server (V1.8.4)
+## Armarium und Reactorium Station Server (V1.9)
 
 Beim Start von SpaceSim startet auf dem Haupt-PC der Station Server auf Port
 **47870**. Er liefert den Armarium-Webclient aus und akzeptiert dessen WebSocket-
@@ -136,7 +136,7 @@ Schiff. Sichtbar ist nur der Bereich von **-30 bis +30 Grad**; ausserhalb bleibt
 Karte leer. Der Sektor zeigt die Begrenzung der Lanzenlafette bei -5/+5 Grad, ihre
 aktuelle cyanfarbene Ausrichtung und den Gegner nur innerhalb dieses Bereichs und
 der Reichweite. Die Armarium-Oberflaeche verwendet immer genau die aktuelle
-Fensterhoehe und benoetigt keine Scrollleiste. **F**
+Fensterhoehe und benoetigt keine Scrollleiste. **Leertaste**
 im Browser sendet genau einen `fire_lance`-Befehl. Die lokale Leertaste bleibt parallel
 aktiv.
 
@@ -148,10 +148,73 @@ Haupt-PC thread-sicher gepuffert und erst im normalen `ShipCommand` des naechste
 Simulationsticks verarbeitet. Das Armarium nutzt derzeit die exakte Gegnerposition;
 eine spaetere Sensorium-Quelle kann den Bearing liefern, ohne den Webclient zu aendern.
 
-Das WebSocket-Protokoll hat Version **6**. Der Client identifiziert sich beim
+Das WebSocket-Protokoll hat Version **7**. Der Client identifiziert sich beim
 Verbindungsaufbau als `armarium`, zeigt `ARMARIUM ONLINE/OFFLINE` und verbindet sich
 nach einem Abbruch automatisch erneut. Details stehen in
 [StationProtocol.md](docs/StationProtocol.md).
+
+### Reactorium
+
+Das Reactorium ist unter `http://127.0.0.1:47870/reactorium/` erreichbar. Sein
+Operating-Level-Schieberegler setzt den autoritativen **Sollwert** von 0 bis
+100 Prozent. Die physische Reaktorleistung folgt diesem Sollwert träge und benötigt
+für den Weg von 0 auf 100 Prozent exakt **60 Simulationssekunden**. Bei voller
+Leistung liefert der Reaktor **125 PU**. Die Reactorium-Ansicht verwendet wieder
+den wabbernden Reaktorkern aus dem Stationsprototyp; seine Größe und Bewegung
+folgen dem vom Core übertragenen tatsächlichen Output.
+
+Das Reactorium verteilt diese Leistung mit drei Slidern: **Brücke**, **Schilde**
+und **Armarium**. Die Werte sind Prozent des aktuellen Reaktor-Outputs und zeigen
+direkt daneben die daraus autoritativ abgeleiteten PU. Die Anfangsverteilung
+40/28/32 Prozent nutzt bei 125 PU die Stationsmaxima von 50/35/40 PU. Ein Slider
+kann weder über 100 Prozent Gesamtzuweisung noch über das PU-Limit seiner Station
+steigen. Für eine höhere Zuweisung muss zuerst eine andere Station reduziert
+werden. Nicht zugewiesene Prozent bleiben ungenutzt.
+
+Der Reaktor besitzt **100 U Fuel**. Solange der Reaktor Leistung erzeugt, verbraucht
+er Fuel abhängig vom tatsächlichen Betriebslevel: bei minimaler aktiver Leistung
+0,2 U/min, bei 100 Prozent 7,0 U/min mit quadratischem Verlauf dazwischen. Bei
+0 U wird der Reaktor im Core abgeschaltet; Output und gelieferte Stationsleistung
+werden 0. Eine Betankung existiert derzeit noch nicht. Die drei Stationen
+fordern ihre Leistung innerhalb ihres Reactorium-Budgets selbst an: Brücke maximal
+50 PU, Armarium maximal 40 PU und Schilde maximal 35 PU. Der Core liefert keiner
+Station mehr Energie als ihr zugewiesenes Budget.
+
+Die Bruecke besitzt keine Power-Distribution-Buttons mehr. Ihre verfügbare
+Stationsleistung wird ausschließlich im Reactorium zugewiesen. W rampet beim
+Gedrueckthalten als Gas bis zur maximalen Main-Thruster-Anforderung von 20 PU.
+Fuel, Ramp, Zuweisung und Abschaltung werden ausschließlich vom Simulations-Core
+berechnet; das Reactorium zeigt nur dessen Snapshot und sendet Zuweisungsabsichten.
+
+Innerhalb der Antriebsstation sind **30 PU** dauerhaft für Rückwärts- und
+Seitentriebwerke reserviert: S, A und D besitzen jeweils 10 PU Priorität, auch
+wenn sie gerade nicht betätigt werden. Von maximal 50 PU bleiben W damit höchstens
+20 PU. Bei 35 PU Stationsleistung erhält W folglich 5 PU. Sinkt die verfügbare
+Stationsleistung unter 30 PU, erhalten S, A und D jeweils denselben linearen
+Leistungsfaktor; W erhält dann keine Leistung.
+
+### Brücke 1.9.1
+
+Das bisherige Fenster **ENERGY** oben rechts ist entfernt. Die bisherigen Treffer-
+und Lanzenboxen sind ebenfalls nicht mehr Teil der Brücke, damit diese Informationen
+später als eigene Stationen laufen können.
+
+Unten links zeigt die Triebwerksbox **MAIN THRUSTERS**, **STARBOARD THRUSTERS**,
+**PORT THRUSTERS** und **REVERSE THRUSTERS**. Ganz oben steht die für die Station
+verfügbare Energie in PU. Die Hilfstriebwerke stehen vor den Main Thrusters; der
+blaue Main-Thrust-Balken liegt am unteren Rand und zeigt die tatsächlich wirksame
+Vorwärtsleistung von W. Jeder Eintrag zeigt seinen Energiezustand: **ONLINE** in
+Grün bei voller Leistung, **LIMITED** in Gelb bei Drosselung und **OFFLINE** in Rot
+ohne Leistung. Main Thrusters sind erst bei 50 verfügbaren PU vollständig online;
+die drei Hilfstriebwerke benötigen zusammen 30 PU. Nur **W** baut seinen Schub über **5 Sekunden**
+bis 100 Prozent auf und nach dem Loslassen über **3 Sekunden** wieder ab.
+Rückwärtsschub mit S und die Seitentriebwerke mit A/D reagieren sofort. Positions-,
+Zoom-, Integritäts-, Kurs- und Simulationszeitdaten stehen unten rechts.
+
+Der **Warp Drive** befindet sich oben mittig. Seine Schaltfläche bleibt anklickbar
+und ist selbst der Ladebalken: Die Füllung zeigt den aktuellen Warp-Ladestand. Der
+frühere Text mit Prozentwert beziehungsweise `READY` wird nicht mehr zusätzlich
+angezeigt.
 
 ### Armarium vom Laptop starten
 
