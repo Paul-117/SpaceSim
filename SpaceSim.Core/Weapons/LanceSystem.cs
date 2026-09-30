@@ -47,7 +47,8 @@ internal static class LanceSystem
         WeaponHitKind kind = enemyHit is not null ? WeaponHitKind.Enemy :
             hit is not null ? WeaponHitKind.Target : WeaponHitKind.None;
         int? hitId = enemyHit?.EnemyId ?? hit?.Id;
-        events.Add(new WeaponFired(origin, origin + direction * nearestDistance, hitId, WeaponOwner.Player, kind));
+        events.Add(new WeaponFired(origin, origin + direction * nearestDistance, hitId, WeaponOwner.Player, kind,
+            origin + direction * settings.LanceRangeMeters, origin + direction * settings.LanceVisualRangeMeters));
         if (enemyHit is not null)
         {
             if (ShieldSystem.ApplyLanceDamage(enemyHit.Ship.Shield, WeaponOwner.Enemy, enemyHit.EnemyId,
@@ -79,7 +80,8 @@ internal static class LanceSystem
         bool hit = hitDistance is { } value && value <= settings.LanceRangeMeters;
         float distance = hit ? hitDistance!.Value : settings.LanceRangeMeters;
         events.Add(new WeaponFired(origin, origin + direction * distance, null,
-            WeaponOwner.Enemy, hit ? WeaponHitKind.Player : WeaponHitKind.None));
+            WeaponOwner.Enemy, hit ? WeaponHitKind.Player : WeaponHitKind.None,
+            origin + direction * settings.LanceRangeMeters, origin + direction * settings.LanceVisualRangeMeters));
         if (!hit) return;
         if (!ShieldSystem.ApplyLanceDamage(world.Ship.Shield, WeaponOwner.Player, null,
             world.Ship.Position, settings.Shield, events) || !HullSystem.ApplyHit(world.Ship.Hull,

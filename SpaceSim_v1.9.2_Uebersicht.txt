@@ -1,0 +1,145 @@
+SpaceSim V1.9.2 - Aktueller Projektstand
+===========================================
+
+Version und Architektur
+-----------------------
+- Projektversion: 1.9.2. Es wurde kein Git-Tag erzeugt.
+- SpaceSim.Core ist der alleinige autoritative Gameplay-Core mit 60 Hz.
+- Godot stellt Spielwelt, Eingabe, HUD, Kamera und Sounds dar.
+- SpaceSim.Stations stellt den HTTP- und WebSocket-Server auf Port 47870 bereit.
+- Browser-Stationen senden nur Bedienabsichten. Der Simulations-Thread prueft und
+  verarbeitet sie im normalen Command-Pfad.
+
+Spielwelt und Navigation
+------------------------
+- Vier Sprungpunkte existieren. Encounter 1 hat zehn statische Ziele, Encounter 2
+  einen Easy-Gegner, Encounter 3 einen Medium-Gegner und Encounter 4 einen
+  Hard-Gegner.
+- Ziele und Gegner respawnen nicht. Encounter-Fortschritt bleibt innerhalb der
+  laufenden Sitzung ueber Spruenge erhalten.
+- Der Warp Drive laedt nach Start und jedem Sprung zehn Simulationssekunden.
+- Die Sternenkarte pausiert die Simulation nicht. Ein erfolgreicher Sprung setzt
+  Position und Bewegung zurueck, repariert Subsysteme, fuellt den Schild und erhaelt
+  Hull-Schaden.
+
+Schiffe und Kampf
+-----------------
+- Spieler und Gegner verwenden dieselbe Physik und dieselben ShipCommands.
+- Hauptschub, Rueckschub und Yaw werden ausschliesslich durch normale Befehle
+  erzeugt; KI und Stationen setzen niemals Position, Geschwindigkeit oder Rotation.
+- Die Lanze ist ein sofortiger Raycast mit 1.600 m Reichweite. Sie laedt bei voller
+  Waffenleistung in drei Sekunden und darf bei voller Ladung auch ohne weitere
+  Waffenenergie noch einmal feuern.
+- Jeder Treffer trifft zuerst den gemeinsamen Schild. Restschaden entfernt einen
+  Hull-Punkt. Bei Hull 0 wird der Spieler zerstoert beziehungsweise ein Gegner
+  entfernt.
+- Hull-Maximum ist 3. Ein Hull-Treffer beschaedigt deterministisch genau eines der
+  Subsysteme Propulsion, Weapons oder Shields um 0,5 Condition.
+- Bei Abstand unter 100 m zerstoert eine Kollision beide Schiffe. Zerstoerte Gegner
+  koennen bei 350/250/200/150 m Schildverlust, einen Systemausfall, zwei
+  Systemausfaelle oder die Zerstoerung des Spielerschiffs ausloesen.
+
+Energie, Subsysteme und Antrieb
+-------------------------------
+- Jedes Schiff hat einen Reaktor, PowerState, Schild, Hull und Subsystemzustand.
+- Systemleistung entsteht aus Energie-Budget mal Subsystem-Condition.
+- Propulsion skaliert Haupt-, Rueck- und Yaw-Schub sowie das Speed Limit.
+- Weapons skaliert die Lanzen-Laderate. Shields skaliert die Schildregeneration.
+- Das lineare Speed Limit ist 500 m/s mal Propulsion-Power-Factor mal
+  Propulsion-Condition. Bereits vorhandene Uebergeschwindigkeit wird nicht gekappt.
+- Die Bruecke reserviert 30 PU fuer Starboard, Port und Reverse Thrusters
+  (je 10 PU). Erst danach stehen bis zu 20 PU fuer Main Thrusters bereit.
+- W ist ein Vorwaertsthrottle mit 5 Sekunden Anstieg und 3 Sekunden Abfall.
+  S, A und D reagieren unmittelbar.
+
+Reactorium
+----------
+- URL: http://127.0.0.1:47870/reactorium/
+- Der Reaktor liefert bei 100 Prozent 125 PU, braucht fuer 0 auf 100 Prozent
+  60 Simulationssekunden und verbraucht dabei Fuel. Bei Fuel 0 stoppt er.
+- Der wabbernde Reaktorkern visualisiert die reale, trage hoch- oder herunterfahrende
+  Output-Leistung.
+- Drei Slider verteilen Prozente des aktuellen Outputs auf BRUECKE, SCHILDE und
+  ARMARIUM. Die Standardwerte sind 40 / 28 / 32 Prozent.
+- Neben jedem Slider zeigt das Reactorium das effektive Budget und Stationslimit:
+  Bruecke maximal 50 PU, Schilde maximal 35 PU, Armarium maximal 40 PU.
+- Eine Zuweisung kann zusammen nicht ueber 100 Prozent liegen. Der Slider stoppt
+  ebenfalls am aktuellen PU-Limit seiner Station. Nicht zugewiesene Leistung bleibt
+  frei; sie wird nicht automatisch verteilt.
+- Die Stationen fordern innerhalb ihres eigenen Budgets nur dann Energie an, wenn
+  sie diese brauchen. Bruecke: Thrust; Schilde: Regeneration; Armarium: Laden.
+
+Bruecken-HUD und Kamera
+-----------------------
+- Der Warp Drive sitzt oben mittig und ist zugleich anklickbarer Ladebalken.
+- Unten links zeigt eine angehobene Triebwerksbox AVAILABLE ENERGY, Starboard,
+  Port, Reverse und Main Thrusters sowie einen blauen Main-Thrust-Balken.
+- ONLINE ist gruen, LIMITED gelb und OFFLINE rot. Main Thrusters sind bei 50 PU
+  voll versorgt; die drei Hilfstriebwerke brauchen zusammen 30 PU.
+- Position, Zoom-Skala, Integritaet, Kurs und Simulationszeit stehen unten rechts.
+- Die Kamera folgt dem Spieler und kann per Mausrad beliebig weit zoomen. Offscreen-
+  Indikatoren bleiben dabei positionsrichtig.
+
+Gegner-KI
+---------
+- Die deterministische FSM verwendet ACQUIRE, APPROACH, ATTACK, EVADE und
+  REPOSITION. Sie erzeugt nur ShipCommands.
+- Der Gegner kennt fuer den aktuellen Prototyp die exakte Spielerposition.
+- Risk Levels AGGRESSIVE, NORMAL, DEFENSIVE und CRITICAL entstehen aus Hull,
+  Schild und Subsystem-Condition. Gesunde Gegner greifen naeher und laenger an;
+  beschaedigte Gegner nutzen kurze EVADE-Manoever und kehren wieder zum Kampf zurueck.
+- Schwierigkeit beeinflusst zentrale AI- und Energieprofilwerte fuer Easy, Medium
+  und Hard. Es gibt keinen FLEE-State.
+
+Armarium
+---------
+- URL: http://127.0.0.1:47870/armarium/
+- Die obere ZIELHILFE zeigt den Gegner relativ zur Bugwaffe auf -7,5 bis +7,5 Grad.
+  Der rote Punkt wird geglaettet bewegt und leuchtet nach einem bestaetigten Treffer
+  kurz auf.
+- Pfeiltasten drehen ausschliesslich die Lanzenlafette mit 10 Grad/s innerhalb von
+  -5 bis +5 Grad. Die Bruecke behaelt die komplette Schiffsteuerung.
+- Die TACTICAL LANCE MAP zeigt einen 1-km-Sektor von -30 bis +30 Grad, die
+  Lafettenbegrenzung, aktuelle Lafettenachse und Ziele nur innerhalb dieses Sektors.
+- Die LANCE-Anzeige rechts zeigt Ladestand, Ladebalken und Turret-Ausrichtung.
+- Links daneben zeigt das neue Energiefenster AVAILABLE ENERGY als Armarium-Budget
+  in PU sowie LANCE STATUS: ONLINE, LIMITED oder OFFLINE. Der Status beruecksichtigt
+  zugewiesene Energie und Weapons-Subsystemzustand.
+- Die Leertaste im Armarium sendet genau einen fire_lance-Impuls. Key Repeat wird
+  unterdrueckt. Die lokale Leertaste auf der Bruecke bleibt ebenfalls aktiv.
+- Armarium erhaelt nur stationsspezifische Daten: Zielbearing, Entfernung fuer die
+  Karte, Lanzenstatus, Lafettenwinkel, Trefferfolge sowie Energie-Budget und
+  Waffencondition. Es erhaelt keinen vollstaendigen WorldState.
+
+Netzwerkprotokoll
+-----------------
+- Protocol Version: 7.
+- Armarium Client -> Server: hello, turret, fire_lance.
+- Reactorium Client -> Server: hello, reactor_level, power_allocation.
+- Der State-Stream laeuft mit maximal 25 Updates pro Sekunde.
+- Webclients verbinden sich automatisch erneut. Aktive Browser werden in der
+  Bruecke als ARMARIUM ONLINE angezeigt.
+- Die vollstaendige Nachrichtendokumentation steht in docs/StationProtocol.md.
+
+Bedienung
+---------
+- W: Vorwaertsthrottle; S: Rueckschub; A/D: Schiff drehen.
+- Leertaste auf der Bruecke: Lanze feuern.
+- Mausrad: taktischer Zoom. Warp Drive: Sternenkarte oeffnen.
+- Armarium: Pfeiltasten fuer die Lafette, Leertaste fuer Fire Lance.
+
+Validierung
+-----------
+- Debug-Build: erfolgreich, 0 Warnungen und 0 Fehler.
+- Automatisierte Core- und Stations-Tests: 66/66 bestanden.
+- JavaScript-Syntax von Armarium und Reactorium wurde mit node --check geprueft.
+- Die bisherigen Godot-Smoketests bleiben vorhanden. Ein Headless-Capture kann in
+  dieser Umgebung wegen eingeschraenktem user://-Logzugriff nicht geschrieben werden.
+
+Bekannte Grenzen
+---------------
+- Gegnerdaten im Armarium stammen noch aus exakter Weltposition, nicht aus Sensoren.
+- Es gibt weder Savegames noch Reparatur-Gameplay, komplexe Reaktorwaerme,
+  Sensordaten, Torpedos oder weitere Waffen.
+- Das Reactorium verteilt Energie nur fuer das Spielerschiff. Gegner behalten ihre
+  zentralen KI-Energieprofile.

@@ -1,0 +1,133 @@
+SpaceSim - Gegnerverhalten und Zustandsmaschine (aktueller Arbeitsstand)
+==========================================================================
+
+Grundprinzip
+------------
+Der Gegner benutzt denselben ShipState, dieselbe Flugphysik, dieselben Booster,
+denselben Reaktor, Schilde, Hull, Subsysteme und dieselbe Lanze wie der Spieler.
+Die KI setzt nie Position, Geschwindigkeit oder Rotation direkt. Sie erzeugt nur
+normale ShipCommands: MainThrust, ReverseThrust, YawLeft, YawRight und FireLance.
+
+Patrouille
+----------
+- Gegner spawnen deterministisch zufaellig in 2 bis 3 km Entfernung.
+- Der Spawnkurs ist zufaellig, aber die Schiffsnase zeigt genau in Flugrichtung.
+- Reisegeschwindigkeit: 100 m/s.
+- Der Reaktor startet bei 50 Prozent. Die Patrouille fordert 50 PU nur fuer den
+  Antrieb an. Waffen und Schilde erhalten 0 PU.
+- Der Schild beginnt leer (0 / MaximumShield) und regeneriert waehrend der
+  Patrouille nicht.
+- Bis zur Entdeckung bleibt die FSM technisch in ACQUIRE. Der Gegner stabilisiert
+  nur seine Reisegeschwindigkeit entlang der eigenen Nase.
+
+Erkennung und Reaktor
+---------------------
+Bei einer Distanz von 1.500 m oder weniger wird der Spieler erkannt.
+
+- IsPlayerDetected wird true.
+- Der Reaktor-Sollwert wechselt auf 100 Prozent.
+- Der reale Reaktoroutput steigt nicht sofort: Er ramped mit derselben Reaktorrate
+  wie beim Spieler von 50 auf 100 Prozent hoch.
+- Ab diesem Tick fordert der Gegner die maximale normale Versorgung aller
+  Stationen an: 50 PU Propulsion, 40 PU Weapons und 35 PU Shields.
+- Bei vollem Reaktoroutput sind damit alle drei Stationen gleichzeitig voll
+  versorgt. Waerend des Hochfahrens wird die Leistung normal proportional begrenzt.
+- Der zuvor leere Schild kann erst jetzt regenerieren; die Lanze beginnt ebenfalls
+  erst jetzt zu laden.
+- ACQUIRE wechselt sofort zu APPROACH.
+
+KI-Kontext
+----------
+Vor jeder Kampfentscheidung berechnet die KI einmal:
+- Richtung und Distanz zum Spieler
+- Relativgeschwindigkeit
+- ClosingSpeed (positive Werte bedeuten Annaeherung)
+- Gegner- und Spieler-AimError
+- Ladezustand beider Lanzen
+
+Dieser Kontext ist nur eine abgeleitete Momentaufnahme pro Tick.
+
+Zustandsmaschine
+-----------------
+
+ACQUIRE
+Der formelle Startzustand. Waerend der Patrouille findet keine Kampfentscheidung
+statt. Nach der Entdeckung wechselt ACQUIRE direkt zu APPROACH.
+
+APPROACH
+Ziel: den Spieler schnell, aber kontrolliert erreichen.
+
+- Der Gegner sagt die Spielerposition fuer den Anflug voraus. Der Vorhaltezeitraum
+  betraegt mindestens vier Sekunden und wird bei groesserer Distanz verlaengert.
+  Ziel ist ein Ankunftspunkt etwa 600 m vor dem vorhergesagten Spielerort.
+- Die erlaubte ClosingSpeed wird aus der vorhandenen Reverse-Bremsleistung
+  berechnet. Diese Bremsleistung verwendet die aktuelle Antriebsenergie und den
+  Zustand des Antriebssystems. Die ClosingSpeed ist auf 55 m/s begrenzt und wird
+  so reduziert, dass vor dem 900-m-Kampfrand auf die Angriffsgeschwindigkeit
+  abgebremst werden kann.
+- Fuer einen kontrollierten ATTACK akzeptiert die KI hoechstens 35 m/s
+  Relativgeschwindigkeit.
+- Wenn die Prognose bei mehr als 35 m/s Relativgeschwindigkeit einen naechsten
+  Abstand unter 180 m ergibt, plant der Gegner einen tangentialen Fly-by. Er
+  dreht dabei in eine seitliche Bahn und beschleunigt mit normalen
+  Yaw-/Haupttriebwerks-Commands, statt umzudrehen und gegen die eigene Bewegung
+  mit ReverseThrust zu bremsen.
+- Ein kollisionssicherer Fly-by darf bereits im Kampfbereich 250 bis 900 m in
+  ATTACK wechseln, auch wenn die Relativgeschwindigkeit noch ueber 35 m/s liegt.
+  Der Gegner richtet sich im Vorbeiflug aus und kann feuern.
+
+ATTACK
+Ziel: Kampfentfernung halten, ausrichten und feuern.
+
+- Bevorzugte Kampfentfernung: 600 m.
+- Gueltiger Kampfbereich: mindestens 250 m, maximal 900 m.
+- Der Drehcontroller beruecksichtigt Winkelfehler und Winkelgeschwindigkeit.
+  Er verwendet nur YawLeft/YawRight und kein direktes Setzen der Rotation.
+- Bei zu grosser Entfernung beschleunigt der Gegner nur, wenn seine ClosingSpeed
+  noch unter 35 m/s liegt.
+- Bei einer sicheren Fly-by-Bahn bleibt ATTACK aktiv und der Gegner versucht
+  nicht, durch ein Umdrehen die Geschwindigkeit abzuwuergen. Der Vorbeiflug ist
+  eine gueltige, aber nicht bevorzugte Angriffssituation.
+- Die Lanze feuert nur bei voller Ladung, innerhalb der Lanzenreichweite, mit dem
+  Spieler vor der Gegnernase und innerhalb der jeweiligen Feuer-Toleranz.
+- ATTACK wechselt zu REPOSITION bei Distanz unter 250 m oder ueber 900 m oder
+  bei einer schlechten Geometrie, die keine kollisionssichere Fly-by-Bahn hat.
+
+REPOSITION
+Ziel: nach einem Vorbeiflug, bei hoher Relativgeschwindigkeit oder bei erwarteter
+Kollision wieder eine kontrollierte Kampfposition herstellen.
+
+- REPOSITION verwendet denselben Vorhalte- und Geschwindigkeitsplaner wie
+  APPROACH. Bei vorhergesagter Kollision nutzt er ebenfalls eine tangentiale
+  Fly-by-Bahn.
+- Der Gegner darf bewusst vom Spieler wegschauen, um mit MainThrust oder
+  ReverseThrust seine Traegheit abzubauen oder Distanz zu gewinnen, wenn kein
+  sicherer Vorbeiflug moeglich ist.
+- Sobald Entfernung, Relativgeschwindigkeit und Ausrichtung wieder passen,
+  wechselt er zu ATTACK.
+
+DESTROYED
+Nach der Zerstoerung erzeugt die KI keine weiteren Commands.
+
+Bewusst entfernt
+-----------------
+Es gibt keinen EVADE-State, keine Evade-Richtung, keinen Evade-Cooldown und keinen
+Risk-Level mehr. Hull-, Schild- und Subsystemschaden veraendern weiterhin die
+physische Leistungsfaehigkeit des Schiffes, aber nicht die taktische Entscheidung:
+Der Gegner versucht immer APPROACH -> ATTACK und nutzt REPOSITION nur fuer seine
+Fluggeometrie.
+
+Schwierigkeiten
+---------------
+Easy, Medium und Hard benutzen dieselben Patrouillen-, Erkennungs-, Reaktor-,
+Energie-, Distanz- und Bewegungsregeln. Nur die Feuerpraezision unterscheidet sich:
+
+- Easy: 2 Grad Feuer-Toleranz
+- Medium: 3 Grad Feuer-Toleranz
+- Hard: 5 Grad Feuer-Toleranz
+
+Debugstation
+-------------
+http://127.0.0.1:47870/debug/ zeigt fuer den aktiven Gegner Patrouille/Erkennung,
+FSM-State, Distanz und Bewegungswerte, Hull, Schild, Lanze, Subsysteme, Reaktor
+und angeforderte beziehungsweise gelieferte Leistung. Die Station ist read-only.

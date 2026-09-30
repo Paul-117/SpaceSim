@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using SpaceSim.Stations.Armarium;
+using SpaceSim.Stations.Debug;
 using SpaceSim.Stations.Reactorium;
 
 namespace SpaceSim.Stations;
@@ -31,9 +32,12 @@ public sealed class StationServer : IDisposable
     private readonly ConcurrentDictionary<int, StationConnection> _connections = new();
     private readonly CancellationTokenSource _stopping = new();
     private readonly TcpListener _listener;
-    private ArmariumState _latestState = new(false, 0f, 0f, 0f, false, 0f, 0, 0f, 0f, 0f, 1f, 0);
+    private ArmariumState _latestState = new(false, 0f, 0f, 0f, false, 0f, 0, 0f, 0f, 40f, 1f, 0);
     private ReactoriumState _latestReactoriumState = new(100f, 100f, 125f, 125f, 0f, 100f, 100f, 0f,
         40f, 28f, 32f, 50f, 35f, 40f, 50f, 35f, 40f, 0);
+    private EnemyDebugState _latestEnemyDebugState = new(false, 0, "NONE", false, "NONE",
+        0f, 0f, 0f, 0f, 0, 0, 0f, 0f, 0f, 0f, 0f, 0f, false,
+        0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0);
     private Task? _acceptTask;
     private Task? _broadcastTask;
     private int _nextConnectionId;
@@ -59,9 +63,11 @@ public sealed class StationServer : IDisposable
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
     public string ArmariumUrl => $"http://127.0.0.1:{Port}/armarium/";
     public string ReactoriumUrl => $"http://127.0.0.1:{Port}/reactorium/";
+    public string DebugUrl => $"http://127.0.0.1:{Port}/debug/";
     /// <summary>True once an Armarium browser has completed its protocol handshake.</summary>
     public bool IsArmariumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.ArmariumStation);
     public bool IsReactoriumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.ReactoriumStation);
+    public bool IsDebugOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.DebugStation);
 
     public void Start()
     {
@@ -75,6 +81,7 @@ public sealed class StationServer : IDisposable
 
     public void UpdateState(ArmariumState state) => Volatile.Write(ref _latestState, state);
     public void UpdateReactoriumState(ReactoriumState state) => Volatile.Write(ref _latestReactoriumState, state);
+    public void UpdateEnemyDebugState(EnemyDebugState state) => Volatile.Write(ref _latestEnemyDebugState, state);
 
     public void Dispose()
     {
@@ -160,7 +167,8 @@ public sealed class StationServer : IDisposable
             if (!connection.IsAccepted)
             {
                 bool knownStation = string.Equals(command.Station, StationProtocol.ArmariumStation, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(command.Station, StationProtocol.ReactoriumStation, StringComparison.OrdinalIgnoreCase);
+                    string.Equals(command.Station, StationProtocol.ReactoriumStation, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(command.Station, StationProtocol.DebugStation, StringComparison.OrdinalIgnoreCase);
                 if (command.Type != "hello" || !knownStation || command.ProtocolVersion != StationProtocol.Version)
                 {
                     await connection.SendJsonAsync(new StationError("protocol_mismatch",
@@ -198,9 +206,12 @@ public sealed class StationServer : IDisposable
                 await Task.Delay(period, cancellationToken);
                 foreach (StationConnection connection in _connections.Values.Where(connection => connection.IsAccepted))
                 {
-                    object message = connection.Station == StationProtocol.ReactoriumStation
-                        ? new ReactoriumStateMessage(Volatile.Read(ref _latestReactoriumState), Interlocked.Increment(ref _sequence))
-                        : new ArmariumStateMessage(Volatile.Read(ref _latestState), Interlocked.Increment(ref _sequence));
+                    object message = connection.Station switch
+                    {
+                        StationProtocol.ReactoriumStation => new ReactoriumStateMessage(Volatile.Read(ref _latestReactoriumState), Interlocked.Increment(ref _sequence)),
+                        StationProtocol.DebugStation => new EnemyDebugStateMessage(Volatile.Read(ref _latestEnemyDebugState), Interlocked.Increment(ref _sequence)),
+                        _ => new ArmariumStateMessage(Volatile.Read(ref _latestState), Interlocked.Increment(ref _sequence))
+                    };
                     try { await connection.SendJsonAsync(message, cancellationToken); }
                     catch (IOException) { connection.Dispose(); _connections.TryRemove(connection.Id, out _); }
                 }
@@ -220,7 +231,9 @@ public sealed class StationServer : IDisposable
         }
         string asset = path == "/armarium/" ? "armarium/index.html" : path.StartsWith("/armarium/", StringComparison.Ordinal)
             ? "armarium/" + path[10..] : path == "/reactorium/" ? "reactorium/index.html" :
-            path.StartsWith("/reactorium/", StringComparison.Ordinal) ? "reactorium/" + path[12..] : string.Empty;
+            path.StartsWith("/reactorium/", StringComparison.Ordinal) ? "reactorium/" + path[12..] :
+            path == "/debug/" ? "debug/index.html" : path.StartsWith("/debug/", StringComparison.Ordinal)
+                ? "debug/" + path[7..] : string.Empty;
         if (!_assets.TryGetValue(asset, out string? content) && asset.StartsWith("armarium/", StringComparison.Ordinal))
             _assets.TryGetValue(asset[9..], out content);
         if (content is null)
@@ -388,6 +401,41 @@ public sealed class StationServer : IDisposable
         public float BridgeMaximumPower => State.BridgeMaximumPower;
         public float ShieldsMaximumPower => State.ShieldsMaximumPower;
         public float ArmariumMaximumPower => State.ArmariumMaximumPower;
+        public long SimulationTick => State.SimulationTick;
+    }
+    private sealed record EnemyDebugStateMessage(EnemyDebugState State, long ConnectionSequence)
+    {
+        public string Type { get; } = "enemy_debug_state";
+        public bool EnemyAvailable => State.EnemyAvailable;
+        public int EnemyId => State.EnemyId;
+        public string Difficulty => State.Difficulty;
+        public bool PlayerDetected => State.PlayerDetected;
+        public string AiState => State.AiState;
+        public float DistanceToPlayer => State.DistanceToPlayer;
+        public float ClosingSpeed => State.ClosingSpeed;
+        public float RelativeSpeed => State.RelativeSpeed;
+        public float EnemySpeed => State.EnemySpeed;
+        public int Hull => State.Hull;
+        public int MaximumHull => State.MaximumHull;
+        public float Shield => State.Shield;
+        public float MaximumShield => State.MaximumShield;
+        public float PropulsionCondition => State.PropulsionCondition;
+        public float WeaponsCondition => State.WeaponsCondition;
+        public float ShieldsCondition => State.ShieldsCondition;
+        public float LanceCharge => State.LanceCharge;
+        public bool LanceReady => State.LanceReady;
+        public float ReactorTargetOperatingLevelPercent => State.ReactorTargetOperatingLevelPercent;
+        public float ReactorOperatingLevelPercent => State.ReactorOperatingLevelPercent;
+        public float ReactorAvailablePower => State.ReactorAvailablePower;
+        public float ReactorCurrentDraw => State.ReactorCurrentDraw;
+        public float ReactorFuel => State.ReactorFuel;
+        public float ReactorFuelCapacity => State.ReactorFuelCapacity;
+        public float PropulsionRequested => State.PropulsionRequested;
+        public float WeaponsRequested => State.WeaponsRequested;
+        public float ShieldsRequested => State.ShieldsRequested;
+        public float PropulsionDraw => State.PropulsionDraw;
+        public float WeaponsDraw => State.WeaponsDraw;
+        public float ShieldsDraw => State.ShieldsDraw;
         public long SimulationTick => State.SimulationTick;
     }
 }

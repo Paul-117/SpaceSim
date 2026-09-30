@@ -37,7 +37,14 @@ public sealed class Simulation
             new EncounterState(4, "Encounter 4", Settings.EncounterFourTargetCount)
         };
         World = new WorldState(CreateShip(initialShip), encounters);
-        World.WarpDrive.RemainingSeconds = Settings.WarpChargeSeconds;
+        if (Settings.StartWarpReady)
+        {
+            World.WarpDrive.ChargedSeconds = Settings.WarpChargeSeconds;
+            World.WarpDrive.ChargeFraction = 1f;
+            World.WarpDrive.RemainingSeconds = 0;
+            World.WarpDrive.IsReady = true;
+        }
+        else World.WarpDrive.RemainingSeconds = Settings.WarpChargeSeconds;
         var targets = new TargetSystem(Settings, randomSeed);
         targets.Initialize(encounters[0], initialShip.Position, _events, initialTargets);
         targets.Initialize(encounters[1], Vector3.Zero, _events);
@@ -45,14 +52,11 @@ public sealed class Simulation
         targets.Initialize(encounters[3], Vector3.Zero, _events);
         if (spawnEnemy)
         {
-            AddEnemy(encounters[1], 1, new ShipInitialState(
-                Position: new Vector3(0, 0, -1_000), YawRadians: MathF.PI),
+            AddEnemy(encounters[1], 1, CreatePatrolInitial(randomSeed + 10_007),
                 EnemyDifficulty.Easy, randomSeed + 10_007);
-            ShipInitialState mediumStart = enemyInitial ?? new ShipInitialState(
-                Position: new Vector3(0, 0, -1_000), YawRadians: MathF.PI);
+            ShipInitialState mediumStart = enemyInitial ?? CreatePatrolInitial(randomSeed + 10_008);
             AddEnemy(encounters[2], 2, mediumStart, EnemyDifficulty.Medium, randomSeed + 10_008);
-            AddEnemy(encounters[3], 3, new ShipInitialState(
-                Position: new Vector3(0, 0, -900), YawRadians: MathF.PI), EnemyDifficulty.Hard, randomSeed + 10_009);
+            AddEnemy(encounters[3], 3, CreatePatrolInitial(randomSeed + 10_009), EnemyDifficulty.Hard, randomSeed + 10_009);
         }
     }
 
@@ -79,8 +83,11 @@ public sealed class Simulation
             EnemyAiController? ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
             enemyCommands[enemy.EnemyId] = ai?.Tick(enemy, World.Ship, World.Lance,
                 Settings.LanceRangeMeters, World.GameState) ?? default;
+            if (ai is not null)
+                PowerDistributionSystem.SetReactorOperatingLevel(enemy.Ship.Reactor, ai.DesiredReactorOperatingLevelPercent);
             PowerDistributionSystem.StepReactor(enemy.Ship.Reactor, Settings.Power);
-            if (ai is not null) PowerDistributionSystem.ApplyProfile(enemy.Ship, ai.CurrentPowerProfile);
+            if (ai?.IsPlayerDetected == true) PowerDistributionSystem.ApplyEnemyCombatDemand(enemy.Ship);
+            else if (ai is not null) PowerDistributionSystem.ApplyEnemyPatrolDemand(enemy.Ship, Settings.EnemyAi.PatrolPropulsionDraw);
             ShieldSystem.Recharge(enemy.Ship.Shield, enemy.Ship.Power.ShieldsPowerFactor * enemy.Ship.Systems.ShieldsCondition, Settings.Shield);
             LanceSystem.Charge(enemy.Lance, Settings, enemy.Ship.Power.WeaponsPowerFactor * enemy.Ship.Systems.WeaponsCondition);
         }
@@ -119,8 +126,8 @@ public sealed class Simulation
         World.Tick++;
     }
 
-    private ShipState CreateShip(ShipInitialState initial) => new(Settings.ShipMassKg, Settings.YawMomentOfInertia,
-        PowerDistributionSystem.CreateReactor(Settings.Power), PowerDistributionSystem.Create(Settings.Power), ShieldSystem.Create(Settings.Shield),
+    private ShipState CreateShip(ShipInitialState initial, float? reactorOperatingLevelPercent = null) => new(Settings.ShipMassKg, Settings.YawMomentOfInertia,
+        PowerDistributionSystem.CreateReactor(Settings.Power, reactorOperatingLevelPercent), PowerDistributionSystem.Create(Settings.Power), ShieldSystem.Create(Settings.Shield),
         HullSystem.Create(Settings.Hull), new SubsystemState())
     {
         Position = initial.Position,
@@ -132,13 +139,25 @@ public sealed class Simulation
     private void AddEnemy(EncounterState encounter, int enemyId, ShipInitialState initial, EnemyDifficulty difficulty, int seed)
     {
         ValidateInitial(initial);
-        EnemyDifficultyProfile profile = EnemyDifficultyProfiles.Create(difficulty, Settings.EnemyAi, Settings.Power);
+        EnemyDifficultyProfile profile = EnemyDifficultyProfiles.Create(difficulty, Settings.EnemyAi);
         profile.Ai.Validate();
-        profile.Power.Validate();
-        ShipState ship = CreateShip(initial);
-        PowerDistributionSystem.ApplyProfile(ship, profile.Power.DefaultProfile);
+        ShipState ship = CreateShip(initial, profile.Ai.PatrolReactorOperatingLevelPercent);
+        ship.Shield.CurrentShield = 0f;
+        PowerDistributionSystem.ApplyEnemyPatrolDemand(ship, profile.Ai.PatrolPropulsionDraw);
         encounter.AddEnemy(new EnemyShipState(enemyId, ship, difficulty),
-            new EnemyAiController(profile.Ai, profile.Power, difficulty, seed));
+            new EnemyAiController(profile.Ai, difficulty, Settings.ReverseThrustNewtons / Settings.ShipMassKg));
+    }
+
+    private ShipInitialState CreatePatrolInitial(int seed)
+    {
+        var random = new Random(seed);
+        float spawnAngle = (float)(random.NextDouble() * MathF.Tau);
+        float distance = Settings.EnemyAi.PatrolSpawnMinimumDistanceMeters +
+            (float)random.NextDouble() * (Settings.EnemyAi.PatrolSpawnMaximumDistanceMeters - Settings.EnemyAi.PatrolSpawnMinimumDistanceMeters);
+        float course = (float)(random.NextDouble() * MathF.Tau);
+        Vector3 forward = new(MathF.Sin(course), 0f, -MathF.Cos(course));
+        return new ShipInitialState(new Vector3(MathF.Sin(spawnAngle) * distance, 0f, -MathF.Cos(spawnAngle) * distance),
+            forward * Settings.EnemyAi.PatrolCruiseSpeedMetersPerSecond, -course);
     }
 
     private static void ValidateInitial(ShipInitialState initial)

@@ -1,4 +1,4 @@
-# SpaceSim 1.9.1
+# SpaceSim 1.9.4
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
@@ -54,7 +54,7 @@ abgebaut werden.
 **`Start.cmd` doppelklicken.** Das Skript baut das Projekt und startet das Spiel.
 Alternativ im Workspace:
 
-Der aktuelle Arbeitsstand ist **1.9.1**. Er umfasst die externe Waffenstation **Armarium**, das angeschlossene **Reactorium** und die überarbeitete Brückenansicht. Der Stand ist fuer `v1.9.1` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Der aktuelle Arbeitsstand ist **1.9.4**. Er umfasst die externe Waffenstation **Armarium**, das angeschlossene **Reactorium**, die überarbeitete Brückenansicht, Gegnerpatrouillen und den vorhaltebasierten Fly-by-Anflug. Der Stand ist fuer `v1.9.4` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1
@@ -105,9 +105,11 @@ weder Reibung noch automatische Stabilisierung. Der aktive Antrieb begrenzt weit
 Die Lanze startet ungeladen, lädt in drei Simulationssekunden und schießt entlang
 der gestrichelten Visierlinie. Ein zu früher Tastendruck wird verworfen; Halten
 löst kein Dauerfeuer aus. Nach dem Schuss erneut drücken. Die erste Zieloberfläche
-innerhalb von 1.600 m stoppt den Strahl. Ein Treffer zählt sofort und entfernt das
-Ziel dauerhaft für diese Sitzung. Der sichtbare Strahl bleibt nur 0,16 Sekunden
-bestehen. Auch beim Wegfliegen oder Zurückspringen werden keine Ziele ersetzt.
+innerhalb von 1.000 m trifft die Lanze. Dahinter verursacht sie keinen Treffer.
+Der sichtbare Strahl reicht als Effekt bis 3.000 m und fadet ab 1.000 m weich aus.
+Ein Treffer zählt sofort und entfernt das Ziel dauerhaft für diese Sitzung. Der
+sichtbare Strahl bleibt nur 0,16 Sekunden bestehen. Auch beim Wegfliegen oder
+Zurückspringen werden keine Ziele ersetzt.
 
 ## Armarium und Reactorium Station Server (V1.9)
 
@@ -140,9 +142,15 @@ Fensterhoehe und benoetigt keine Scrollleiste. **Leertaste**
 im Browser sendet genau einen `fire_lance`-Befehl. Die lokale Leertaste bleibt parallel
 aktiv.
 
+Die kompakte Waffenzeile zeigt rechts LANCE, Ladebalken und Lafettenwinkel. Links
+steht das Armarium-Energiefenster mit dem vom Core zugewiesenen Budget in PU und
+dem Waffenstatus ONLINE, LIMITED oder OFFLINE. Der Status folgt Energie-Budget und
+Weapons-Subsystemzustand.
+
 Der Haupt-PC bleibt autoritativ: Der Browser erhaelt nur `targetAvailable`,
 `targetBearingDegrees`, `targetDistanceMeters`, `lanceCharge`, `lanceReady`,
-`lanceTurretAngleDegrees` und `simulationTick`.
+`lanceTurretAngleDegrees`, `availablePower`, `maximumPower`, `lanceSystemCondition`
+und `simulationTick`.
 Er entscheidet nicht ueber Waffenfeuer oder Treffer. Der Fire Command wird im
 Haupt-PC thread-sicher gepuffert und erst im normalen `ShipCommand` des naechsten
 Simulationsticks verarbeitet. Das Armarium nutzt derzeit die exakte Gegnerposition;
@@ -193,6 +201,18 @@ wenn sie gerade nicht betätigt werden. Von maximal 50 PU bleiben W damit höchs
 Stationsleistung unter 30 PU, erhalten S, A und D jeweils denselben linearen
 Leistungsfaktor; W erhält dann keine Leistung.
 
+### Enemy AI Debug
+
+Die schreibgeschuetzte Entwicklungsstation ist unter
+`http://127.0.0.1:47870/debug/` erreichbar; im LAN wird `127.0.0.1` durch die
+IP des Haupt-PCs ersetzt. Sie enthaelt keine Bedienbefehle und kann den
+Spielzustand nicht veraendern. Fuer den aktiven Gegner zeigt sie seine
+Erkennung (**PATROL / UNAWARE** oder **COMBAT / DETECTED**), FSM-Zustand,
+Distanz, Annaeherungs- und Relativgeschwindigkeit, Hull, Schild,
+Lanzenladung, Subsystemzustand sowie Reaktor- und Energieprofil. Existiert im
+aktuellen Encounter kein Gegner, zeigt die Seite das explizit an. Die Daten sind
+ein gezielter Debug-Snapshot und kein uebertragener `WorldState`.
+
 ### Brücke 1.9.1
 
 Das bisherige Fenster **ENERGY** oben rechts ist entfernt. Die bisherigen Treffer-
@@ -242,10 +262,36 @@ Ein zerstoerter Gegner erzeugt zudem eine Explosion: bis 350 m wird der
 Spielerschild entleert, bis 250 m faellt ein Subsystem aus, bis 200 m zwei
 Subsysteme und bis 150 m wird das Spielerschiff zerstoert.
 
-Die Zustandsmaschine verwendet `ACQUIRE`, `APPROACH`, `ATTACK`, `EVADE` und
-`REPOSITION`. Der Health-aware Risk Level bestimmt die Vorsicht innerhalb dieser
-States: gesunde Gegner greifen aggressiv an, beschaedigte Gegner weichen bei
-konkreter Lanzenbedrohung kurz aus und kehren danach wieder in den Kampf zurueck.
+Die Zustandsmaschine verwendet `ACQUIRE`, `APPROACH`, `ATTACK` und `REPOSITION`.
+Sie kennt keinen Risk-Level und keinen EVADE-State. Gegner schaetzen die eigene
+Hull-, Schild- und Systemlage nicht taktisch ein; sie verwenden REPOSITION nur,
+um Entfernung, Relativgeschwindigkeit und drohende Kollisionen zu korrigieren.
+
+### Gegnerpatrouille und Anflug 1.9.4
+
+Jeder Gegner beginnt zwei bis drei Kilometer vom lokalen Einstiegspunkt entfernt
+auf einem reproduzierbar zufaelligen Kurs mit 100 m/s Reisegeschwindigkeit. Seine
+Nase zeigt dabei in die Reiserichtung. Er hat
+den Spieler zunaechst nicht entdeckt und laesst die vorhandene Kampf-FSM in
+`ACQUIRE`. Sein Reaktor startet bei 50 Prozent. Das Patrouillenprofil fordert
+50 PU nur fuer Propulsion, ohne Waffen- oder Schildleistung. Sein Schild beginnt
+leer und regeneriert in der Patrouille nicht.
+
+Bei **1.500 m** oder weniger entdeckt der Gegner den Spieler. Dann setzt er den
+Reaktor-Sollwert auf 100 Prozent und ramped dann mit der normalen Reaktorrate von
+50 auf 100 Prozent. Dabei fordert er die maximale Leistung aller drei
+Stationen an: 50 PU Propulsion, 40 PU Weapons und 35 PU Shields. Anschliessend
+geht er unmittelbar ueber `ACQUIRE` nach `APPROACH`. Die beim Hochfahren
+verfuegbare Leistung wird wie beim Spieler proportional begrenzt.
+
+`APPROACH` sagt den Spielerort voraus und plant eine Ankunft nahe der bevorzugten
+Kampfentfernung von 600 m. Die erlaubte Annäherungsgeschwindigkeit ergibt sich
+aus der aktuell möglichen Reverse-Bremsleistung und ist auf 55 m/s begrenzt.
+Bei einer vorhergesagten Annäherung von mehr als 35 m/s mit weniger als 180 m
+nächstem Abstand plant die KI einen tangentialen Fly-by: Sie lenkt mit normalen
+Yaw- und Haupttriebwerksbefehlen seitlich um, statt umzudrehen und direkt vor dem
+Spieler gegenzubremsen. Ein sicherer Fly-by darf im Bereich von 250 bis 900 m
+bereits angreifen und im Vorbeiflug feuern.
 
 Ein voller Schild absorbiert einen Lanzentreffer. Restschaden reduziert die Hull,
 beschaedigt ein Subsystem und zerstoert das Schiff erst bei Hull 0. Beim Spieler

@@ -1,0 +1,126 @@
+SpaceSim V1.9.4 - Implementierungsuebersicht
+===============================================
+
+Version und Geltungsbereich
+---------------------------
+- Projektversion: 1.9.4.
+- Dieser Stand fasst die noch nicht gespeicherten Arbeiten seit V1.9.2/V1.9.3
+  zusammen: Gegnerpatrouille und -reaktor, vereinfachte Kampf-KI, vorhaltebasierter
+  Anflug mit Fly-by, Lanzenreichweite, Sternenkartenstart und Enemy-AI-Debugstation.
+- SpaceSim.Core bleibt der alleinige autoritative Simulationskern. Godot stellt
+  Darstellung, Eingabe und HUD bereit. Browser-Stationen erhalten nur gezielte
+  Snapshots und senden ausschliesslich normale Bedienabsichten.
+
+Spielstart, Warp und Lanze
+--------------------------
+- Der normale Godot-Spielstart oeffnet die Sternenkarte. Der Warp Drive ist dabei
+  bereits voll geladen und ein Sprung kann sofort ausgewaehlt werden.
+- Die Core-Standardeinstellung bleibt unveraendert ohne vorab geladenen Warp Drive,
+  damit gezielte Simulationstests ihre bisherigen Ausgangszustaende kontrollieren.
+- Die Lanze hat eine verbindliche Trefferreichweite von 1.000 m.
+- Die Godot-Darstellung zeichnet den Strahl bis 3.000 m: von 0 bis 1.000 m voll
+  sichtbar, danach mit abnehmender Intensitaet und Linienbreite. Der ausgeblendete
+  Teil kann keine Treffer verursachen.
+
+Gegnerpatrouille und Erkennung
+------------------------------
+- Gegner spawnen reproduzierbar auf einem zufaelligen Kurs zwei bis drei Kilometer
+  vom lokalen Einstiegspunkt entfernt.
+- Sie reisen mit 100 m/s; ihre Nase zeigt in die Reiserichtung.
+- Vor der Erkennung arbeitet der gegnerische Reaktor bei 50 Prozent und liefert
+  50 PU ausschliesslich an Propulsion. Weapons und Shields erhalten 0 PU.
+- Der Schild beginnt leer und regeneriert waehrend der Patrouille nicht.
+- Bei 1.500 m oder weniger wird der Spieler erkannt. Der Reaktor-Sollwert geht
+  auf 100 Prozent, der reale Output ramped jedoch mit derselben 60-Sekunden-
+  Reaktordynamik wie beim Spieler von 50 auf 100 Prozent.
+- Ab Erkennung fordert der Gegner 50 PU Propulsion, 40 PU Weapons und 35 PU
+  Shields an. Solange der Reaktor noch nicht genug liefert, verteilt der bekannte
+  Power-Mechanismus die Leistung proportional. Schild und Lanze laden dadurch
+  erst schrittweise hoch.
+
+Kampf-FSM und Schwierigkeit
+---------------------------
+- Die FSM besteht aus ACQUIRE, APPROACH, ATTACK, REPOSITION und DESTROYED.
+- EVADE, Risk-Level, Evade-Cooldown und zustandsbezogene Energieprofile sind
+  entfernt. Eigene Hull-, Schild- und Subsystemschaden veraendern die physische
+  Leistung des Gegners, aber nicht seine taktische Risikobereitschaft.
+- Alle Schwierigkeiten teilen die Bewegungsregeln und den Kampfbereich von
+  250 bis 900 m bei einer bevorzugten Distanz von 600 m.
+- Nur die Feuertoleranz unterscheidet sich: Easy 2 Grad, Medium 3 Grad,
+  Hard 5 Grad.
+
+Vorhaltebasierter APPROACH und Fly-by
+-------------------------------------
+- APPROACH sagt den Spielerort voraus. Die Vorhaltezeit betraegt mindestens vier
+  Sekunden und wird bei groesserer Distanz anhand der geplanten Reisezeit erhoeht.
+  Der Ankunftspunkt liegt etwa 600 m vor dem vorhergesagten Spielerort.
+- Die maximal beabsichtigte ClosingSpeed wird aus der aktuell wirksamen
+  Reverse-Bremsbeschleunigung berechnet. Antriebsenergie und
+  PropulsionCondition fliessen ein. Sie ist auf 55 m/s begrenzt und wird so
+  reduziert, dass der Gegner vor dem 900-m-Kampfrand auf 35 m/s abfangen kann.
+- Liegt die ClosingSpeed ueber 35 m/s und die Projektion der beiden Flugbahnen
+  ergibt einen naechsten Abstand unter 180 m, startet der Controller einen
+  tangentialen Fly-by.
+- Beim Fly-by lenkt der Gegner mit normalen Yaw- und Haupttriebwerks-Commands
+  seitlich auf eine sichere Vorbeiflugbahn. Er setzt weder Position noch
+  Geschwindigkeit oder Rotation direkt und dreht nicht vor dem Spieler um, um
+  mit Gegen-/Reverse-Schub abzubremsen.
+- Ein sicherer Fly-by darf bereits innerhalb 250 bis 900 m zu ATTACK wechseln,
+  auch wenn die Relativgeschwindigkeit noch hoeher als 35 m/s ist. Der Gegner
+  richtet sich im Vorbeiflug aus und kann feuern. Ist keine sichere Bahn moeglich,
+  nutzt REPOSITION weiter die normale Geschwindigkeitskorrektur.
+
+Enemy-AI-Debugstation
+---------------------
+- Neue Browser-URL: http://127.0.0.1:47870/debug/
+- Die Station verbindet sich als `debug` ueber das bestehende HTTP/WebSocket-
+  System, Protokollversion 7. Sie ist ausschliesslich lesend und akzeptiert keine
+  Spielbefehle.
+- Sie zeigt den aktiven Gegner mit Erkennungsstatus, FSM, Schwierigkeit, Distanz,
+  ClosingSpeed, Relativ- und Eigengeschwindigkeit, Hull, Schild, Lanzenstatus,
+  Subsystem-Conditions, Reaktorlevel, Fuel sowie angeforderter und gelieferter
+  Stationsleistung.
+- Der Server baut einen gezielten EnemyDebugState-Snapshot. Es wird kein
+  vollstaendiger WorldState an den Browser uebertragen.
+
+Geaenderte Komponenten
+----------------------
+- SpaceSim.Core/AI: Patrol/Erkennung, reduzierte FSM, Vorhalte- und Fly-by-
+  Planer, zentrale Einstellungen; der obsolete EnemyRiskLevel-Typ wurde entfernt.
+- SpaceSim.Core/Simulation und Power: gegnerischer ReactorState, Patrouillen-
+  beziehungsweise Kampfanfragen, Warp-Startoption und getrennte Gameplay-/Visual-
+  Lanzenreichweite.
+- SpaceSim.Core/Weapons: WeaponFired uebertraegt den Start des visuellen Fades
+  und das rein optische Strahlende.
+- SpaceSim.Godot: Sternenkartenstart, ausfadende Lanze, Version 1.9.4 und
+  Bereitstellung/Aktualisierung der Debugstation.
+- SpaceSim.Stations und docs/StationProtocol.md: Debug-Station, Snapshot-
+  Nachricht und deren Protokolldokumentation.
+- SpaceSim.Core.Tests: Tests fuer Patrouille, Reaktorramp-up, vereinfachte FSM,
+  Lanzenreichweite/-visualisierung, Debugstation und tangentialen Fly-by.
+
+Validierung
+-----------
+- scripts/Test.ps1: 68 von 68 Tests bestanden.
+- git diff --check: keine Whitespace-Fehler.
+
+Bekannte Grenzen
+---------------
+- Die Erkennung verwendet absichtlich die exakte Spielerposition und einen festen
+  1.500-m-Distanzwert. Sensoren, Sichtlinien, Stealth und Kontaktunsicherheit
+  existieren noch nicht.
+- Die Fly-by-Prognose betrachtet nur die Relativbewegung beider Schiffe. Sie
+  vermeidet keine Hindernisse und ist keine vollstaendige Flugbahnoptimierung.
+- Der 1-bis-3-km-Teil der Lanze ist nur eine Darstellung und kein zweites
+  Schadensmodell.
+- Die Debugstation ist ein Entwicklungswerkzeug. Sie besitzt weder
+  Authentifizierung noch Rollen-/Zugriffsverwaltung.
+
+Sinnvolle naechste Schritte
+---------------------------
+- Fly-by-Parameter im laufenden Spiel mit Easy, Medium und Hard beobachten und
+  gezielt feinjustieren.
+- Sensorium fuer nicht-exakte Gegnerkontakte vorbereiten.
+- Weitere Stations-Debugdaten nur als gezielte Snapshots und nicht als WorldState
+  ergaenzen.
+

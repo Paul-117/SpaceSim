@@ -52,7 +52,7 @@ public partial class FlightHud : Control
         DrawRect(new Rect2(0, height - 154, width, 154), new Color(.0196f, .0314f, .0549f, .96f));
         Text(new Vector2(30, 35), "SPACESIM", 23, ViewSettings.Text);
         Text(new Vector2(165, 34), $"/  {World.CurrentEncounter.Name.ToUpperInvariant()}", 13, ViewSettings.Muted);
-        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.9.1", 12, ViewSettings.Cyan);
+        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.9.4", 12, ViewSettings.Cyan);
         Text(new Vector2(width - 510, 33), ArmariumOnline ? "ARMARIUM ONLINE" : "ARMARIUM OFFLINE", 12,
             ArmariumOnline ? ViewSettings.Green : ViewSettings.Muted);
         DrawWarpLoadBar(width);
@@ -81,7 +81,7 @@ public partial class FlightHud : Control
                 11, new Color("ff6577"));
             var ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
             Text(enemyPanel.Position + new Vector2(12, 45),
-                $"{enemy.Difficulty.ToString().ToUpperInvariant()}  HULL {enemy.Ship.Hull.CurrentHull}/{enemy.Ship.Hull.MaximumHull}  SHD {enemy.Ship.Shield.CurrentShield:0}  RISK {ai?.CurrentRiskLevel.ToString().ToUpperInvariant()}",
+                $"{enemy.Difficulty.ToString().ToUpperInvariant()}  HULL {enemy.Ship.Hull.CurrentHull}/{enemy.Ship.Hull.MaximumHull}  SHD {enemy.Ship.Shield.CurrentShield:0}  {(ai?.IsPlayerDetected == true ? "COMBAT" : "PATROL")}",
                 10, new Color("ff6577"));
         }
         if (!IsFocused) Text(new Vector2(width / 2 - 160, height / 2 + 70), "FENSTER INAKTIV  /  Eingabe aus", 14, ViewSettings.Amber);

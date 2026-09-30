@@ -5,7 +5,7 @@ nur Bedienabsichten und erhalten kleine, stationsspezifische Snapshots.
 
 ## Transport
 
-- HTTP: `http://<host>:47870/armarium/`
+- HTTP: `http://<host>:47870/armarium/`, `http://<host>:47870/reactorium/` oder `http://<host>:47870/debug/`
 - WebSocket: `ws://<host>:47870/station`
 - Protokollversion: `7`
 - Textnachrichten: UTF-8 JSON mit camelCase-Feldern
@@ -23,7 +23,7 @@ Muss die erste WebSocket-Nachricht sein.
 | Feld | Typ | Bedeutung |
 | --- | --- | --- |
 | `type` | string | Immer `hello`. |
-| `station` | string | Immer `armarium`. |
+| `station` | string | `armarium`, `reactorium` oder `debug`. |
 | `protocolVersion` | integer | Muss `7` sein. |
 
 Bei falscher Stationskennung oder Version sendet der Server `error` und beendet die
@@ -83,6 +83,9 @@ Bestetigt eine kompatible Stationsverbindung.
   "lanceTurretAngleDegrees": -2.5,
   "targetHitSequence": 12,
   "lastTargetHitBearingDegrees": -12.4,
+  "availablePower": 40.0,
+  "maximumPower": 40.0,
+  "lanceSystemCondition": 1.0,
   "simulationTick": 1234,
   "connectionSequence": 77
 }
@@ -98,6 +101,9 @@ Bestetigt eine kompatible Stationsverbindung.
 | `lanceTurretAngleDegrees` | number | Aktueller horizontaler Lafettenwinkel: negativ links, positiv rechts. |
 | `targetHitSequence` | integer | Erhoeht sich nach jedem vom Core bestaetigten Spieler-Lanzentreffer. |
 | `lastTargetHitBearingDegrees` | number | Bearing des zuletzt bestaetigten Treffers fuer den kurzen Zielhilfe-Effekt. |
+| `availablePower` | number | Aktuelles, vom Reactorium zugewiesenes Armarium-Budget in PU. |
+| `maximumPower` | number | Maximale Energieaufnahme der Armarium-Station in PU. |
+| `lanceSystemCondition` | number | Zustand des Waffensystems von 0 bis 1. |
 | `simulationTick` | integer | Tick des verwendeten Simulations-Snapshots. |
 | `connectionSequence` | integer | Fortlaufende Server-Sendenummer. |
 
@@ -182,3 +188,49 @@ sind die daraus resultierenden, pro Station begrenzten PU-Budgets. Die jeweilige
 bei jeder aktiven Reaktorleistung Fuel und überträgt die aktuelle Rate mit
 `fuelUsagePerMinute`. Bei Fuel 0 schaltet der Core den Reaktor aus; Output und
 gelieferte Leistung sind dann 0. Der Webclient entscheidet dies nicht selbst.
+
+## Enemy AI Debug
+
+Die reine Entwicklungsstation liegt unter `http://<host>:47870/debug/` und meldet
+sich mit `station: "debug"` an. Nach dem normalen `hello` empfängt sie keine
+Commands und sendet selbst keine Bedienbefehle.
+
+### `enemy_debug_state`
+
+```json
+{
+  "type": "enemy_debug_state",
+  "enemyAvailable": true,
+  "enemyId": 2,
+  "difficulty": "MEDIUM",
+  "playerDetected": false,
+  "aiState": "ACQUIRE",
+  "distanceToPlayer": 2380.5,
+  "closingSpeed": -12.0,
+  "relativeSpeed": 151.0,
+  "enemySpeed": 100.0,
+  "hull": 3,
+  "maximumHull": 3,
+  "shield": 0.0,
+  "maximumShield": 100.0,
+  "lanceCharge": 0.0,
+  "lanceReady": false,
+  "reactorTargetOperatingLevelPercent": 50.0,
+  "reactorOperatingLevelPercent": 50.0,
+  "reactorAvailablePower": 62.5,
+  "reactorCurrentDraw": 50.0,
+  "propulsionRequested": 50.0,
+  "weaponsRequested": 0.0,
+  "shieldsRequested": 0.0,
+  "propulsionDraw": 50.0,
+  "weaponsDraw": 0.0,
+  "shieldsDraw": 0.0,
+  "simulationTick": 1234
+}
+```
+
+Zusätzlich enthält der Snapshot `propulsionCondition`, `weaponsCondition` und
+`shieldsCondition` (jeweils 0 bis 1) sowie die zugehörigen gelieferten Draw-Werte.
+`enemyAvailable: false` signalisiert, dass der aktuelle Encounter keinen aktiven
+Gegner besitzt. Der Server serialisiert keinen `WorldState`; die Nachricht ist
+gezielt auf die Fehlersuche der Gegner-KI beschränkt.

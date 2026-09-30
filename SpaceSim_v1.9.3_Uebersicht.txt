@@ -1,0 +1,124 @@
+SpaceSim V1.9.3 - Enemy Patrol and Detection
+===============================================
+
+Ziel
+----
+V1.9.3 fuegt vor der bestehenden Kampf-KI eine unentdeckte Patrouillenphase
+hinzu. Gegner beginnen nicht mehr unmittelbar mit ACQUIRE -> APPROACH, sondern
+folgen zunaechst einem Kurs ohne Spielerziel. Erst die Annaeherung des Spielers
+aktiviert die bisherige FSM und die Kampfenergieversorgung.
+
+Neue Ablaufkette
+---------------
+1. Beim Anlegen eines Gegners wird eine reproduzierbar zufaellige Position in
+   2.000 bis 3.000 m Entfernung vom lokalen Encounter-Einstieg erzeugt.
+2. Der Gegner erhaelt einen davon unabhaengigen zufaelligen Kurs und beginnt mit
+   150 m/s Vorwaertsgeschwindigkeit. Der Kurs bleibt bis zur Entdeckung erhalten.
+3. Solange der Abstand ueber 1.500 m liegt, ist IsPlayerDetected false.
+   Die Kampf-FSM bleibt in ACQUIRE und die AI gibt nur einen normalen
+   MainThrust-ShipCommand aus, falls der Kurs unter die Reisegeschwindigkeit faellt.
+4. Bei 1.500 m oder weniger setzt IsPlayerDetected auf true. Der Gegner geht im
+   selben Tick von ACQUIRE nach APPROACH und verwendet danach unveraendert die
+   vorhandenen States APPROACH, ATTACK, EVADE und REPOSITION.
+
+Gegnerreaktor und Energie
+-------------------------
+- Jeder Gegner verwendet weiterhin denselben ReactorState, PowerState,
+  ShipPhysics- und Waffenpfad wie der Spieler.
+- In der Patrouille startet und bleibt der Reaktor bei 50 Prozent.
+- Das Patrouillenprofil fordert 50 PU ausschliesslich fuer Propulsion an.
+  Weapons und Shields fordern 0 PU an; die Lanze laedt daher nicht.
+- Nach der Entdeckung setzt der Gegner den autoritativen Reaktor-Sollwert auf
+  100 Prozent. Die physische Leistung ramped mit derselben Reaktormechanik wie
+  beim Spieler hoch, statt direkt auf 100 Prozent zu springen.
+- Gleichzeitig wird das bestehende Kampfprofil aktiviert. Es fordert Leistung
+  fuer Propulsion, Weapons und Shields an; dadurch beginnen Lanzenladung und
+  Schildversorgung nach den normalen Regeln.
+- Der vorhandene Schildwert bleibt beim Start voll. "Keine Schilde geladen" in
+  der Patrouille bedeutet daher keine Schildenergieanforderung; der
+  Schildgenerator regeneriert erst nach der Entdeckung, wenn es erforderlich ist.
+
+Zentrale Einstellungen
+----------------------
+EnemyAiSettings enthaelt die neuen zentralen Werte:
+- DetectionRangeMeters = 1500
+- PatrolSpawnMinimumDistanceMeters = 2000
+- PatrolSpawnMaximumDistanceMeters = 3000
+- PatrolCruiseSpeedMetersPerSecond = 150
+- PatrolReactorOperatingLevelPercent = 50
+- PatrolPropulsionDraw = 50
+
+SimulationSettings validiert zusaetzlich, dass die Patrouillenleistung das
+Antriebslimit nicht ueberschreitet. Ungueltige Spawn- oder Detection-Grenzen
+werden beim Erzeugen der Simulation abgelehnt.
+
+Technik
+-------
+- EnemyAiController besitzt IsPlayerDetected und
+  DesiredReactorOperatingLevelPercent.
+- Der Controller erzeugt in der Patrouille nur normale ShipCommands und setzt
+  keine physikalischen Werte direkt.
+- Simulation.Step liest den AI-Reaktorsollwert und wendet ihn vor dem normalen
+  StepReactor auf dem gegnerischen ReactorState an.
+- Die Gegnerinitialisierung verwendet einen ReactorState bei 50 Prozent.
+- Die Hilfsfunktion CombatSimulation in den Tests setzt weiter einen nahen Gegner,
+  damit Kampf-, Schild- und Schadentests gezielt und unabhaengig von Patrouillen
+  laufen koennen.
+
+Geaenderte Dateien
+------------------
+- SpaceSim.Core/AI/EnemyAiSettings.cs
+- SpaceSim.Core/AI/EnemyAiController.cs
+- SpaceSim.Core/Power/PowerDistributionSystem.cs
+- SpaceSim.Core/Simulation/Simulation.cs
+- SpaceSim.Core/Simulation/SimulationSettings.cs
+- SpaceSim.Core.Tests/Program.cs
+- SpaceSim.Godot/project.godot
+- SpaceSim.Godot/Flight.cs
+- SpaceSim.Godot/UI/FlightHud.cs
+- README.md
+
+Tests und Build
+---------------
+- Neue Tests pruefen Spawnentfernung, zufaelligen Patrouillenkurs,
+  50-Prozent-Reaktor, 50-PU-Propulsionanforderung ohne Waffen/Schild und den
+  Erkennungsuebergang bei 1.500 m.
+- Debug-Build: erfolgreich, 0 Warnungen und 0 Fehler.
+- Core- und Stations-Tests: 68/68 bestanden.
+
+Enemy-AI-Debugstation (nachtraegliche Entwicklungswerkzeug-Ergaenzung)
+-----------------------------------------------------------------------
+- Browser-URL: http://127.0.0.1:47870/debug/
+- Die read-only Station zeigt nur den aktiven Gegner: Erkennung/Patrouille,
+  FSM, Risk-Level, Entfernung und Geschwindigkeiten, Hull/Schild/Lanze,
+  Subsystemzustand, Reaktor und angeforderten/gelieferten Stationsstrom.
+- Der Snapshot ist bewusst kein WorldState und nimmt keine Commands an.
+- Build und Godot-Headless-Smoke-Test nach der Ergaenzung bestanden; die Station
+  wurde beim Start unter /debug/ bereitgestellt.
+
+Aktuelle Gegner-KI-Anpassung
+----------------------------
+- Patrouille: 100 m/s, Nase entlang des Reisevektors, leerer Schild und keine
+  Schildregeneration vor der Erkennung.
+- Bei 1.500 m Erkennung ramped der Reaktor von 50 auf 100 Prozent und fordert
+  Propulsion 50 PU, Weapons 40 PU und Shields 35 PU gleichzeitig an.
+- Die FSM besteht nur noch aus ACQUIRE, APPROACH, ATTACK, REPOSITION und DESTROYED.
+  Risk-Level, EVADE, Ausweich-Cooldown und zustandsabhaengige Energieprofile sind
+  entfernt.
+- Alle Schwierigkeiten teilen nun die Reichweite von 250 bis 900 m und die
+  Bewegungsregeln. Nur die Feuer-Toleranz bleibt unterschiedlich: Easy 2 Grad,
+  Medium 3 Grad, Hard 5 Grad.
+- APPROACH verwendet eine vorhergesagte Spielerposition und einen
+  bremsleistungsbasierten Geschwindigkeitsplan. Bei einer erwarteten Kollision
+  unter 180 m lenkt der Gegner auf eine tangentiale Fly-by-Bahn, statt vor dem
+  Spieler umzudrehen und mit Gegen-/Reverse-Schub abzubremsen. Ein sicherer
+  Fly-by darf innerhalb von 250 bis 900 m bereits angreifen und feuern.
+
+Bekannte Grenzen
+---------------
+- Die Entdeckung ist absichtlich ein exakter Distanzcheck. Sensoren, Sichtlinien,
+  Stealth und Fehler in Kontaktdaten existieren noch nicht.
+- Die Patrouille weicht keinen Hindernissen aus und hat noch keine Routenpunkte.
+- Gegner besitzen weiterhin zentrale AI-Power-Profile nach der Entdeckung;
+  nur der Spieler steuert die Reactorium-Slider selbst.
+- Es wurde kein Git-Tag erzeugt.

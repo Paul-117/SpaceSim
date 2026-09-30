@@ -2,34 +2,33 @@ using System.Numerics;
 using SpaceSim.Core.Combat;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Weapons;
-using SpaceSim.Core.Power;
 
 namespace SpaceSim.Core.AI;
 
-/// <summary>Deterministic FSM. Its only output is a regular ShipCommand.</summary>
+/// <summary>
+/// Deterministic combat FSM. It only emits regular ShipCommands; the shared ship
+/// simulation applies all resulting acceleration, rotation and weapon rules.
+/// </summary>
 public sealed class EnemyAiController
 {
     private readonly EnemyAiSettings _settings;
-    private readonly PowerSettings _powerSettings;
-    private readonly Random _random;
+    private readonly float _nominalReverseAcceleration;
+
     public EnemyAiState CurrentState { get; private set; } = EnemyAiState.Acquire;
     public float TimeInState { get; private set; }
-    public EvadeDirection? CurrentEvadeDirection { get; private set; }
     public EnemyAiContext LastContext { get; private set; }
     public ShipCommand LastCommand { get; private set; }
-    public PowerProfile CurrentPowerProfile { get; private set; }
-    public float TimeInPowerProfile { get; private set; }
-    public EnemyRiskLevel CurrentRiskLevel { get; private set; } = EnemyRiskLevel.Aggressive;
-    public float EvadeCooldownRemaining { get; private set; }
     public EnemyDifficulty Difficulty { get; }
+    /// <summary>False while the enemy follows its seeded forward patrol course.</summary>
+    public bool IsPlayerDetected { get; private set; }
+    public float DesiredReactorOperatingLevelPercent => IsPlayerDetected ? 100f : _settings.PatrolReactorOperatingLevelPercent;
+    public float FireAimToleranceRadians => _settings.FireAimTolerance;
 
-    internal EnemyAiController(EnemyAiSettings settings, PowerSettings powerSettings, EnemyDifficulty difficulty, int seed)
+    internal EnemyAiController(EnemyAiSettings settings, EnemyDifficulty difficulty, float nominalReverseAcceleration)
     {
         _settings = settings;
-        _powerSettings = powerSettings;
         Difficulty = difficulty;
-        _random = new Random(seed);
-        CurrentPowerProfile = powerSettings.DefaultProfile;
+        _nominalReverseAcceleration = nominalReverseAcceleration;
     }
 
     internal ShipCommand Tick(EnemyShipState enemy, ShipState player, LanceState playerLance,
@@ -43,25 +42,21 @@ public sealed class EnemyAiController
         if (gameState == GameState.GameOver) return LastCommand = default;
 
         LastContext = EnemyAiContext.Create(player, playerLance, enemy);
-        CurrentRiskLevel = EnemyRiskAssessment.Calculate(enemy, _settings);
-        EvadeCooldownRemaining = MathF.Max(0f, EvadeCooldownRemaining - 1f / SpaceSim.Core.Simulation.SimulationSettings.TickRate);
+        if (!IsPlayerDetected)
+        {
+            if (LastContext.DistanceToPlayer > _settings.DetectionRangeMeters)
+                return LastCommand = Patrol(enemy.Ship);
+            IsPlayerDetected = true;
+        }
+
         TimeInState += 1f / SpaceSim.Core.Simulation.SimulationSettings.TickRate;
-        bool threatened = IsRiskAwareThreat(LastContext, enemy, lanceRange);
-
-        if (CurrentState == EnemyAiState.Acquire)
-            ChangeState(EnemyAiState.Approach);
-        else if (CurrentState != EnemyAiState.Evade && EvadeCooldownRemaining <= 0f && threatened)
-            ChangeState(EnemyAiState.Evade);
-        else
-            EvaluateTransitions(threatened);
-
-        UpdatePowerProfile(enemy);
+        if (CurrentState == EnemyAiState.Acquire) ChangeState(EnemyAiState.Approach);
+        else EvaluateTransitions();
 
         return LastCommand = CurrentState switch
         {
             EnemyAiState.Approach => Approach(enemy.Ship, player),
             EnemyAiState.Attack => Attack(enemy, player, lanceRange),
-            EnemyAiState.Evade => Evade(enemy.Ship),
             EnemyAiState.Reposition => Reposition(enemy.Ship, player),
             _ => default
         };
@@ -73,98 +68,113 @@ public sealed class EnemyAiController
         LastCommand = default;
     }
 
-    public bool IsThreatenedByPlayerLance(EnemyAiContext context, float lanceRange, float? aimAngle = null) =>
-        context.PlayerLanceCharge >= _settings.ThreatChargeThreshold &&
-        context.DistanceToPlayer <= lanceRange &&
-        MathF.Abs(context.PlayerAimError) <= (aimAngle ?? _settings.ThreatAimAngle);
-
-    private bool IsRiskAwareThreat(EnemyAiContext context, EnemyShipState enemy, float lanceRange)
+    private void EvaluateTransitions()
     {
-        if (context.DistanceToPlayer > lanceRange) return false;
-        float shieldFraction = enemy.Ship.Shield.MaximumShield <= 0f ? 0f :
-            enemy.Ship.Shield.CurrentShield / enemy.Ship.Shield.MaximumShield;
-        (float charge, float aim) = CurrentRiskLevel switch
-        {
-            EnemyRiskLevel.Aggressive => (shieldFraction >= 0.999f ? 1.01f : _settings.AggressiveThreatChargeThreshold,
-                _settings.AggressiveThreatAimAngle),
-            EnemyRiskLevel.Normal => (_settings.NormalThreatChargeThreshold, _settings.NormalThreatAimAngle),
-            EnemyRiskLevel.Defensive => (_settings.DefensiveThreatChargeThreshold, _settings.DefensiveThreatAimAngle),
-            _ => (_settings.CriticalThreatChargeThreshold, _settings.CriticalThreatAimAngle)
-        };
-        if (CurrentState == EnemyAiState.Evade) aim *= 1.35f;
-        return context.PlayerLanceCharge >= charge && MathF.Abs(context.PlayerAimError) <= aim;
-    }
-
-    private void EvaluateTransitions(bool threatened)
-    {
-        if (CurrentState == EnemyAiState.Evade)
-        {
-            if (TimeInState >= _settings.MaximumEvadeDuration ||
-                (TimeInState >= _settings.MinimumEvadeDuration && !threatened))
-                ChangeState(CanAttack() ? EnemyAiState.Attack : EnemyAiState.Reposition);
-            return;
-        }
         if (TimeInState < _settings.MinimumStateDuration) return;
-
-        // The close approach is deliberately allowed to carry modest inertial speed;
-        // ATTACK continues to brake it instead of bouncing into REPOSITION at the edge.
-        bool controlled = LastContext.RelativeVelocity.Length() <= _settings.MaximumDesiredRelativeSpeed * 1.2f;
-        bool inEntryRange = LastContext.DistanceToPlayer >= _settings.MinimumCombatDistance &&
-                            LastContext.DistanceToPlayer <= _settings.AttackEnterDistance;
+        bool controlled = LastContext.RelativeVelocity.Length() <= _settings.MaximumAttackRelativeSpeed;
+        bool safeFlyby = HasSafeFlybyTrajectory();
+        bool inCombatRange = LastContext.DistanceToPlayer >= _settings.MinimumCombatDistance &&
+                             LastContext.DistanceToPlayer <= _settings.MaximumCombatDistance;
         if (CurrentState is EnemyAiState.Approach or EnemyAiState.Reposition)
         {
-            if (inEntryRange && controlled && MathF.Abs(LastContext.EnemyAimError) < MathF.PI / 2f)
+            if (inCombatRange && (controlled || safeFlyby) && MathF.Abs(LastContext.EnemyAimError) < MathF.PI / 2f)
                 ChangeState(EnemyAiState.Attack);
+            return;
         }
-        else if (CurrentState == EnemyAiState.Attack &&
-                 (LastContext.DistanceToPlayer < _settings.MinimumCombatDistance ||
-                  LastContext.DistanceToPlayer > _settings.AttackExitDistance ||
-                  LastContext.RelativeVelocity.Length() > _settings.MaximumDesiredRelativeSpeed * 1.35f ||
-                  MathF.Abs(LastContext.EnemyAimError) > MathF.PI * 0.7f))
+
+        if (CurrentState == EnemyAiState.Attack &&
+            (LastContext.DistanceToPlayer < _settings.MinimumCombatDistance ||
+             LastContext.DistanceToPlayer > _settings.MaximumCombatDistance ||
+             (LastContext.RelativeVelocity.Length() > _settings.MaximumAttackRelativeSpeed * 1.25f && !safeFlyby) ||
+             MathF.Abs(LastContext.EnemyAimError) > MathF.PI * 0.7f))
             ChangeState(EnemyAiState.Reposition);
     }
 
-    private bool CanAttack() =>
-        LastContext.DistanceToPlayer >= _settings.MinimumCombatDistance &&
-        LastContext.DistanceToPlayer <= _settings.AttackEnterDistance &&
-        LastContext.RelativeVelocity.Length() <= _settings.MaximumDesiredRelativeSpeed * 1.15f;
+    private ShipCommand Patrol(ShipState enemy)
+    {
+        // Spawn velocity and nose are aligned. The patrol only restores its intended forward cruise speed.
+        float forwardSpeed = Vector3.Dot(enemy.Velocity, enemy.Forward);
+        return new ShipCommand(MainThrust: forwardSpeed < _settings.PatrolCruiseSpeedMetersPerSecond);
+    }
 
     private ShipCommand Approach(ShipState enemy, ShipState player)
     {
-        float desiredClosing = Math.Clamp((LastContext.DistanceToPlayer - PreferredCombatDistance) * 0.15f,
-            -_settings.MaximumDesiredClosingSpeed, _settings.MaximumDesiredClosingSpeed);
-        return VelocityControl(enemy, player.Velocity + LastContext.DirectionToPlayer * desiredClosing);
+        if (IsOverspeedCollisionRisk()) return Flyby(enemy, player);
+        return VelocityControl(enemy, PlannedInterceptVelocity(enemy, player));
     }
 
     private ShipCommand Reposition(ShipState enemy, ShipState player)
     {
-        float radial = Math.Clamp((LastContext.DistanceToPlayer - PreferredCombatDistance) * 0.12f,
-            -_settings.MaximumDesiredClosingSpeed, _settings.MaximumDesiredClosingSpeed);
-        Vector3 desiredVelocity = player.Velocity + LastContext.DirectionToPlayer * radial;
+        if (IsOverspeedCollisionRisk()) return Flyby(enemy, player);
+        return VelocityControl(enemy, PlannedInterceptVelocity(enemy, player));
+    }
+
+    private Vector3 PlannedInterceptVelocity(ShipState enemy, ShipState player)
+    {
+        float distance = LastContext.DistanceToPlayer;
+        float closingLimit = BrakingLimitedClosingSpeed(enemy);
+        float travelDistance = MathF.Max(1f, distance - _settings.PreferredCombatDistance);
+        float leadSeconds = MathF.Max(_settings.MinimumInterceptLeadSeconds, travelDistance / MathF.Max(1f, closingLimit));
+        Vector3 estimatedPlayerPosition = player.Position + player.Velocity * leadSeconds;
+        Vector3 toEstimatedPlayer = estimatedPlayerPosition - enemy.Position;
+        Vector3 approachDirection = toEstimatedPlayer.LengthSquared() > 0.001f
+            ? Vector3.Normalize(toEstimatedPlayer) : LastContext.DirectionToPlayer;
+        Vector3 arrivalPosition = estimatedPlayerPosition - approachDirection * _settings.PreferredCombatDistance;
+        return (arrivalPosition - enemy.Position) / leadSeconds;
+    }
+
+    private float BrakingLimitedClosingSpeed(ShipState? enemy)
+    {
+        float availableDistance = MathF.Max(0f, LastContext.DistanceToPlayer - _settings.MaximumCombatDistance);
+        float reverseFactor = enemy is null ? 1f : enemy.Power.PropulsionPowerFactor * enemy.Systems.PropulsionCondition;
+        float brakingAcceleration = MathF.Max(0.01f, _nominalReverseAcceleration * reverseFactor);
+        float speedSquared = _settings.MaximumAttackRelativeSpeed * _settings.MaximumAttackRelativeSpeed + 2f * brakingAcceleration * availableDistance;
+        return MathF.Min(_settings.MaximumApproachClosingSpeed, MathF.Sqrt(speedSquared));
+    }
+
+    private bool IsOverspeedCollisionRisk()
+    {
+        if (LastContext.ClosingSpeed <= _settings.MaximumAttackRelativeSpeed) return false;
+        return ClosestApproachDistance() < _settings.FlybySafetyDistanceMeters;
+    }
+
+    private bool HasSafeFlybyTrajectory() =>
+        LastContext.RelativeVelocity.Length() > _settings.MaximumAttackRelativeSpeed &&
+        ClosestApproachDistance() >= _settings.FlybySafetyDistanceMeters;
+
+    private float ClosestApproachDistance()
+    {
+        float speedSquared = LastContext.RelativeVelocity.LengthSquared();
+        if (speedSquared < 0.001f) return LastContext.DistanceToPlayer;
+        float time = -Vector3.Dot(LastContext.RelativePosition, LastContext.RelativeVelocity) / speedSquared;
+        if (time <= 0f) return LastContext.DistanceToPlayer;
+        return (LastContext.RelativePosition + LastContext.RelativeVelocity * time).Length();
+    }
+
+    private ShipCommand Flyby(ShipState enemy, ShipState player)
+    {
+        Vector3 side = Vector3.Cross(Vector3.UnitY, LastContext.DirectionToPlayer);
+        Vector3 enemyRelativeVelocity = enemy.Velocity - player.Velocity;
+        if (Vector3.Dot(enemyRelativeVelocity, side) < 0f) side = -side;
+        float flybySpeed = MathF.Max(_settings.MaximumAttackRelativeSpeed, enemyRelativeVelocity.Length());
+        // Keep moving past the player on a tangent, with a small outward component.
+        Vector3 desiredVelocity = player.Velocity + side * flybySpeed - LastContext.DirectionToPlayer * 10f;
         return VelocityControl(enemy, desiredVelocity);
     }
 
     private ShipCommand Attack(EnemyShipState enemy, ShipState player, float lanceRange)
     {
         var turn = TurnToward(enemy.Ship, LastContext.DirectionToPlayer);
-        Vector3 velocityError = player.Velocity - enemy.Ship.Velocity;
-        float radialError = Vector3.Dot(velocityError, LastContext.DirectionToPlayer);
-        bool main = LastContext.DistanceToPlayer > PreferredCombatDistance + 60f &&
-                    LastContext.ClosingSpeed < _settings.MaximumDesiredClosingSpeed &&
-                    MathF.Abs(LastContext.EnemyAimError) < _settings.ThrustAlignmentAngle;
-        bool reverse = (LastContext.DistanceToPlayer < _settings.MinimumCombatDistance || radialError > 35f) &&
-                       MathF.Abs(LastContext.EnemyAimError) < _settings.ThrustAlignmentAngle;
+        bool aligned = MathF.Abs(LastContext.EnemyAimError) < _settings.ThrustAlignmentAngle;
+        bool flyby = HasSafeFlybyTrajectory();
+        bool main = !flyby && LastContext.DistanceToPlayer > _settings.PreferredCombatDistance + 40f &&
+                    LastContext.ClosingSpeed < _settings.MaximumAttackRelativeSpeed && aligned;
+        bool reverse = !flyby && (LastContext.DistanceToPlayer < _settings.MinimumCombatDistance + 50f ||
+                                  LastContext.ClosingSpeed > _settings.MaximumAttackRelativeSpeed) && aligned;
         bool fire = enemy.Lance.IsReady && LastContext.DistanceToPlayer <= lanceRange &&
                     Vector3.Dot(enemy.Ship.Forward, LastContext.DirectionToPlayer) > 0f &&
                     MathF.Abs(LastContext.EnemyAimError) <= _settings.FireAimTolerance;
         return new ShipCommand(main, reverse, turn.Left, turn.Right, fire);
-    }
-
-    private ShipCommand Evade(ShipState enemy)
-    {
-        bool left = CurrentEvadeDirection == EvadeDirection.Left;
-        bool thrust = MathF.Abs(LastContext.EnemyAimError) >= _settings.EvadeThrustAngle;
-        return new ShipCommand(MainThrust: thrust, YawLeft: left, YawRight: !left);
     }
 
     private ShipCommand VelocityControl(ShipState enemy, Vector3 desiredVelocity)
@@ -195,43 +205,7 @@ public sealed class EnemyAiController
     private void ChangeState(EnemyAiState state)
     {
         if (CurrentState == state) return;
-        if (CurrentState == EnemyAiState.Evade && state != EnemyAiState.Evade)
-            EvadeCooldownRemaining = CurrentRiskLevel switch
-            {
-                EnemyRiskLevel.Aggressive => _settings.AggressiveEvadeCooldown,
-                EnemyRiskLevel.Normal => _settings.NormalEvadeCooldown,
-                EnemyRiskLevel.Defensive => _settings.DefensiveEvadeCooldown,
-                _ => _settings.CriticalEvadeCooldown
-            };
         CurrentState = state;
         TimeInState = 0f;
-        CurrentEvadeDirection = state == EnemyAiState.Evade
-            ? (_random.Next(2) == 0 ? EvadeDirection.Left : EvadeDirection.Right)
-            : null;
-    }
-
-    private float PreferredCombatDistance => CurrentRiskLevel switch
-    {
-        EnemyRiskLevel.Aggressive => _settings.PreferredCombatDistanceAggressive,
-        EnemyRiskLevel.Normal => _settings.PreferredCombatDistanceNormal,
-        EnemyRiskLevel.Defensive => _settings.PreferredCombatDistanceDefensive,
-        _ => _settings.PreferredCombatDistanceCritical
-    };
-
-    private void UpdatePowerProfile(EnemyShipState enemy)
-    {
-        TimeInPowerProfile += 1f / SpaceSim.Core.Simulation.SimulationSettings.TickRate;
-        bool defend = enemy.Ship.Shield.CurrentShield / enemy.Ship.Shield.MaximumShield <=
-                      _powerSettings.DefendShieldThresholdFraction;
-        PowerProfile desired = defend ? _powerSettings.DefendProfile : CurrentState switch
-        {
-            EnemyAiState.Attack => _powerSettings.AttackProfile,
-            EnemyAiState.Evade => _powerSettings.EvadeProfile,
-            EnemyAiState.Approach or EnemyAiState.Reposition => _powerSettings.RepositionProfile,
-            _ => _powerSettings.DefaultProfile
-        };
-        if (desired == CurrentPowerProfile || (!defend && TimeInPowerProfile < _powerSettings.MinimumProfileDuration)) return;
-        CurrentPowerProfile = desired;
-        TimeInPowerProfile = 0f;
     }
 }

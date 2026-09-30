@@ -21,13 +21,6 @@ public sealed record PowerSettings
     public float BridgeMainThrottleRiseSeconds { get; init; } = 5f;
     /// <summary>Seconds for the bridge main thruster (W) to decay from full thrust after release.</summary>
     public float BridgeMainThrottleFallSeconds { get; init; } = 3f;
-    public PowerProfile AttackProfile { get; init; } = new(50f, 40f, 20f);
-    public PowerProfile DefendProfile { get; init; } = new(30f, 10f, 35f);
-    public PowerProfile EvadeProfile { get; init; } = new(50f, 5f, 20f);
-    public PowerProfile RepositionProfile { get; init; } = new(50f, 15f, 20f);
-    public float DefendShieldThresholdFraction { get; init; } = 0.35f;
-    public float MinimumProfileDuration { get; init; } = 1f;
-    public PowerProfile DefaultProfile => new(50f, 35f, 25f);
 
     internal void Validate()
     {
@@ -48,20 +41,6 @@ public sealed record PowerSettings
         Positive(BridgeMainThrottleFallSeconds, nameof(BridgeMainThrottleFallSeconds));
         if (!float.IsFinite(DefaultReactorOperatingLevelPercent) || DefaultReactorOperatingLevelPercent is < 0f or > 100f)
             throw new ArgumentOutOfRangeException(nameof(DefaultReactorOperatingLevelPercent));
-        ValidateProfile(AttackProfile, nameof(AttackProfile));
-        ValidateProfile(DefendProfile, nameof(DefendProfile));
-        ValidateProfile(EvadeProfile, nameof(EvadeProfile));
-        ValidateProfile(RepositionProfile, nameof(RepositionProfile));
-        if (DefendShieldThresholdFraction is < 0f or > 1f)
-            throw new ArgumentOutOfRangeException(nameof(DefendShieldThresholdFraction));
-        Positive(MinimumProfileDuration, nameof(MinimumProfileDuration));
-    }
-
-    private void ValidateProfile(PowerProfile profile, string name)
-    {
-        if (!float.IsFinite(profile.Propulsion) || !float.IsFinite(profile.Weapons) || !float.IsFinite(profile.Shields) ||
-            profile.Propulsion < 0f || profile.Weapons < 0f || profile.Shields < 0f)
-            throw new ArgumentException("Station demand must be finite and non-negative.", name);
     }
 
     private static void Positive(float value, string name)

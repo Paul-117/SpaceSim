@@ -6,7 +6,7 @@ namespace SpaceSim.GodotClient.Rendering;
 
 public partial class ArenaView : Node2D
 {
-    private sealed record Beam(Vector2 Origin, Vector2 End, WeaponOwner Owner) { public float Age; }
+    private sealed record Beam(Vector2 Origin, Vector2 FadeStart, Vector2 VisualEnd, WeaponOwner Owner) { public float Age; }
     private sealed record Impact(Vector2 Position) { public float Age; }
     private readonly List<Beam> _beams = new();
     private readonly List<Impact> _impacts = new();
@@ -26,7 +26,9 @@ public partial class ArenaView : Node2D
                 _impacts.Clear();
             }
             if (item is WeaponFired shot)
-                _beams.Add(new Beam(ViewSettings.Project(shot.Origin), ViewSettings.Project(shot.End), shot.Owner));
+                _beams.Add(new Beam(ViewSettings.Project(shot.Origin),
+                    ViewSettings.Project(shot.VisualFadeStart ?? shot.End),
+                    ViewSettings.Project(shot.VisualEnd ?? shot.End), shot.Owner));
             if (item is TargetHit hit)
                 _impacts.Add(new Impact(ViewSettings.Project(hit.Position)));
             if (item is EnemyDestroyed destroyed)
@@ -73,15 +75,37 @@ public partial class ArenaView : Node2D
         {
             float alpha = 1f - beam.Age / ViewSettings.BeamDurationSeconds;
             Color beamColor = beam.Owner == WeaponOwner.Enemy ? new Color("ff6577") : ViewSettings.Cyan;
-            DrawLine(beam.Origin, beam.End, ViewSettings.Alpha(beamColor, alpha * 0.12f), 14, true);
-            DrawLine(beam.Origin, beam.End, ViewSettings.Alpha(beamColor, alpha * 0.55f), 5, true);
-            DrawLine(beam.Origin, beam.End, new Color(0.9f, 1f, 1f, alpha), 1.8f, true);
+            DrawBeamSegment(beam.Origin, beam.FadeStart, beamColor, alpha);
+            DrawFadingBeamTail(beam.FadeStart, beam.VisualEnd, beamColor, alpha);
         }
         foreach (var impact in _impacts)
         {
             float progress = impact.Age / ViewSettings.ImpactDurationSeconds;
             DrawArc(impact.Position, 14 + 35 * progress, 0, MathF.Tau, 40,
                 ViewSettings.Alpha(ViewSettings.Amber, 1f - progress), 2, true);
+        }
+    }
+
+    private void DrawBeamSegment(Vector2 from, Vector2 to, Color color, float alpha)
+    {
+        DrawLine(from, to, ViewSettings.Alpha(color, alpha * 0.12f), 14, true);
+        DrawLine(from, to, ViewSettings.Alpha(color, alpha * 0.55f), 5, true);
+        DrawLine(from, to, new Color(0.9f, 1f, 1f, alpha), 1.8f, true);
+    }
+
+    private void DrawFadingBeamTail(Vector2 from, Vector2 to, Color color, float alpha)
+    {
+        const int segments = 18;
+        for (int index = 0; index < segments; index++)
+        {
+            float start = (float)index / segments;
+            float end = (float)(index + 1) / segments;
+            float intensity = (1f - start) * (1f - start);
+            Vector2 a = from.Lerp(to, start);
+            Vector2 b = from.Lerp(to, end);
+            DrawLine(a, b, ViewSettings.Alpha(color, alpha * intensity * 0.08f), 12f * intensity, true);
+            DrawLine(a, b, ViewSettings.Alpha(color, alpha * intensity * 0.40f), 3.5f * intensity, true);
+            DrawLine(a, b, ViewSettings.Alpha(new Color(0.9f, 1f, 1f), alpha * intensity), MathF.Max(.3f, intensity), true);
         }
     }
 

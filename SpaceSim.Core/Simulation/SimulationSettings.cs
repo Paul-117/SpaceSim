@@ -16,13 +16,18 @@ public sealed record SimulationSettings
     public float ReverseThrustNewtons { get; init; } = 72_000f;
     public float YawTorqueNewtonMeters { get; init; } = 54_000f;
     public float LanceChargeSeconds { get; init; } = 3f;
-    public float LanceRangeMeters { get; init; } = 1_600f;
+    /// <summary>Maximum range at which a lance can affect gameplay targets.</summary>
+    public float LanceRangeMeters { get; init; } = 1_000f;
+    /// <summary>Purely visual beam length; intensity fades after LanceRangeMeters.</summary>
+    public float LanceVisualRangeMeters { get; init; } = 3_000f;
     /// <summary>Maximum horizontal player lance mount deflection from the ship nose.</summary>
     public float LanceTurretMaximumAngleDegrees { get; init; } = 5f;
     public float LanceTurretDegreesPerSecond { get; init; } = 10f;
     /// <summary>Centre-to-centre distance below which a player and enemy ship are both destroyed.</summary>
     public float ShipCollisionDistanceMeters { get; init; } = 100f;
     public float WarpChargeSeconds { get; init; } = 10f;
+    /// <summary>Gameplay start option used by the bridge: begins with a ready warp drive.</summary>
+    public bool StartWarpReady { get; init; }
     public int TargetCount { get; init; } = 10;
     public int EncounterTwoTargetCount { get; init; }
     public int EncounterThreeTargetCount { get; init; }
@@ -46,6 +51,9 @@ public sealed record SimulationSettings
         Positive(YawTorqueNewtonMeters, nameof(YawTorqueNewtonMeters));
         Positive(LanceChargeSeconds, nameof(LanceChargeSeconds));
         Positive(LanceRangeMeters, nameof(LanceRangeMeters));
+        Positive(LanceVisualRangeMeters, nameof(LanceVisualRangeMeters));
+        if (LanceVisualRangeMeters < LanceRangeMeters)
+            throw new ArgumentException("Visual lance range must not be shorter than gameplay range.");
         Positive(LanceTurretMaximumAngleDegrees, nameof(LanceTurretMaximumAngleDegrees));
         Positive(LanceTurretDegreesPerSecond, nameof(LanceTurretDegreesPerSecond));
         Positive(ShipCollisionDistanceMeters, nameof(ShipCollisionDistanceMeters));
@@ -60,6 +68,8 @@ public sealed record SimulationSettings
         ArgumentNullException.ThrowIfNull(EnemyExplosion);
         EnemyAi.Validate();
         Power.Validate();
+        if (EnemyAi.PatrolPropulsionDraw > Power.MaximumPropulsionDraw)
+            throw new ArgumentException("Patrol propulsion draw must not exceed the propulsion station maximum.");
         Shield.Validate();
         Hull.Validate();
         EnemyExplosion.Validate();

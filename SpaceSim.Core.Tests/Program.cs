@@ -10,6 +10,7 @@ using SpaceSim.Core.Combat;
 using SpaceSim.Core.Power;
 using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
+using SpaceSim.Stations.Debug;
 using SpaceSim.Stations.Reactorium;
 
 var tests = new (string Name, Action Run)[]
@@ -133,7 +134,10 @@ var tests = new (string Name, Action Run)[]
         var sim = WithTargets(new Vector3(30, 0, -300));
         Fire(sim);
         Check(sim.World.HitCount == 0, "Off-axis shot must miss.");
-        Near(sim.Events.OfType<WeaponFired>().Single().End.Length(), sim.Settings.LanceRangeMeters);
+        WeaponFired shot = sim.Events.OfType<WeaponFired>().Single();
+        Near(shot.End.Length(), sim.Settings.LanceRangeMeters);
+        Near(shot.VisualFadeStart!.Value.Length(), sim.Settings.LanceRangeMeters);
+        Near(shot.VisualEnd!.Value.Length(), sim.Settings.LanceVisualRangeMeters);
     }),
     ("Nearest target blocks targets behind it", () =>
     {
@@ -228,7 +232,7 @@ var tests = new (string Name, Action Run)[]
         ArmariumState noTarget = ArmariumStateBuilder.Build(empty.World);
         Check(!noTarget.TargetAvailable && noTarget.TargetBearingDegrees == 0f && noTarget.LanceCharge == 0f &&
               noTarget.TargetDistanceMeters == 0f && noTarget.LanceTurretAngleDegrees == 0f &&
-              noTarget.AvailablePower == noTarget.MaximumPower && noTarget.LanceSystemCondition == 1f,
+              noTarget.MaximumPower == 40f && noTarget.LanceSystemCondition == 1f,
             "An empty encounter must not expose a target or world state.");
         Step(empty, 180);
         Check(ArmariumStateBuilder.Build(empty.World).LanceReady,
@@ -264,6 +268,21 @@ var tests = new (string Name, Action Run)[]
         Check(!buffer.ReadCommand().AimLanceLeft && !buffer.ReadCommand().AimLanceRight,
             "Clearing the station buffer must release held Armarium turret input.");
     }),
+    ("Enemy AI debug state is focused and exposes patrol telemetry", () =>
+    {
+        var sim = new Simulation();
+        EnemyDebugState empty = EnemyDebugStateBuilder.Build(sim.World);
+        Check(!empty.EnemyAvailable && empty.SimulationTick == sim.World.Tick,
+            "Enemy debug station must report the absence of an active enemy without exposing a WorldState.");
+        Step(sim, 600);
+        sim.Step(default, new NavigationCommand(2));
+        sim.Step(default);
+        EnemyDebugState state = EnemyDebugStateBuilder.Build(sim.World);
+        Check(state.EnemyAvailable && state.EnemyId == 1 && !state.PlayerDetected &&
+              state.Difficulty == "EASY" && state.AiState == "ACQUIRE" && state.ReactorOperatingLevelPercent == 50f &&
+              state.PropulsionRequested == 50f && state.PropulsionDraw > 0f && state.WeaponsDraw == 0f && state.ShieldsDraw == 0f,
+            "Enemy debug state must expose only the active patrol enemy's meaningful AI and power telemetry.");
+    }),
     ("Armarium turret input never changes the ship thrusters", () =>
     {
         var sim = NewWeapons();
@@ -291,6 +310,49 @@ var tests = new (string Name, Action Run)[]
         Check(sim.World.Encounters.SelectMany(e => e.Targets).Select(t => t.Id).Distinct().Count() == 10,
             "Target IDs must be unique across encounters.");
     }),
+    ("Distant enemies begin on deterministic random patrol courses with patrol reactor power", () =>
+    {
+        var sim = new Simulation();
+        var enemies = sim.World.Encounters.Skip(1).SelectMany(encounter => encounter.Enemies).ToArray();
+        Check(enemies.Length == 3, "Each hostile encounter must contain its patrol enemy.");
+        foreach (EnemyShipState enemy in enemies)
+        {
+            float distance = enemy.Ship.Position.Length();
+            Check(distance >= sim.Settings.EnemyAi.PatrolSpawnMinimumDistanceMeters &&
+                  distance <= sim.Settings.EnemyAi.PatrolSpawnMaximumDistanceMeters,
+                "Patrol enemy must spawn two to three kilometres from the local player origin.");
+            Near(enemy.Ship.Velocity.Length(), sim.Settings.EnemyAi.PatrolCruiseSpeedMetersPerSecond);
+            Near(enemy.Ship.Reactor.OperatingLevelPercent, sim.Settings.EnemyAi.PatrolReactorOperatingLevelPercent);
+            Near(enemy.Ship.Power.PropulsionRequested, sim.Settings.EnemyAi.PatrolPropulsionDraw);
+            Near(enemy.Ship.Power.PropulsionDraw, sim.Settings.EnemyAi.PatrolPropulsionDraw);
+            Near(enemy.Ship.Power.WeaponsDraw, 0f);
+            Near(enemy.Ship.Power.ShieldsDraw, 0f);
+            Near(enemy.Ship.Shield.CurrentShield, 0f);
+            Check(Vector3.Dot(Vector3.Normalize(enemy.Ship.Velocity), enemy.Ship.Forward) > .999f,
+                "Patrol velocity must point along the enemy nose.");
+            Check(!sim.World.Encounters.First(encounter => encounter.Enemies.Contains(enemy)).GetEnemyAi(enemy.EnemyId)!.IsPlayerDetected,
+                "A distant patrol must not know about the player.");
+        }
+    }),
+    ("Enemy detection at one point five kilometres starts reactor ramp and combat station charging", () =>
+    {
+        var sim = new Simulation(new SimulationSettings { TargetCount = 0, EncounterThreeTargetCount = 0 },
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -1_500), YawRadians: MathF.PI), spawnEnemy: true);
+        Step(sim, 600);
+        sim.Step(default, new NavigationCommand(3));
+        sim.Step(default);
+        EnemyShipState enemy = sim.World.CurrentEnemy!;
+        EnemyAiController ai = sim.World.CurrentEncounter.EnemyAi!;
+        Check(ai.IsPlayerDetected && ai.CurrentState == EnemyAiState.Approach,
+            "Enemy inside the detection range must enter the existing combat FSM.");
+        Near(enemy.Ship.Reactor.TargetOperatingLevelPercent, 100f);
+        Check(enemy.Ship.Reactor.OperatingLevelPercent > sim.Settings.EnemyAi.PatrolReactorOperatingLevelPercent,
+            "Detection must begin the reactor ramp instead of jumping directly to full output.");
+        Check(enemy.Ship.Power.PropulsionRequested == enemy.Ship.Power.MaximumPropulsionDraw &&
+              enemy.Ship.Power.WeaponsRequested == enemy.Ship.Power.MaximumWeaponsDraw &&
+              enemy.Ship.Power.ShieldsRequested == enemy.Ship.Power.MaximumShieldsDraw,
+            "Detected enemy must request all three stations at their normal maximum.");
+    }),
     ("Encounter 4 activates its Hard enemy through shared physics", () =>
     {
         var sim = new Simulation(new SimulationSettings { TargetCount = 0 });
@@ -302,8 +364,8 @@ var tests = new (string Name, Action Run)[]
         Check(sim.World.CurrentEncounter.EnemyAi?.CurrentState == EnemyAiState.Acquire,
             "The enemy requires its own initial controller state.");
         sim.Step(default);
-        Check(sim.World.CurrentEncounter.EnemyAi?.CurrentState == EnemyAiState.Approach,
-            "The controller must progress from ACQUIRE.");
+        Check(sim.World.CurrentEncounter.EnemyAi is { IsPlayerDetected: false, CurrentState: EnemyAiState.Acquire },
+            "A distant enemy must remain on its undetected patrol instead of entering combat.");
         Check(enemies.Single().Ship.Position.Y == 0 && enemies.Single().Ship.Velocity.Y == 0,
             "The enemy must remain inside the shared planar flight physics.");
     }),
@@ -318,6 +380,12 @@ var tests = new (string Name, Action Run)[]
         Check(sim.World.WarpDrive.IsReady, "Warp must be ready at tick 600.");
         Near(sim.World.WarpDrive.ChargeFraction, 1);
         Near((float)sim.World.WarpDrive.RemainingSeconds, 0);
+    }),
+    ("Configured gameplay start can open with a ready warp drive", () =>
+    {
+        var sim = new Simulation(new SimulationSettings { StartWarpReady = true }, spawnEnemy: false);
+        Check(sim.World.WarpDrive.IsReady && sim.World.WarpDrive.ChargeFraction == 1f && sim.World.WarpDrive.RemainingSeconds == 0,
+            "A ready-start configuration must initialize the warp state before the first simulation tick.");
     }),
     ("Early jump is rejected without being queued", () =>
     {
@@ -443,65 +511,28 @@ var tests = new (string Name, Action Run)[]
         var command = sim.World.CurrentEncounter.EnemyAi!.LastCommand;
         Check(command.YawRight && !command.YawLeft, "Positive yaw rate must receive opposing torque near aim.");
     }),
-    ("APPROACH brakes instead of adding thrust at excessive closing speed", () =>
+    ("APPROACH plans a tangential fly-by instead of reversing into a collision risk", () =>
     {
         var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -900),
             new Vector3(0, 0, 100), MathF.PI));
         JumpToCombat(sim);
         sim.Step(default);
         var command = sim.World.CurrentEncounter.EnemyAi!.LastCommand;
-        Check(!command.MainThrust && command.ReverseThrust,
-            "Fast approach must command braking through normal reverse thrust.");
+        Check(!command.ReverseThrust && (command.YawLeft || command.YawRight),
+            "A fast collision course must begin a normal yaw-and-thrust fly-by, not reverse straight at the player.");
     }),
-    ("Threat model requires charge, range and player aim", () =>
+    ("Combat AI uses one shared range and difficulty changes only aim tolerance", () =>
     {
-        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(900, 0, 0),
-            YawRadians: MathF.PI / 2));
+        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(900, 0, 0), YawRadians: MathF.PI / 2));
         JumpToCombat(sim);
-        sim.Step(default);
+        Step(sim, 30);
         var ai = sim.World.CurrentEncounter.EnemyAi!;
-        var context = ai.LastContext;
-        Check(!ai.IsThreatenedByPlayerLance(context, sim.Settings.LanceRangeMeters),
-            "Charged lance aimed ninety degrees away is not an immediate threat.");
-        var aimed = context with { PlayerAimError = 0 };
-        Check(ai.IsThreatenedByPlayerLance(aimed, sim.Settings.LanceRangeMeters),
-            "Charged and aimed lance in range must be a threat.");
-        Check(!ai.IsThreatenedByPlayerLance(aimed with { PlayerLanceCharge = 0.79f }, sim.Settings.LanceRangeMeters),
-            "Charge below threshold must not trigger evade.");
-        Check(!ai.IsThreatenedByPlayerLance(aimed with { DistanceToPlayer = 1700 }, sim.Settings.LanceRangeMeters),
-            "Out-of-range lance must not trigger evade.");
-    }),
-    ("Health-aware EVADE selects one reproducible direction and respects minimum duration", () =>
-    {
-        var sim = CombatSimulation(power: CombatPower());
-        JumpToCombat(sim);
-        sim.Step(new ShipCommand(FireLance: true)); // Full shield is removed; the enemy is now defensive.
-        Step(sim, 144); // Recharge the player lance until the defensive threat threshold is reached.
-        var ai = sim.World.CurrentEncounter.EnemyAi!;
-        Check(ai.CurrentState == EnemyAiState.Evade && ai.CurrentEvadeDirection is not null,
-            "Threat must enter EVADE.");
-        var direction = ai.CurrentEvadeDirection;
-        for (int i = 0; i < 25; i++)
-        {
-            sim.Step(default);
-            Check(ai.CurrentState == EnemyAiState.Evade, "EVADE must last for its configured minimum duration.");
-            Check(ai.CurrentEvadeDirection == direction, "Evade direction must not be rerolled each tick.");
-        }
-        var other = CombatSimulation(power: CombatPower());
-        JumpToCombat(other);
-        other.Step(new ShipCommand(FireLance: true)); Step(other, 144);
-        Check(other.World.CurrentEncounter.EnemyAi!.CurrentEvadeDirection == direction,
-            "Identical seeds must produce reproducible evade choices.");
-        bool leftEvade = false;
-        for (int i = 0; i < 90 && !leftEvade; i++)
-        {
-            sim.Step(default);
-            leftEvade = ai.CurrentState != EnemyAiState.Evade;
-        }
-        Check(leftEvade && ai.CurrentEvadeDirection is null && ai.EvadeCooldownRemaining > 0f,
-            "EVADE must end quickly and enable its cooldown.");
-        Step(sim, 60);
-        Check(ai.CurrentState != EnemyAiState.Evade, "Evade cooldown must prevent immediate re-entry.");
+        Check(ai.CurrentState is EnemyAiState.Approach or EnemyAiState.Attack,
+            "A detected opponent must directly approach or attack without an EVADE state.");
+        Check(sim.Settings.EnemyAi.MinimumCombatDistance == 250f && sim.Settings.EnemyAi.MaximumCombatDistance == 900f,
+            "All enemies must share the configured 250-900 metre combat range.");
+        Check(MathF.Abs(ai.FireAimToleranceRadians - MathF.PI / 180f * 3f) < .001f,
+            "Medium must retain the central three-degree firing tolerance.");
     }),
     ("Enemy lance overload causes frozen GameOver", () =>
     {
@@ -790,44 +821,24 @@ var tests = new (string Name, Action Run)[]
         Check(sim.Events.OfType<ShieldHit>().Any(hit => hit.TargetOwner == WeaponOwner.Player),
             "Player shield hit event is required.");
     }),
-    ("Healthy enemy remains aggressive against a merely ready player lance", () =>
+    ("Detected enemy requests every station maximum regardless of damage", () =>
     {
-        var sim = CombatSimulation(power: CombatPower());
+        var sim = CombatSimulation();
         JumpToCombat(sim);
-        Step(sim, 180);
+        sim.Step(default);
         var enemy = sim.World.CurrentEnemy!;
-        var ai = sim.World.CurrentEncounter.EnemyAi!;
-        Check(ai.CurrentRiskLevel == EnemyRiskLevel.Aggressive && ai.CurrentState != EnemyAiState.Evade,
-            "A full shield and full hull must not evade just because the player lance is ready.");
-        Check(enemy.Ship.Power.WeaponsRequested == sim.Settings.Power.AttackProfile.Weapons ||
-              enemy.Ship.Power.WeaponsRequested == sim.Settings.Power.RepositionProfile.Weapons,
-            "The aggressive AI must still use an ordinary configured power profile.");
-    }),
-    ("Zero shield allocation prevents recharge and recharge never exceeds maximum", () =>
-    {
-        var noRecharge = CombatPower() with { DefendProfile = new PowerProfile(0f, 0f, 0f) };
-        var stopped = CombatSimulation(power: noRecharge);
-        JumpToCombat(stopped);
-        stopped.Step(new ShipCommand(FireLance: true));
-        var stoppedEnemy = stopped.World.CurrentEnemy!;
-        Step(stopped, 240);
-        Near(stoppedEnemy.Ship.Shield.CurrentShield, 0f);
-
-        var charging = CombatSimulation(power: CombatPower());
-        JumpToCombat(charging);
-        charging.Step(new ShipCommand(FireLance: true));
-        var chargingEnemy = charging.World.CurrentEnemy!;
-        Step(charging, 900);
-        Check(chargingEnemy.Ship.Shield.CurrentShield <= chargingEnemy.Ship.Shield.MaximumShield,
-            "Shield recharge must never exceed its configured maximum.");
+        Check(enemy.Ship.Power.PropulsionRequested == enemy.Ship.Power.MaximumPropulsionDraw &&
+              enemy.Ship.Power.WeaponsRequested == enemy.Ship.Power.MaximumWeaponsDraw &&
+              enemy.Ship.Power.ShieldsRequested == enemy.Ship.Power.MaximumShieldsDraw,
+            "Detected enemies must request full propulsion, weapons and shields without health-aware profiles.");
+        Check(enemy.Ship.Shield.CurrentShield > 0f && enemy.Ship.Shield.CurrentShield <= enemy.Ship.Shield.MaximumShield,
+            "The initially empty shield must begin normal recharge only after detection.");
     }),
     ("Residual damage removes hull and damages exactly one reproducible subsystem", () =>
     {
         var sim = CombatSimulation(power: CombatPower());
         JumpToCombat(sim);
-        sim.Step(new ShipCommand(FireLance: true)); // shield absorbs
-        Step(sim, 180);
-        sim.Step(new ShipCommand(FireLance: true)); // hull hit
+        sim.Step(new ShipCommand(FireLance: true)); // enemy shield starts empty; first hit reaches hull
         var enemy = sim.World.CurrentEnemy!;
         Check(enemy.Ship.Hull.CurrentHull == 2, "Residual lance damage must remove one hull point.");
         var conditions = new[] { enemy.Ship.Systems.PropulsionCondition, enemy.Ship.Systems.WeaponsCondition, enemy.Ship.Systems.ShieldsCondition };
@@ -847,7 +858,7 @@ var tests = new (string Name, Action Run)[]
         Check(sim.World.Ship.Systems.PropulsionCondition == 1f && sim.World.Ship.Systems.WeaponsCondition == 1f &&
               sim.World.Ship.Systems.ShieldsCondition == 1f && sim.World.Ship.Shield.CurrentShield == sim.World.Ship.Shield.MaximumShield,
             "Successful warp must repair player systems and refill the shield.");
-        Check(sim.World.CurrentEncounter.Id == 1 && hull == 2, "Warp must not repair stored enemy hull or alter encounter progress.");
+        Check(sim.World.CurrentEncounter.Id == 1 && hull == 1, "Warp must not repair stored enemy hull or alter encounter progress.");
     }),
     ("Power and condition define the speed limit without removing existing momentum", () =>
     {
@@ -866,20 +877,15 @@ var tests = new (string Name, Action Run)[]
         Near(power.BridgeMainThrottleRiseSeconds, 5f);
         Near(power.BridgeMainThrottleFallSeconds, 3f);
     }),
-    ("Enemy risk assessment is deterministic and health aware", () =>
+    ("Difficulty profiles differ only by lance aim tolerance", () =>
     {
-        var settings = new EnemyAiSettings();
-        Check(EnemyRiskAssessment.Calculate(3, 3, 1f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Aggressive,
-            "Full hull, shield and systems must be aggressive.");
-        Check(EnemyRiskAssessment.Calculate(3, 3, 0.5f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Normal,
-            "A partially depleted shield must produce NORMAL caution.");
-        Check(EnemyRiskAssessment.Calculate(3, 3, 0.1f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Defensive,
-            "A nearly depleted shield must produce DEFENSIVE caution.");
-        Check(EnemyRiskAssessment.Calculate(2, 3, 1f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Defensive,
-            "Hull damage must increase caution.");
-        Check(EnemyRiskAssessment.Calculate(1, 3, 1f, 1f, 1f, 1f, settings) == EnemyRiskLevel.Critical &&
-              EnemyRiskAssessment.Calculate(3, 3, 1f, 0.2f, 1f, 1f, settings) == EnemyRiskLevel.Critical,
-            "Critical hull or subsystem damage must produce CRITICAL caution.");
+        var sim = new Simulation();
+        var easy = sim.World.Encounters[1].EnemyAi!;
+        var medium = sim.World.Encounters[2].EnemyAi!;
+        var hard = sim.World.Encounters[3].EnemyAi!;
+        Near(easy.FireAimToleranceRadians * 180f / MathF.PI, 2f);
+        Near(medium.FireAimToleranceRadians * 180f / MathF.PI, 3f);
+        Near(hard.FireAimToleranceRadians * 180f / MathF.PI, 5f);
     }),
     ("Invalid AI settings are rejected", () =>
     {
@@ -888,7 +894,7 @@ var tests = new (string Name, Action Run)[]
         {
             _ = new Simulation(new SimulationSettings
             {
-                EnemyAi = new EnemyAiSettings { AttackEnterDistance = 500, MinimumCombatDistance = 600 }
+                EnemyAi = new EnemyAiSettings { MaximumCombatDistance = 500, MinimumCombatDistance = 600 }
             });
         }
         catch (ArgumentException) { rejected = true; }
@@ -918,20 +924,13 @@ static Simulation CombatSimulation(ShipInitialState player = default, ShipInitia
         TargetCount = 0, EncounterTwoTargetCount = 0,
         Shield = shield ?? new ShieldSettings(), Power = power ?? new PowerSettings(), Hull = hull ?? new HullSettings()
     }, player,
-        randomSeed: 42, enemyInitial: enemy, spawnEnemy: true);
+        randomSeed: 42, enemyInitial: enemy ?? new ShipInitialState(new Vector3(0, 0, -1_000), YawRadians: MathF.PI), spawnEnemy: true);
 static Simulation ExplosionScenario(float distance) => CombatSimulation(
     enemy: new ShipInitialState(new Vector3(0, 0, -distance)),
     shield: new ShieldSettings { LanceDamage = 200f }, hull: new HullSettings { MaximumHull = 1 });
 static PowerSettings PropulsionOnlyPower() => new();
 static PowerSettings WeaponsOnlyPower() => new();
-static PowerSettings CombatPower() => new()
-{
-    AttackProfile = new PowerProfile(0f, 40f, 0f),
-    DefendProfile = new PowerProfile(0f, 0f, 35f),
-    EvadeProfile = new PowerProfile(50f, 10f, 30f),
-    RepositionProfile = new PowerProfile(50f, 40f, 0f),
-    MinimumProfileDuration = 1f
-};
+static PowerSettings CombatPower() => new();
 static void JumpToCombat(Simulation sim)
 {
     Step(sim, 600);
@@ -955,7 +954,8 @@ static async Task StationServerSmokeAsync()
         ["index.html"] = "<main>ARMARIUM</main>",
         ["armarium.css"] = "body{}",
         ["armarium.js"] = "",
-        ["reactorium/index.html"] = "<main>REACTORIUM</main>"
+        ["reactorium/index.html"] = "<main>REACTORIUM</main>",
+        ["debug/index.html"] = "<main>ENEMY AI DEBUG</main>"
     };
     using var server = new StationServer(new StationServerOptions { Port = 0, StateUpdatesPerSecond = 30 }, assets, commands, reactorCommands);
     server.UpdateState(new ArmariumState(true, -12.4f, 640f, 0.72f, false, 2.5f, 3, -12.4f, 32f, 40f, 1f, 42));
@@ -1014,6 +1014,25 @@ static async Task StationServerSmokeAsync()
         MathF.Abs(allocation.BridgePercent - 40f) < 0.001f && MathF.Abs(allocation.ShieldsPercent - 28f) < 0.001f &&
         MathF.Abs(allocation.ArmariumPercent - 32f) < 0.001f, TimeSpan.FromSeconds(1)),
         "Reactorium allocation commands must reach the simulation buffer atomically.");
+
+    server.UpdateEnemyDebugState(new EnemyDebugState(true, 2, "MEDIUM", true, "ATTACK",
+        480f, 18f, 36f, 155f, 2, 3, 70f, 100f, 1f, .5f, 1f, .8f, false,
+        100f, 75f, 93.75f, 50f, 98f, 100f, 40f, 35f, 0f, 40f, 32f, 0f, 42));
+    string debugPage = await http.GetStringAsync(server.DebugUrl);
+    Check(debugPage.Contains("ENEMY AI DEBUG"), "Station server must serve the enemy AI debug page.");
+    using var debugSocket = new ClientWebSocket();
+    await debugSocket.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/station"), CancellationToken.None);
+    await SendWebSocketJsonAsync(debugSocket, new { type = "hello", station = "debug", protocolVersion = StationProtocol.Version });
+    using JsonDocument debugWelcome = JsonDocument.Parse(await ReceiveWebSocketTextAsync(debugSocket));
+    Check(debugWelcome.RootElement.GetProperty("station").GetString() == "debug" && server.IsDebugOnline,
+        "Station server must accept the read-only debug station handshake.");
+    using JsonDocument debugState = JsonDocument.Parse(await ReceiveWebSocketTextAsync(debugSocket));
+    Check(debugState.RootElement.GetProperty("type").GetString() == "enemy_debug_state" &&
+          debugState.RootElement.GetProperty("enemyAvailable").GetBoolean() &&
+          debugState.RootElement.GetProperty("aiState").GetString() == "ATTACK" &&
+          MathF.Abs(debugState.RootElement.GetProperty("distanceToPlayer").GetSingle() - 480f) < .001f &&
+          !debugState.RootElement.TryGetProperty("worldState", out _),
+        "Debug station must receive its focused AI telemetry rather than a complete world snapshot.");
 }
 static async Task SendWebSocketJsonAsync(ClientWebSocket socket, object value)
 {

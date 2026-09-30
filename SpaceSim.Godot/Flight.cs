@@ -10,6 +10,7 @@ using SpaceSim.GodotClient.Testing;
 using SpaceSim.GodotClient.Audio;
 using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
+using SpaceSim.Stations.Debug;
 using SpaceSim.Stations.Reactorium;
 using NVector3 = System.Numerics.Vector3;
 using NQuaternion = System.Numerics.Quaternion;
@@ -84,8 +85,9 @@ public partial class Flight : Node
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
         StartStationServer();
+        if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest) _starMap.Open();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.9.1 | Core 60 Hz | Armarium and Reactorium station server enabled");
+        GD.Print("SpaceSim 1.9.4 | Core 60 Hz | Armarium and Reactorium station server enabled");
     }
 
     private Simulation CreateSimulation()
@@ -98,7 +100,7 @@ public partial class Flight : Node
             ? new Simulation(new SimulationSettings { TargetCount = testTargetCount },
                 initialTargets: Enumerable.Range(0, testTargetCount).Select(i =>
                     i == 0 ? new NVector3(0, 0, -300) : new NVector3(200 + 40 * i, 0, 200)), spawnEnemy: false)
-            : new Simulation();
+            : new Simulation(new SimulationSettings { StartWarpReady = true });
     }
 
     private void BindWorld()
@@ -121,14 +123,19 @@ public partial class Flight : Node
                 ["armarium/armarium.js"] = Godot.FileAccess.GetFileAsString("res://Armarium/armarium.js"),
                 ["reactorium/index.html"] = Godot.FileAccess.GetFileAsString("res://Reactorium/index.html"),
                 ["reactorium/reactorium.css"] = Godot.FileAccess.GetFileAsString("res://Reactorium/reactorium.css"),
-                ["reactorium/reactorium.js"] = Godot.FileAccess.GetFileAsString("res://Reactorium/reactorium.js")
+                ["reactorium/reactorium.js"] = Godot.FileAccess.GetFileAsString("res://Reactorium/reactorium.js"),
+                ["debug/index.html"] = Godot.FileAccess.GetFileAsString("res://Debug/index.html"),
+                ["debug/debug.css"] = Godot.FileAccess.GetFileAsString("res://Debug/debug.css"),
+                ["debug/debug.js"] = Godot.FileAccess.GetFileAsString("res://Debug/debug.js")
             };
             _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, _reactoriumCommands, GD.Print);
             _stationServer.Start();
             PublishArmariumState();
             _stationServer.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
+            _stationServer.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World));
             GD.Print($"Armarium available at {_stationServer.ArmariumUrl}");
             GD.Print($"Reactorium available at {_stationServer.ReactoriumUrl}");
+            GD.Print($"Enemy AI debug station available at {_stationServer.DebugUrl}");
         }
         catch (Exception exception)
         {
@@ -221,6 +228,7 @@ public partial class Flight : Node
         RecordArmariumTargetHit();
         PublishArmariumState();
         _stationServer?.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
+        _stationServer?.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World));
         if (_simulation.Events.OfType<EncounterChanged>().Any())
         {
             // Do not interpolate across different local coordinate systems.

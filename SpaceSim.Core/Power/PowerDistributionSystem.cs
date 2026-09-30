@@ -10,8 +10,8 @@ internal static class PowerDistributionSystem
     public static PowerState Create(PowerSettings settings) => new(settings.MaximumPropulsionDraw,
         settings.AuxiliaryThrusterDraw, settings.MaximumWeaponsDraw, settings.MaximumShieldsDraw);
 
-    public static ReactorState CreateReactor(PowerSettings settings) => new(settings.MaximumReactorOutputPower,
-        settings.DefaultReactorOperatingLevelPercent, settings.ReactorFuelCapacity);
+    public static ReactorState CreateReactor(PowerSettings settings, float? initialOperatingLevelPercent = null) => new(settings.MaximumReactorOutputPower,
+        initialOperatingLevelPercent ?? settings.DefaultReactorOperatingLevelPercent, settings.ReactorFuelCapacity);
 
     public static void ApplyPlayerDemand(ShipState ship, LanceState lance, ShipCommand command)
     {
@@ -23,8 +23,13 @@ internal static class PowerDistributionSystem
         ApplyAllocatedDemand(ship.Power, ship.Reactor, propulsion, weapons, shields);
     }
 
-    public static void ApplyProfile(ShipState ship, PowerProfile profile) =>
-        ApplyDemand(ship.Power, ship.Reactor, profile.Propulsion, profile.Weapons, profile.Shields);
+    /// <summary>Enemies use every station at its normal maximum once combat is detected.</summary>
+    public static void ApplyEnemyCombatDemand(ShipState ship) =>
+        ApplyDemand(ship.Power, ship.Reactor, ship.Power.MaximumPropulsionDraw,
+            ship.Power.MaximumWeaponsDraw, ship.Power.MaximumShieldsDraw);
+
+    public static void ApplyEnemyPatrolDemand(ShipState ship, float propulsionDemand) =>
+        ApplyDemand(ship.Power, ship.Reactor, propulsionDemand, 0f, 0f);
 
     public static void SetReactorOperatingLevel(ReactorState reactor, float percent)
     {

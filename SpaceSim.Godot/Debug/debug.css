@@ -1,0 +1,18 @@
+:root { color-scheme: dark; font-family: ui-monospace, Consolas, monospace; background: #050b12; color: #dceaf1; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top, #152c3c, #050b12 70%); }
+.station { width: min(1180px, 100%); min-height: 100vh; margin: auto; padding: clamp(16px, 3vw, 34px); display: grid; grid-template-rows: auto 1fr auto; gap: 20px; }
+header { display: flex; justify-content: space-between; align-items: end; border-bottom: 1px solid #36566c; padding-bottom: 18px; }
+.eyebrow { margin: 0 0 7px; color: #88a5b8; letter-spacing: .12em; font-size: .76rem; }
+h1 { margin: 0; letter-spacing: .12em; font-size: clamp(1.7rem, 5vw, 3.1rem); }
+h2 { margin: 0 0 15px; color: #9ab8c9; font-size: .78rem; letter-spacing: .12em; }
+.connection, .notice { margin: 0; letter-spacing: .1em; font-size: .84rem; }.connected { color: #6ce3a0; }.disconnected, .notice { color: #ff7078; }
+.notice { align-self: center; justify-self: center; border: 1px solid #5c3840; padding: 16px 20px; background: #160c11; }
+.dashboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-content: start; }
+.panel { min-height: 185px; padding: 18px; border: 1px solid #36566c; background: rgba(7, 20, 31, .92); }
+dl { display: grid; grid-template-columns: 1fr auto; gap: 10px 18px; margin: 0; font-size: .86rem; } dt { color: #86a2b4; } dd { margin: 0; color: #e5f4f9; text-align: right; }
+.system { display: grid; grid-template-columns: 92px 1fr 48px; align-items: center; gap: 9px; margin: 14px 0; color: #9ab8c9; font-size: .76rem; }.system b { text-align: right; color: #e5f4f9; }.track { height: 9px; background: #07131e; border: 1px solid #36566c; }.track i { display: block; height: 100%; width: 0; background: #6ce3a0; transition: width .12s linear; }.track i.damaged { background: #ffd06b; }.track i.offline { background: #ff7078; }
+.power-row { display: flex; justify-content: space-between; padding: 11px 0; border-top: 1px solid #234052; color: #9ab8c9; font-size: .82rem; }.power-row b { color: #6ee7ef; }
+footer { display: flex; justify-content: space-between; gap: 18px; border-top: 1px solid #36566c; padding-top: 14px; color: #829cac; font-size: .7rem; letter-spacing: .07em; }
+@media (max-width: 780px) { .dashboard { grid-template-columns: 1fr 1fr; } }.panel { min-height: 0; }
+@media (max-width: 520px) { header { align-items: start; gap: 14px; flex-direction: column; }.dashboard { grid-template-columns: 1fr; } footer { flex-direction: column; gap: 6px; } }

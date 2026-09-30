@@ -54,9 +54,6 @@ public sealed class PowerState
     }
 }
 
-/// <summary>Requested station draws used by enemy station controllers.</summary>
-public readonly record struct PowerProfile(float Propulsion, float Weapons, float Shields);
-
 /// <summary>One Reactorium operating-level intent, applied only by the authoritative simulation.</summary>
 public readonly record struct PowerAllocation(float BridgePercent, float ShieldsPercent, float ArmariumPercent)
 {
