@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpaceSim Reactorium</title>
+  <link rel="stylesheet" href="reactorium.css">
+</head>
+<body>
+  <main class="station-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">SPACESIM / STATION 02</p>
+        <h1>REACTORIUM</h1>
+      </div>
+      <div class="topbar-status">
+        <span id="status-dot" class="status-dot" aria-hidden="true"></span>
+        <span id="reactor-status">NOMINAL</span>
+        <span class="divider" aria-hidden="true"></span>
+        <span id="tick-label">TICK 000000</span>
+      </div>
+    </header>
+
+    <section class="reactor-station" aria-labelledby="reactor-heading">
+      <section class="core-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="panel-index">CORE 01</p>
+            <h2 id="reactor-heading">Reactor Control</h2>
+          </div>
+          <span id="level-label" class="level-label">LEVEL 50 %</span>
+        </div>
+
+        <div class="reactor-visual">
+          <canvas id="reactor-canvas" aria-label="Visualisierung des Reaktorkerns"></canvas>
+        </div>
+
+        <div class="level-control">
+          <div class="control-heading">
+            <label for="operating-level">OPERATING LEVEL</label>
+            <output id="level-output" for="operating-level">50 %</output>
+          </div>
+          <div class="slider-shell">
+            <div class="slider-track" aria-hidden="true"><div id="level-fill" class="level-fill"></div><i id="level-indicator" class="level-indicator"></i></div>
+            <input id="operating-level" type="range" min="0" max="100" step="5" value="50" aria-label="Betriebslevel des Reaktors">
+          </div>
+          <div class="range-scale" aria-hidden="true"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+        </div>
+      </section>
+
+      <section class="readout-panel" aria-label="Reactor telemetry">
+        <p class="panel-index">LIVE TELEMETRY</p>
+        <dl class="telemetry-list">
+          <div class="telemetry-row fuel"><dt>FUEL</dt><dd id="fuel-value">100.0 U</dd><div class="fuel-track"><div id="fuel-fill"></div></div></div>
+          <div class="telemetry-row"><dt>FUEL USAGE</dt><dd id="usage-value">3.7 U / MIN</dd></div>
+          <div class="telemetry-row"><dt>OUTPUT POWER</dt><dd id="power-value">62.5 PU</dd></div>
+          <div class="telemetry-row"><dt>CURRENT DRAW</dt><dd id="draw-value">48.0 PU</dd></div>
+        </dl>
+      </section>
+    </section>
+
+    <footer class="footer-bar">
+      <span>LOCAL REACTOR SIMULATION</span>
+      <span id="command-state">OUTPUT STABLE</span>
+      <span>FUEL CAPACITY 100 U</span>
+    </footer>
+  </main>
+  <script src="reactorium.js"></script>
+</body>
+</html>

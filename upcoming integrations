@@ -1,0 +1,57 @@
+Nächste Integrationsschritte: 
+
+
+Version X-1 (UI schöner):
+
+- Schiffe mit besseren sprites versehen (WH40k style)
+- Hitbox beim amarium anpassen (auf punktgröße)
+
+
+Version x (Warpdrive upgrade):
+man kann die Taktische Karte nun vom spieler Lösen und frei bewegen. 
+Gegner bekommen pro sprungpubkt einen zufälligen kurs und geschwindigkeit 
+
+
+Warp bringt dich direkt in den Hyperraum 
+beim auswählen eines Sprungpunktes erhälst du die aktuelle Funkmeldung 
+Beim auswählen kommt man zur freien ansicht und kann seinen eintitts punkt wählen. 
+Eintritts animation  
+
+Zu beginn ist der Warpdrive noch perfekt 
+
+Version X+1 (Integration Reaktor): 
+
+- Es gibt jetzt Reaktor Treibstoff. Je mehr Leistung der Generator gibt desto höher der Kraftstoff verbrauch. 
+- Reagtor erzeugt eine bestimmte Menge Energie je nach Leistung. 
+- Jedes Bisherige System benötigt leistung. Jede Station sieht die zur verfügung stehende leistung. 
+- Manche Stationen haben einen festen verbrauch andere stufen. aber immer einen maximal vebrauch. 
+ 
+    - Booster
+    - Sensorium 
+    - Schilde
+    - Amarium
+
+Version X+2 (Sensorium Integration):
+
+2 Modi: 
+
+- Passive Sensoren 
+    - Richtung (mit Pfeiltasten rotierbar)
+    - Emmisions muster (A/S) durch testen welches von der peakverteilung passt dan mit enter bestätgen (es gibt eine gernerelle verteilung pro schiffstyp. je nach entfernung wächst die gesamtverteilng oder wird kleiner. Es gibt einzelnen peaks die in ihrer intensität variieren (waffen ladung, Schilde, Reaktor energie, hp). XY Graph mit balken diagramm. 
+    -   _______________
+        |               |
+        |     Emmision  |
+        _________________
+        |Peilung|Info   |
+        |       |       |
+
+     - Info: (Name,Reaktor aktivität (später),  Schilde(erzeugen peak) im spektrum, Bewaffnung & Ladung, HP, geschätzte Entfernung) nei mehreren auf der karte anzeigen und durchtabben   
+
+- Aktive sensoren: 
+    - ersetzt Peilung durch Echolot sweepscan mit roten punkten kostet mehr energie
+
+- Anzeige auf der Brücke: es wird ein schiff oder punkt angezeigt. tatsächlch sampled das sensorum einmal einen punkt nach gauss von der Ground truth. Abweichung hängt von der Energie ab. Die zuverlässiigkeit wird als debug option angezeigt, die informationen vom Sensorium sollen möglichst alle bei der darstellun gdes Gegners karte gesammelt sein so dass man auch mehrer egegner gut darstellen kann. 
+        
+
+
+

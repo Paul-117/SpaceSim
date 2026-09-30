@@ -1,0 +1,1073 @@
+# SpaceSim – Gesamtkonzept
+
+## 1. Grundidee
+
+SpaceSim soll langfristig ein kooperativer Raumschiff-Simulator werden, bei dem mehrere Spieler gemeinsam ein Schiff bedienen.
+
+Das Spiel läuft zentral auf einem Simulationsrechner. Verschiedene reale oder virtuelle Stationen greifen auf unterschiedliche Schiffssysteme zu.
+
+Die Stationen können langfristig aus unterschiedlichen Geräten bestehen:
+
+- PCs
+- ESP32
+- Raspberry Pis
+- Schaltern und Tastern
+- Hebeln und Drehreglern
+- LEDs
+- Displays
+- Projektoren
+- weiterer selbstgebauter Hardware
+
+Der zentrale Simulationskern stellt die verbindliche Realität dar.
+
+Die einzelnen Stationen erhalten nur die Informationen und Eingriffsmöglichkeiten, die ihr jeweiliges Schiffssystem tatsächlich besitzt.
+
+---
+
+# 2. Zentrale Architektur
+
+Das Spiel besteht grundsätzlich aus mehreren Ebenen:
+
+World Simulation  
+→ Schiffssysteme  
+→ Stationsinformationen  
+→ Spieler
+
+und in Gegenrichtung:
+
+Spieler / Hardware  
+→ Stationsbefehle  
+→ Schiffssysteme  
+→ World Simulation
+
+Der zentrale Simulationskern kennt die tatsächliche Welt.
+
+Beispielsweise kennt er:
+
+- echte Position eines Gegners
+- echte Geschwindigkeit
+- tatsächliche Schäden
+- tatsächliche Energieversorgung
+
+Die Besatzung kennt dagegen nur die Informationen, welche ihre Schiffssysteme ermitteln können.
+
+Damit bleiben objektive Realität und Wissen der Besatzung getrennt.
+
+---
+
+# 3. Flugmodell
+
+Das Schiff bewegt sich nach newtonscher Mechanik.
+
+Ohne Schub:
+
+- bleibt die Geschwindigkeit erhalten
+- bleibt die Winkelgeschwindigkeit erhalten
+
+Das Schiff soll später vollständige 3D-Bewegung unterstützen:
+
+- Translation auf drei Achsen
+- Pitch
+- Yaw
+- Roll
+
+Damit sollen später unter anderem möglich sein:
+
+- dreidimensionale Raumkämpfe
+- Asteroidenfelder
+- Stationen
+- räumliche Hindernisse
+- Höhlensysteme
+
+Die aktuelle 2D-Version ist nur eine eingeschränkte Darstellung dieser grundsätzlich dreidimensionalen Simulation.
+
+---
+
+# 4. Sternenkarte und Encounter
+
+Das Universum wird nicht als eine einzige gigantische physikalische Welt simuliert.
+
+Es gibt zwei Ebenen.
+
+## Sternenkarte
+
+Die Sternenkarte stellt die strategische Navigation dar.
+
+Sie besteht aus Sprungpunkten.
+
+An einem Sprungpunkt können unterschiedliche Encounter stattfinden, beispielsweise:
+
+- Raumkampf
+- Sensorereignis
+- Station
+- Asteroidenfeld
+- Höhle
+- Notsignal
+- Story-Ereignis
+- leerer Raum
+
+## Lokaler Encounter
+
+Nach einem Sprung wird ein lokaler Simulationsraum erzeugt.
+
+Dort findet die tatsächliche physikalische Simulation statt.
+
+Grundstruktur:
+
+Star Map  
+→ Jump Point  
+→ Encounter  
+→ Local Space
+
+---
+
+# 5. Warpdrive
+
+Das Warpdrive verbindet die lokalen Encounter.
+
+Ein Sprung soll langfristig nicht vollständig präzise sein.
+
+Die Genauigkeit hängt unter anderem vom Zustand und der Qualität des Warpdrives ab.
+
+Ein hochwertiger Warpdrive kann das Schiff sehr nah am gewünschten Punkt absetzen.
+
+Ein schlechter oder beschädigter Warpdrive kann eine große Abweichung verursachen.
+
+
+Dadurch kann die Ankunft selbst taktische Konsequenzen haben.
+
+Ein schlechter Sprung könnte beispielsweise bedeuten:
+
+- weiter Flugweg zum eigentlichen Ziel
+- ungünstige Kampfposition
+- schlechter Abstand zum Gegner
+- schlechter Ausgangspunkt für Sensoren
+
+Später können außerdem Einfluss haben:
+
+- Qualität des Warpdrives
+- Beschädigung
+- verfügbare Energie
+- Navigation
+- Sensordaten
+
+---
+
+# 6. Reaktor und Energieversorgung
+
+Energie soll eine der zentralen strategischen Ressourcen des Spiels sein.
+
+Der Reaktor erzeugt eine begrenzte Menge Leistung.
+
+Diese muss zwischen den Schiffssystemen verteilt werden.
+
+Beispielsweise:
+
+Reaktor  
+→ Antrieb  
+→ Waffen  
+→ Schilde  
+→ Sensoren  
+→ Warpdrive  
+→ weitere Systeme
+
+Die verfügbare Leistung soll bewusst nicht ausreichen, um jederzeit sämtliche Systeme maximal zu betreiben.
+
+Der Spieler beziehungsweise die Besatzung muss Prioritäten setzen.
+
+---
+
+## 6.1 Reaktortypen und Schiffsbau
+
+Der Reaktortyp soll ein wichtiger Bestandteil eines Builds werden.
+
+Dabei sollte ein Reaktor nicht einfach einen künstlichen Bonus wie:
+
+`+20 % Torpedoschaden`
+
+geben.
+
+Stattdessen besitzen unterschiedliche Reaktoren unterschiedliche physikalische beziehungsweise spielmechanische Charakteristiken.
+
+### Hochenergie-/Fusionsreaktor
+
+Stärke:
+
+Hohe und stabile elektrische Leistung.
+
+Geeignet für:
+
+- Energiewaffen
+- Lanze
+- Schilde
+- starke Sensoren
+- Systeme mit dauerhaft hohem elektrischem Bedarf
+
+Eigenschaften:
+
+- hohe kontinuierliche elektrische Leistung
+- gute Effizienz
+- gute Versorgung mehrerer elektrischer Systeme gleichzeitig
+- eventuell geringere kurzfristige Überlastbarkeit
+
+Typischer Build:
+
+Energiewaffen + starke Schilde + Sensoren.
+
+---
+
+### Plasmareaktor
+
+Stärke:
+
+Sehr hohe kurzfristige Spitzenleistung.
+
+Geeignet für:
+
+- aggressive Antriebsmanöver
+- schnell feuernde Energiewaffen
+- Breitseiten
+- kurzfristige Kampfleistung
+
+Eigenschaften:
+
+- kann sehr hohe Leistungsspitzen liefern
+- reagiert schnell auf Lastwechsel
+- produziert viel Wärme
+- kann nicht dauerhaft auf Maximalleistung betrieben werden
+- Überlastung muss kontrolliert werden
+
+Typischer Build:
+
+Aggressives Nah-/Mittelstreckenschiff mit hoher Mobilität und starker Breitseite.
+
+---
+
+### Spalt-/Atomreaktor
+
+Stärke:
+
+Ausdauer und Zuverlässigkeit.
+
+Eigenschaften:
+
+- geringere Spitzenleistung
+- sehr stabile Grundversorgung
+- hohe Reichweite
+- geringer beziehungsweise effizienter Brennstoffverbrauch
+- langsame Leistungsänderung
+- robust
+
+Dieser Reaktor verbessert Torpedos nicht direkt.
+
+Ein Torpedoschiff benötigt aber vergleichsweise wenig Waffenenergie, weil seine Hauptwaffe aus Munition besteht.
+
+Dadurch kann ein Schiff mit Atomreaktor seine begrenztere elektrische Leistung beispielsweise auf:
+
+- Sensoren
+- Antrieb
+- Verteidigung
+
+konzentrieren und trotzdem schwere Torpedowaffen einsetzen.
+
+Damit entsteht indirekt ein sinnvoller Torpedo-Build.
+
+---
+
+Diese drei Reaktortypen sind zunächst Arbeitshypothesen.
+
+Entscheidend ist das Prinzip:
+
+Der Reaktor bestimmt nicht direkt die Waffenstärke.
+
+Er bestimmt, welche Art von Leistung das Schiff besonders gut bereitstellen kann.
+
+Dadurch entstehen unterschiedliche Builds.
+
+---
+
+## 6.2 Reaktorsteuerung als Hardware-Gameplay
+
+Die Reaktorstation soll später nicht nur aus Prozentreglern bestehen.
+
+Eine mögliche Hardwaremechanik orientiert sich an einer Gangschaltung.
+
+Der Reaktor besitzt mehrere Betriebs- beziehungsweise Laststufen.
+
+Beispielsweise:
+
+STANDBY  
+CRUISE  
+COMBAT  
+HIGH OUTPUT  
+OVERDRIVE
+
+Ein physischer Schalthebel könnte zwischen diesen Stufen wechseln.
+
+Die optimale Stufe hängt vom aktuellen Leistungsbedarf ab.
+
+Beispiel:
+
+Das Schiff benötigt momentan wenig Energie.
+
+Reaktor auf OVERDRIVE:
+
+→ unnötige Wärme  
+→ schlechter Wirkungsgrad  
+→ höhere Belastung
+
+Das Schiff benötigt plötzlich sehr viel Energie.
+
+Reaktor noch auf CRUISE:
+
+→ Energiebedarf kann nicht gedeckt werden  
+→ Systeme erhalten nicht ihre angeforderte Leistung
+
+Der Spieler im Voltarium muss deshalb auf die Situation reagieren und den Reaktor passend fahren.
+
+Dadurch entsteht ein echtes Bedienungs-Gameplay statt eines simplen Energie-Sliders.
+
+Später könnten zusätzlich existieren:
+
+- Temperaturanzeige
+- Kühlung
+- Reaktorlast
+- Brennstoff
+- Stabilität
+- Überlastungswarnungen
+- Notabschaltung
+
+---
+
+## 6.3 Energieverteilung
+
+Zusätzlich zur Reaktorsteuerung muss die erzeugte Energie zwischen den Systemen verteilt werden.
+
+Beispielsweise:
+
+Reaktoroutput: 100
+
+Antrieb: 30  
+Waffen: 30  
+Schilde: 25  
+Sensoren: 15
+
+Ein System kann nur die Leistung verwenden, die ihm tatsächlich zugewiesen wird.
+
+Mehr Leistung soll mechanische Auswirkungen haben.
+
+Beispiele:
+
+Antrieb  
+→ größere verfügbare Schubkraft
+
+Lanze  
+→ schnellere Ladezeit
+
+Schilde  
+→ stärkere Schutzwirkung und/oder Regeneration
+
+Sensoren  
+→ höhere Reichweite, Geschwindigkeit oder Genauigkeit
+
+Warpdrive  
+→ möglicherweise bessere Ladeleistung oder Sprunggenauigkeit
+
+---
+
+# 7. Waffensystem
+
+Waffen sollen sich nicht nur durch unterschiedliche Schadenswerte unterscheiden.
+
+Jede Waffenklasse soll eine andere taktische Aufgabe und eine andere Bedienung besitzen.
+
+Die wichtigsten Unterschiede entstehen durch:
+
+- Reichweite
+- Feuerwinkel
+- Zielverfahren
+- Flugzeit
+- Energiebedarf
+- Munition
+- Feuerrate
+- Gegenmaßnahmen
+
+Dadurch muss die Besatzung für unterschiedliche Waffen auch unterschiedlich kämpfen.
+
+---
+
+## 7.1 Bugwaffen
+
+Bugwaffen feuern entlang der Schiffsnase.
+
+Der Pilot muss deshalb das gesamte Schiff ausrichten.
+
+Das ist bereits ein wesentlicher taktischer Unterschied zu anderen Waffen.
+
+Standardmäßig besitzt das Schiff eine energiebasierte Bugwaffe.
+
+### Lanze
+
+Die Lanze ist eine schwere Energiewaffe.
+
+Eigenschaften:
+
+- entlang der Schiffsnase
+- praktisch sofortiger Treffer
+- hohe Präzision
+- hohe Reichweite
+- automatische Ladezeit
+- hoher Energiebedarf
+- keine Munition
+
+Mehr zugewiesene Waffenenergie:
+
+→ kürzere Ladezeit
+
+Die Lanze zwingt Pilot und Waffenoffizier zur Zusammenarbeit:
+
+Pilot  
+→ bringt das Schiff in Feuerposition
+
+Armarium  
+→ entscheidet über den Schuss
+
+---
+
+## 7.2 Breitseitenwaffen
+
+Breitseiten befinden sich seitlich am Schiff.
+
+Dadurch entsteht eine völlig andere Flugstrategie.
+
+Die Schiffsnase muss nicht direkt auf den Gegner zeigen.
+
+Stattdessen muss der Gegner in den Feuerbereich der entsprechenden Schiffsseite gebracht werden.
+
+Breitseitenwaffen sollen zusätzlich separat gezielt werden müssen.
+
+Das Armarium erhält dadurch eine eigene Zielaufgabe.
+
+Mögliche Subtypen:
+
+### Energie-Breitseite
+
+- benötigt Energie
+- keine Munition
+- höhere Feuerrate als Lanze
+- Leistung abhängig von Waffenenergie
+
+### Ballistische Breitseite
+
+- verwendet Munition
+- geringerer Energiebedarf
+- begrenzter Vorrat
+- Projektilflugzeit
+
+Später können weitere Subtypen hinzukommen.
+
+---
+
+## 7.3 Torpedos
+
+Torpedos sind physische Langstreckenwaffen.
+
+Eigenschaften:
+
+- lange Flugzeit
+- große Reichweite
+- Explosionsradius
+- begrenzte Munition
+- Zielinformationen erforderlich
+
+Sie eignen sich besonders dafür, einen Angriff bereits lange vor dem eigentlichen Nahkampf einzuleiten.
+
+Beispiel:
+
+Gegner wird auf große Distanz entdeckt.
+
+→ passive Sensoren sammeln Daten
+
+→ Kurs und Geschwindigkeit werden geschätzt
+
+→ Feuerleitlösung wird erstellt
+
+→ Torpedos werden gestartet
+
+→ Minuten beziehungsweise längere Zeit später erreichen sie den Kampfbereich
+
+Der Gegner kann dadurch gezwungen werden, bereits vor dem direkten Gefecht zu reagieren.
+
+Normale Schilde halten Torpedos nicht auf.
+
+Dafür soll später ein eigenes Torpedoabwehrsystem existieren.
+
+Beispielsweise:
+
+- Point Defense
+- Abfangraketen
+- Nahbereichslaser
+
+Dadurch entsteht Gegenplay:
+
+Torpedo  
+→ umgeht Schild  
+→ kann aber abgefangen werden
+
+---
+
+## 7.4 Weitere Möglichkeiten für Waffenvielfalt
+
+Abwechslung sollte möglichst aus dem Einsatzprinzip entstehen und nicht nur aus höheren Zahlen.
+
+Mögliche spätere Eigenschaften:
+
+### Unterschiedliche Feuerwinkel
+
+- Bug
+- Heck
+- Backbord
+- Steuerbord
+- drehbare Geschütztürme
+
+### Unterschiedliches Feuerverhalten
+
+- einzelner schwerer Schuss
+- schnelle Salven
+- Dauerstrahl
+- Burst
+- aufladbare Waffe
+
+### Unterschiedliche Zielanforderungen
+
+- direkte Sichtlinie
+- grobe Sensorpeilung
+- vollständige Feuerleitlösung
+- manuelles Zielen
+
+### Unterschiedliche Ressourcen
+
+- Energie
+- Munition
+- Torpedos
+- Wärme
+- Ladezeit
+
+### Unterschiedliche taktische Rollen
+
+- Schildbrechen
+- Systemschaden
+- Flächenschaden
+- Langstreckenangriff
+- Nahkampf
+- Punktverteidigung
+
+Damit kann später eine große Waffenvielfalt entstehen, ohne dutzende nahezu identische Kanonen zu bauen.
+
+---
+
+# 8. Verteidigung
+
+## Schilde
+
+Schilde schützen gegen:
+
+- Energiewaffen
+- Laser
+- normale Geschosse / Projektile
+
+Ihre Leistungsfähigkeit hängt von der Energieversorgung ab.
+
+Mehr Schildenergie bedeutet stärkeren Schutz beziehungsweise schnellere Regeneration.
+
+Die genaue Schadensmechanik wird später festgelegt.
+
+## Torpedoabwehr
+
+Torpedos werden nicht normal durch die Schilde abgefangen.
+
+Dafür gibt es später ein separates Abwehrsystem.
+
+Dieses muss Torpedos erkennen, verfolgen und zerstören, bevor sie das Schiff erreichen.
+
+Dadurch besitzen Schilde keine universelle Schutzwirkung.
+
+---
+
+# 9. Sensoren
+
+Sensoren sollen ein aktiver Bestandteil des Gameplays sein.
+
+Es gibt zwei grundlegende Sensortypen.
+
+## Passive Sensoren
+
+Passive Sensoren senden selbst keine oder kaum erkennbare Signale aus.
+
+Sie versuchen vorhandene Emissionen des Gegners auszuwerten.
+
+Ziel:
+
+Informationen sammeln, ohne selbst sofort entdeckt zu werden.
+
+Mögliche Informationen:
+
+- ungefähre Richtung
+- Signalstärke
+- grobe Entfernungsschätzung
+- Geschwindigkeitsschätzung
+- Schiffstyp
+- mögliche Bewaffnung
+- mögliche Reaktorsignatur
+
+Ein wichtiger Teil ist die Identifikation des gegnerischen Schiffes.
+
+Dadurch kann die Crew einschätzen:
+
+- Was ist das?
+- Wie gefährlich ist es?
+- Ist ein Kampf sinnvoll?
+- Welche Fähigkeiten besitzt der Gegner vermutlich?
+
+Passive Sensoren eignen sich insbesondere für die Phase vor einem offenen Gefecht.
+
+---
+
+## Aktive Sensoren
+
+Aktive Sensoren senden selbst Signale aus.
+
+Dadurch können sie sehr viel genauere Daten liefern.
+
+Beispielsweise:
+
+- präzise Position
+- Entfernung
+- Geschwindigkeit
+- Kurs
+- bessere Feuerleitdaten
+
+Nachteil:
+
+Der eigene Einsatz aktiver Sensoren kann vom Gegner erkannt werden.
+
+Damit gibt es eine taktische Entscheidung:
+
+Passiv bleiben  
+→ schlechtere Informationen  
+→ schwerer selbst entdeckt zu werden
+
+Aktiv scannen  
+→ sehr gute Informationen  
+→ eigene Position beziehungsweise Anwesenheit verraten
+
+Mehr Energie verbessert die Leistungsfähigkeit der Sensoren.
+
+Die genaue Beziehung zwischen Energie, Reichweite und Genauigkeit wird später festgelegt.
+
+---
+
+# 10. Schiffsräume und Crewrollen
+
+Das physische Spiel soll sich nicht nur in Softwarefenster, sondern in tatsächliche Bereiche beziehungsweise Stationen gliedern.
+
+## Strategium – Brücke
+
+Zentrale Kommandoebene.
+
+Dort befindet sich die Projektion der aktuellen taktischen Lage.
+
+Die heutige 2D-Karte ist langfristig die Grundlage dafür.
+
+Aufgaben:
+
+- Gesamtüberblick
+- Navigation
+- strategische Entscheidungen
+- Befehle an die Crew
+- Prioritäten festlegen
+
+Rolle:
+
+Captain
+
+Der Captain bedient nicht zwangsläufig jedes System selbst.
+
+Er erhält Informationen der anderen Stationen und trifft Entscheidungen.
+
+---
+
+## Sensorium
+
+Verantwortlich für Sensorik und Aufklärung.
+
+Aufgaben:
+
+- passive Sensoren
+- aktive Sensoren
+- Kontakte entdecken
+- Kontakte identifizieren
+- Position bestimmen
+- Bewegungsdaten ermitteln
+- Feuerleitinformationen erzeugen
+
+Rolle:
+
+Sensor Officer
+
+---
+
+## Armarium
+
+Waffenraum beziehungsweise Waffenstation.
+
+Aufgaben:
+
+- Waffenauswahl
+- Bugwaffen
+- Breitseiten
+- Torpedos
+- Zielauswahl
+- Feuerleitlösung verwenden
+- Torpedoabschuss
+- Munitionsverwaltung
+
+Rolle:
+
+Weapons Officer
+
+---
+
+## Voltarium
+
+Technischer Bereich des Schiffes.
+
+Hier befinden sich Energieversorgung und technische Kontrolle.
+
+Aufgaben:
+
+- Reaktor bedienen
+- Reaktorlast einstellen
+- Energie zwischen Systemen verteilen
+- Überlastung verhindern
+- beschädigte Systeme überwachen
+- Systeme reparieren
+- Schiff technisch am Laufen halten
+
+Rolle:
+
+Engineer
+
+Das Voltarium soll besonders stark mit echter Hardware arbeiten können.
+
+Beispielsweise:
+
+- Reaktorhebel
+- Leistungsstufen
+- Drehregler
+- Energieverteiler
+- Sicherungen
+- Warnlampen
+- Temperaturanzeigen
+
+---
+
+# 11. Schiffssysteme
+
+Das Schiff besteht langfristig aus eigenständigen Subsystemen.
+
+Beispielsweise:
+
+Ship
+├ Propulsion
+├ Reactor
+├ PowerDistribution
+├ Sensors
+│   ├ PassiveSensors
+│   └ ActiveSensors
+├ Shields
+├ Weapons
+│   ├ ForwardWeapons
+│   ├ BroadsideWeapons
+│   ├ TorpedoLaunchers
+│   └ PointDefense
+├ Navigation
+├ WarpDrive
+└ DamageControl
+
+Die Systeme besitzen jeweils:
+
+- Zustand
+- Eingaben
+- Ausgaben
+- Energiebedarf
+- Leistungsparameter
+- möglichen Schaden
+
+Dadurch können einzelne Systeme unabhängig beschädigt, verbessert oder ersetzt werden.
+
+---
+
+# 12. Gegner-KI
+
+Die Gegner-KI soll langfristig ein wesentlicher Bestandteil des Spiels werden.
+
+Gegner sollen nicht nur stärker oder schwächer sein.
+
+Sie sollen unterschiedliche Strategien besitzen und auf den Spieler reagieren.
+
+Gleichzeitig kann die Besatzung gegnerisches Verhalten beobachten und ihre eigene Strategie daran anpassen.
+
+Langfristig sollen Gegner grundsätzlich denselben Regeln unterliegen:
+
+- Energie
+- Sensoren
+- Waffen
+- Schilde
+- Antrieb
+- Schäden
+
+Die genaue KI-Architektur wird separat weiterentwickelt.
+
+---
+
+# 13. Ausrüstung, Shops und Loot
+
+Das Schiff soll langfristig ausrüstbar und verbesserbar sein.
+
+An geeigneten Stationen beziehungsweise Shops kann die Crew:
+
+- Treibstoff beziehungsweise benötigte Ressourcen auffüllen
+- Munition kaufen
+- Torpedos kaufen
+- beschädigte Komponenten reparieren
+- bessere Komponenten kaufen
+- neue Waffen kaufen
+- Sensoren verbessern
+- Reaktor austauschen
+- Warpdrive verbessern
+- Schilde verbessern
+
+Komponenten besitzen unterschiedliche Qualität und Eigenschaften.
+
+Dadurch entwickelt sich das Schiff über längere Zeit weiter.
+
+Zerstörte gegnerische Schiffe können teilweise geplündert werden.
+
+Möglicher Loot:
+
+- Waffen
+- Munition
+- Torpedos
+- Ersatzteile
+- Reaktorkomponenten
+- Sensorbauteile
+- Warp-Komponenten
+- Rohstoffe
+- handelbare Gegenstände
+
+Nicht jedes zerstörte System muss nach der Zerstörung noch verwendbar sein.
+
+Dadurch kann es taktisch interessant werden, welche Bereiche eines Gegners beschädigt wurden.
+
+---
+
+# 14. Schäden und zerstörbare Schiffssysteme
+
+Schäden sollen langfristig nicht nur einen globalen Lebenspunktebalken reduzieren.
+
+Ein Gefecht kann konkrete Systeme beschädigen.
+
+Ein System kann beispielsweise folgende Zustände besitzen:
+
+FUNKTIONSFÄHIG  
+BESCHÄDIGT  
+KRITISCH  
+AUSGEFALLEN
+
+Die genaue Schadensmechanik wird später definiert.
+
+Diese Liste soll während der Entwicklung laufend erweitert werden.
+
+## 14.1 Triebwerke
+
+Mögliche Folgen:
+
+- geringerer maximaler Schub
+- langsamere Beschleunigung
+- reduzierter Rückwärtsschub
+- reduzierte Drehleistung
+- einzelne Thruster fallen aus
+- asymmetrisches Flugverhalten
+
+Später könnte ein defektes Seitentriebwerk beispielsweise bedeuten, dass das Schiff in eine Richtung deutlich schlechter drehen kann.
+
+---
+
+## 14.2 Waffensysteme
+
+Mögliche Folgen:
+
+- Waffe vollständig ausgefallen
+- längere Ladezeit
+- geringere Feuerrate
+- reduzierte Leistung
+- einzelne Geschütze einer Breitseite fallen aus
+- Torpedorohr blockiert
+- Zielmechanik beschädigt
+
+Ein Schaden betrifft idealerweise konkrete Waffen beziehungsweise Waffenstationen und nicht pauschal sämtliche Waffen.
+
+---
+
+## 14.3 Warpdrive
+
+Mögliche Folgen:
+
+- geringere Sprunggenauigkeit
+- größere Abweichung vom Zielpunkt
+- längere Vorbereitungszeit
+- höherer Energiebedarf
+- maximale Sprungreichweite reduziert
+- vollständiger Ausfall
+
+Damit kann ein Warpdrive noch funktionieren, obwohl er bereits beschädigt ist.
+
+---
+
+## 14.4 Passive Sensoren
+
+Mögliche Folgen:
+
+- geringere Reichweite
+- langsamere Identifikation
+- schlechtere Richtungsbestimmung
+- schlechtere Schiffsklassifikation
+- schwächere Signale nicht mehr erkennbar
+
+---
+
+## 14.5 Aktive Sensoren
+
+Mögliche Folgen:
+
+- geringere Reichweite
+- geringere Positionsgenauigkeit
+- langsamere Aktualisierung
+- schlechtere Feuerleitdaten
+- vollständiger Ausfall des aktiven Scans
+
+Passive und aktive Sensoren sollen separat beschädigt werden können.
+
+---
+
+## 14.6 Reaktor
+
+Mögliche Folgen:
+
+- reduzierte maximale Leistung
+- höherer Brennstoffverbrauch
+- stärkere Wärmeentwicklung
+- schlechtere Effizienz
+- einzelne Leistungsstufen nicht mehr verfügbar
+- instabiler Betrieb
+- automatische Notabschaltung
+- vollständiger Ausfall
+
+Ein schwer beschädigter Reaktor soll damit ein sehr ernstes Problem darstellen, ohne zwingend sofortige Zerstörung des Schiffes zu bedeuten.
+
+---
+
+## 14.7 Energieverteilung
+
+Mögliche Folgen:
+
+- bestimmte Systeme können nicht mehr vollständig versorgt werden
+- reduzierte maximal übertragbare Leistung
+- einzelne Energiepfade fallen aus
+- Energieverteilung wird schwieriger
+
+Damit kann der Reaktor selbst funktionieren, während die Energie nicht mehr überall ankommt.
+
+---
+
+## 14.8 Schilde
+
+Mögliche Folgen:
+
+- geringere maximale Schildstärke
+- langsamere Regeneration
+- höherer Energiebedarf
+- einzelne Schutzbereiche geschwächt
+- vollständiger Schildausfall
+
+Ob Schilde später lokal nach Schiffsseite oder als ein gemeinsames Feld modelliert werden, ist noch offen.
+
+---
+
+## 14.9 Torpedoabwehr / Point Defense
+
+Mögliche Folgen:
+
+- geringere Feuerrate
+- reduzierte Erfassungsreichweite
+- einzelne Abwehrgeschütze fallen aus
+- schlechtere Wahrscheinlichkeit, anfliegende Torpedos abzufangen
+
+Dadurch kann ein zuvor gut geschütztes Schiff im Laufe eines Gefechts zunehmend anfällig für Torpedos werden.
+
+---
+
+# 15. Reparaturen
+
+Beschädigte Systeme sollen nicht zwangsläufig bis zum Ende eines Gefechts verloren sein.
+
+Das Voltarium beziehungsweise der Engineer soll langfristig Reparaturen durchführen können.
+
+Mögliche Unterscheidung:
+
+Notfallreparatur im Gefecht:
+
+- schnell
+- nur teilweise Wiederherstellung
+- möglicherweise temporär
+
+Vollständige Reparatur an Station:
+
+- langsam beziehungsweise kostenpflichtig
+- vollständige Wiederherstellung
+- eventuell Ersatzteile erforderlich
+
+Die genaue Reparaturmechanik wird später entwickelt.
+
+---
+
+# 16. Entwicklungsprinzip
+
+Nicht alle Systeme werden gleichzeitig implementiert.
+
+Neue Versionen sollen jeweils wenige neue Kernmechaniken hinzufügen und sauber mit den bestehenden Systemen verbinden.
+
+Eine mögliche Reihenfolge:
+
+Gegner und grundlegender Kampf
+
+→ Reaktor und Energieverteilung
+
+→ Schilde und Schaden
+
+→ weitere Waffen
+
+→ passive und aktive Sensoren
+
+→ Torpedos und Point Defense
+
+→ Ausrüstung, Loot und Shops
+
+→ erweitertes Warp-System
+
+→ detailliertere Reparaturen
+
+Die genaue Reihenfolge bleibt flexibel.
+
+Entscheidend ist, dass jede Stufe zunächst funktional getestet wird, bevor weitere Komplexität hinzugefügt wird.

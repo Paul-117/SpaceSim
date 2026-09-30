@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpaceSim Sensorium</title>
+  <link rel="stylesheet" href="sensorium.css">
+</head>
+<body>
+  <main class="station-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">SPACESIM / STATION 03</p>
+        <h1>SENSORIUM</h1>
+      </div>
+      <div class="topbar-status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>PASSIVE ARRAY ONLINE</span>
+        <span class="divider" aria-hidden="true"></span>
+        <span>SCAN 0001</span>
+      </div>
+    </header>
+
+    <section class="station-grid" aria-label="Sensorium station">
+      <section class="station-window spectrometer-window" aria-labelledby="spectrometer-heading">
+        <div class="window-heading">
+          <div>
+            <p class="window-index">SPECTRUM 01</p>
+            <h2 id="spectrometer-heading">Signature Spectrometer</h2>
+          </div>
+          <span class="state-label">STATIC SAMPLE</span>
+        </div>
+        <div class="spectrometer-content">
+          <div class="spectrum-frame">
+            <canvas id="spectrum-canvas" aria-label="Gebinnte spektrale Verteilung von 380 bis 780 Nanometern"></canvas>
+          </div>
+          <aside class="signature-selector" aria-label="Ship signature library">
+            <button id="generate-spectrum" type="button" class="generate-button">GENERATE</button>
+            <p class="selector-label">SHIP LIBRARY</p>
+            <div class="ship-type-readout">
+              <span id="ship-code" class="ship-code">CETUS</span>
+              <strong id="ship-type">CORVETTE</strong>
+            </div>
+            <div class="selector-controls">
+              <button id="previous-ship" type="button" class="selector-button" aria-label="Vorheriger Schiffstyp" title="Vorheriger Schiffstyp">&lt;</button>
+              <span id="ship-position">01 / 03</span>
+              <button id="next-ship" type="button" class="selector-button" aria-label="Naechster Schiffstyp" title="Naechster Schiffstyp">&gt;</button>
+            </div>
+            <div class="envelope-key"><i id="envelope-swatch"></i><span>ACTIVE ENVELOPE</span></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="station-window bearing-window" aria-labelledby="array-heading">
+        <div class="window-heading">
+          <div>
+            <p class="window-index">ARRAY 02</p>
+            <h2 id="array-heading">Spectrometer Bearing</h2>
+          </div>
+          <span id="array-mode" class="state-label muted">PASSIVE</span>
+        </div>
+        <div id="bearing-frame" class="bearing-frame">
+          <canvas id="bearing-canvas" aria-label="Peilungsanzeige mit Schiff und drehbarer Spektrometerlinie"></canvas>
+        </div>
+        <div id="sonar-frame" class="sonar-frame" hidden>
+          <canvas id="sonar-canvas" aria-label="Aktives Sonar mit Gegnerkontakten"></canvas>
+        </div>
+      </section>
+
+      <section class="station-window secondary-window" aria-labelledby="contact-heading">
+        <div class="window-heading">
+          <div>
+            <p class="window-index">CONTACT 03</p>
+            <h2 id="contact-heading">Contact Parameters</h2>
+          </div>
+          <span id="contact-status" class="state-label muted">UNCONFIRMED</span>
+        </div>
+        <div id="contact-empty" class="empty-state">NO CONFIRMED CONTACT</div>
+        <dl id="contact-data" class="contact-data is-hidden">
+          <div><dt>NAME</dt><dd id="contact-name">--</dd></div>
+          <div><dt>CLASS</dt><dd id="contact-class">--</dd></div>
+          <div><dt>REACTOR</dt><dd id="contact-reactor">--</dd></div>
+          <div><dt>SHIELDS</dt><dd id="contact-shields">--</dd></div>
+          <div><dt>PROPULSION</dt><dd id="contact-propulsion">--</dd></div>
+          <div><dt>WEAPONS</dt><dd id="contact-weapons">--</dd></div>
+          <div><dt>EST. DISTANCE</dt><dd id="contact-distance">--</dd></div>
+          <div><dt>HULL INTEGRITY</dt><dd id="contact-hull">--</dd></div>
+        </dl>
+      </section>
+    </section>
+  </main>
+  <script src="sensorium.js"></script>
+</body>
+</html>
