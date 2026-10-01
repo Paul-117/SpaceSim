@@ -16,6 +16,7 @@ public sealed class Simulation
     public WorldState World { get; }
     private readonly List<SimulationEvent> _events = new();
     private readonly Random _damageRandom;
+    private readonly Random _navigationRandom;
     /// <summary>Events for the last completed tick (or initial spawns). Read before the next Step.</summary>
     public IReadOnlyList<SimulationEvent> Events { get; }
 
@@ -27,6 +28,7 @@ public sealed class Simulation
         Settings = settings ?? new SimulationSettings();
         Settings.Validate();
         _damageRandom = new Random(randomSeed + 20_021);
+        _navigationRandom = new Random(randomSeed + 30_091);
         Events = _events.AsReadOnly();
         ValidateInitial(initialShip);
         var encounters = new[]
@@ -45,6 +47,8 @@ public sealed class Simulation
             World.WarpDrive.IsReady = true;
         }
         else World.WarpDrive.RemainingSeconds = Settings.WarpChargeSeconds;
+        if (Settings.StartInHyperspace)
+            World.HyperspacePhase = HyperspacePhase.SelectingDestination;
         var targets = new TargetSystem(Settings, randomSeed);
         targets.Initialize(encounters[0], initialShip.Position, _events, initialTargets);
         targets.Initialize(encounters[1], Vector3.Zero, _events);
@@ -61,15 +65,30 @@ public sealed class Simulation
     }
 
     public void Step(ShipCommand command, NavigationCommand navigation = default,
-        ReactorCommand reactorCommand = default)
+        ReactorCommand reactorCommand = default, SensorCommand sensorCommand = default)
     {
         _events.Clear();
         if (World.GameState == GameState.GameOver) return;
+
+        if (!World.IsPlayerInRealSpace)
+        {
+            StepHyperspace(navigation);
+            World.Tick++;
+            return;
+        }
 
         if (reactorCommand.OperatingLevelPercent is float level)
             PowerDistributionSystem.SetReactorOperatingLevel(World.Ship.Reactor, level);
         if (reactorCommand.Allocation is PowerAllocation allocation)
             PowerDistributionSystem.SetPlayerAllocation(World.Ship.Power, allocation);
+        if (sensorCommand.ConfirmedEnemyId is int identifiedEnemyId)
+            World.CurrentEncounter.RevealBridgeContact(identifiedEnemyId);
+        if (sensorCommand.ActiveSonarPing)
+        {
+            World.CurrentEncounter.RevealAllBridgeContacts();
+            foreach (EnemyShipState enemy in World.CurrentEnemies)
+                World.CurrentEncounter.GetEnemyAi(enemy.EnemyId)?.Alert();
+        }
 
         PowerDistributionSystem.StepReactor(World.Ship.Reactor, Settings.Power);
         PowerDistributionSystem.ApplyPlayerDemand(World.Ship, World.Lance, command);
@@ -122,8 +141,28 @@ public sealed class Simulation
             World.Tick++;
             return;
         }
-        WarpDriveSystem.Step(World, navigation, Settings, _events);
+        WarpDriveSystem.Step(World, navigation, Settings, _events, _navigationRandom);
         World.Tick++;
+    }
+
+    private void StepHyperspace(NavigationCommand navigation)
+    {
+        // The bridge ship is absent. The destination encounter remains a living local world,
+        // but its enemies can only patrol and no player physics, weapons or collisions run.
+        foreach (EnemyShipState enemy in World.CurrentEnemies)
+        {
+            EnemyAiController? ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
+            ShipCommand command = ai?.TickWithoutPlayer(enemy, World.GameState) ?? default;
+            if (ai is not null)
+                PowerDistributionSystem.SetReactorOperatingLevel(enemy.Ship.Reactor, ai.DesiredReactorOperatingLevelPercent);
+            PowerDistributionSystem.StepReactor(enemy.Ship.Reactor, Settings.Power);
+            if (ai?.IsPlayerDetected == true) PowerDistributionSystem.ApplyEnemyCombatDemand(enemy.Ship);
+            else if (ai is not null) PowerDistributionSystem.ApplyEnemyPatrolDemand(enemy.Ship, Settings.EnemyAi.PatrolPropulsionDraw);
+            ShieldSystem.Recharge(enemy.Ship.Shield, enemy.Ship.Power.ShieldsPowerFactor * enemy.Ship.Systems.ShieldsCondition, Settings.Shield);
+            LanceSystem.Charge(enemy.Lance, Settings, enemy.Ship.Power.WeaponsPowerFactor * enemy.Ship.Systems.WeaponsCondition);
+            ShipPhysics.Step(enemy.Ship, command, Settings);
+        }
+        WarpDriveSystem.Step(World, navigation, Settings, _events, _navigationRandom);
     }
 
     private ShipState CreateShip(ShipInitialState initial, float? reactorOperatingLevelPercent = null) => new(Settings.ShipMassKg, Settings.YawMomentOfInertia,

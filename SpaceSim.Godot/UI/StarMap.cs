@@ -1,4 +1,5 @@
 using Godot;
+using SpaceSim.Core.Navigation;
 using SpaceSim.Core.Simulation;
 using SpaceSim.GodotClient.Rendering;
 
@@ -35,7 +36,9 @@ public partial class StarMap : Control
         CloseButton.Pressed += Close;
         JumpButton.Pressed += () =>
         {
-            if (World.WarpDrive.IsReady && SelectedEncounterId is { } id && id != World.CurrentEncounter.Id)
+            if (World.HyperspacePhase == HyperspacePhase.SelectingDestination &&
+                SelectedEncounterId is { } id &&
+                (id != World.CurrentEncounter.Id || World.HyperspaceOriginEncounterId is null))
                 JumpRequested?.Invoke(id);
         };
         Refresh();
@@ -69,29 +72,31 @@ public partial class StarMap : Control
         {
             var button = _destinations[encounter.Id];
             bool current = encounter.Id == World.CurrentEncounter.Id;
-            button.Disabled = current;
+            button.Disabled = (current && World.HyperspaceOriginEncounterId is not null) ||
+                              World.HyperspacePhase != HyperspacePhase.SelectingDestination;
             int activeEnemies = encounter.Enemies.Count(enemy => !enemy.IsDestroyed);
             string enemyStatus = encounter.Enemies.Count == 0 ? string.Empty :
                 activeEnemies == 0 ? "\nGegner zerstÃ¶rt" : $"\n{activeEnemies} GEGNER AKTIV";
             button.Text = $"{encounter.Name}\n{encounter.Targets.Count} / {encounter.InitialTargetCount} Ziele"
-                + enemyStatus
                 + (current ? "\nAKTUELL" : SelectedEncounterId == encounter.Id ? "\nAUSGEWÄHLT" : "\nSprungpunkt wählen");
             button.Size = _destinationSize;
             button.Position = PointPosition(index++) + new Vector2(-_destinationSize.X / 2, 26);
         }
-        JumpButton.Disabled = !World.WarpDrive.IsReady || SelectedEncounterId is null ||
-            SelectedEncounterId == World.CurrentEncounter.Id;
+        JumpButton.Disabled = World.HyperspacePhase != HyperspacePhase.SelectingDestination || SelectedEncounterId is null ||
+            (SelectedEncounterId == World.CurrentEncounter.Id && World.HyperspaceOriginEncounterId is not null);
         JumpButton.Size = new Vector2(170, 44);
         JumpButton.Position = _panel.Position + new Vector2(_panel.Size.X - 202, _panel.Size.Y - 58);
         CloseButton.Size = new Vector2(235, 44);
         CloseButton.Position = _panel.Position + new Vector2(32, _panel.Size.Y - 58);
+        CloseButton.Visible = World.IsPlayerInRealSpace;
         QueueRedraw();
     }
 
     public override void _Draw()
     {
         Vector2 viewport = GetViewportRect().Size;
-        DrawRect(new Rect2(Vector2.Zero, viewport), new Color(0.01f, 0.02f, 0.035f, 0.68f));
+        // The star map is a modal navigation screen: bridge HUD and tactical world must not show through.
+        DrawRect(new Rect2(Vector2.Zero, viewport), new Color("02040a"));
         DrawRect(_panel, new Color(0.025f, 0.045f, 0.073f, 0.96f));
         DrawRect(_panel, ViewSettings.Line, false, 1);
         Vector2 origin = _panel.Position;

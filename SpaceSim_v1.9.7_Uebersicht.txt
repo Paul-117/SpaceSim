@@ -1,0 +1,40 @@
+SpaceSim V1.9.7 – Hyperraum-Navigation
+========================================
+
+Hyperraum-Ablauf
+----------------
+- Das Spiel startet auf der Sternenkarte im Hyperraum.
+- Ein Encounter wird erst nach Auswahl auf der Sternenkarte und nach dem Setzen
+  eines Eintrittspunkts betreten. Encounter 1 kann beim Spielstart gewählt werden.
+- Ein Warp aus einem laufenden Encounter entfernt das Spielerschiff zunächst aus
+  dem Realraum. Danach: Sternenkarte -> Ziel wählen -> Eintrittspunkt setzen -> Jump.
+- Während der Eintrittsplanung fehlen Brücken-HUD, Contacts, Autopilot und Schiff.
+  Die freie Karte ist auf den Gegner des Ziel-Encounters zentriert.
+
+Eintrittspunkt
+--------------
+- Linksklick setzt ein rotes X auf der freien Karte.
+- Nach dem Setzen zeigt eine bernsteinfarbene Linie die Entfernung vom X zum
+  aktiven Gegner an.
+- Beim Eintritt wird das Schiff am gewählten Punkt mit Geschwindigkeit 0 und
+  Standardausrichtung gespawnt. Die Distanzlinie wird dabei entfernt.
+- Subsysteme werden repariert, Schilde aufgefüllt und der Warp Drive beginnt neu
+  zu laden.
+
+Darstellung und UI
+-----------------
+- Die Sternenkarte ist ein vollständig deckendes Overlay. Im Hintergrund sind
+  keine Brückenanzeigen oder Elemente der taktischen Karte sichtbar.
+- Der ursprüngliche cyanfarbene Eintrittsring bleibt erhalten und läuft jetzt
+  drei Sekunden lang.
+- Der Warp-Ladebalken wird nicht mehr vom deaktivierten Warp-Button verdeckt.
+
+Validierung
+-----------
+- Debug-Build erfolgreich.
+- 71 von 71 Core-Tests bestanden.
+- Godot-Warp-Smoke-Test bestanden.
+
+Stand
+-----
+- Diese Übersicht beschreibt den uncommitteten Arbeitsstand für V1.9.7.

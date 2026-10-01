@@ -1,4 +1,9 @@
+using System.Numerics;
+
 namespace SpaceSim.Core.Navigation;
 
-/// <summary>A one-tick request. Selecting a point on the map alone sends no command.</summary>
-public readonly record struct NavigationCommand(int? JumpToEncounterId = null);
+/// <summary>One-tick intent for the authoritative hyperspace navigation state machine.</summary>
+public readonly record struct NavigationCommand(
+    int? JumpToEncounterId = null,
+    bool EnterHyperspace = false,
+    Vector3? EntryPosition = null);

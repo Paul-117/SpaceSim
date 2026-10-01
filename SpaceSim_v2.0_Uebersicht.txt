@@ -1,0 +1,169 @@
+SpaceSim V2.0 – Implementierungsuebersicht
+============================================
+
+Stand
+-----
+Projektversion: 2.0.0
+Station-Protokoll: Version 9
+Haupt-PC: alleiniger autoritativer Simulationsserver
+Browser-Stationen: Armarium, Reactorium, Sensorium und Enemy-AI-Debug
+
+V2.0 Schwerpunkt
+----------------
+V2.0 fuehrt das Sensorium als dritte externe Schiffs-Station ein und verbindet
+die Sensorerkennung erstmals mit der Bruecke. Gegner sind nicht mehr automatisch
+vollstaendig bekannt. Die Simulation bleibt im Core autoritativ; Browser senden
+nur Bedienabsichten.
+
+Neue Dateien und Module
+-----------------------
+- SpaceSim.Godot/Sensorium/index.html
+- SpaceSim.Godot/Sensorium/sensorium.css
+- SpaceSim.Godot/Sensorium/sensorium.js
+- SpaceSim.Stations/Sensorium/SensoriumCommandBuffer.cs
+- SpaceSim.Stations/Sensorium/SensoriumState.cs
+- SpaceSim.Core/Simulation/SensorCommand.cs
+- SpaceSim.Core/Navigation/HyperspacePhase.cs
+
+Wesentlich geaendert wurden unter anderem Simulation, WorldState, EncounterState,
+WarpDriveSystem, Flight, ArenaView, FlightHud, StarMap, StationServer,
+StationProtocol, README, StationProtocol-Dokumentation und die Core-Tests.
+
+Sensorium
+---------
+URL lokal: http://127.0.0.1:47870/sensorium/
+URL im LAN: http://<IP-des-Haupt-PCs>:47870/sensorium/
+
+Das Sensorium ist eine reine HTML/CSS/Canvas/JavaScript-Station ohne Framework,
+Build-Schritt oder externe Abhaengigkeiten. Es verbindet sich per WebSocket mit
+dem gemeinsamen Station Server.
+
+Passive Spektrometer-Peilung:
+- A/D drehen die Spektrometerachse in 2-Grad-Schritten.
+- Die Peilung ist fest auf Welt-Norden ausgerichtet, nicht auf den Schiffsbug.
+- Das Spektrum gehoert zum am besten ausgerichteten Kontakt.
+- Ausserhalb von +-10 Grad wird das Signal gedaempft.
+- Die Bibliothek enthaelt CETUS/Corvette, ARGUS/Frigate und ATLAS/Cruiser.
+- Pfeiltasten wechseln die Bibliothek.
+- Enter bestaetigt nur bei passender Bibliothek und ausreichender Ausrichtung.
+- L wechselt durch bestaetigte Kontakte.
+- P aktiviert/deaktiviert die Spektrometer-Nachfuehrung des rechts dargestellten,
+  bestaetigten Kontakts. Manuelles A/D beendet das Tracking.
+- In der Bearing-Ansicht steht vor PASSIVE ein TRACKING-Indikator: gruen bei
+  aktiver Nachfuehrung, rot bei manueller Peilung.
+
+Aktives Sonar:
+- O schaltet die Anzeige zwischen passiver Peilung und aktivem Sonar um.
+- Die Sonarkarte besitzt einen festen Radius von 10 km und ist ebenfalls nach
+  Welt-Norden ausgerichtet.
+- Kontakte ausserhalb von 10 km werden nicht dargestellt.
+- Jede Umschaltung sendet eine aktive Sonaremission.
+- Diese alarmiert alle Gegner des aktuellen Encounters und gibt der Bruecke alle
+  lokalen Gegnerpositionen und Kontaktinformationen frei.
+
+Sensorium-Snapshots enthalten nur stationsrelevante Werte:
+EnemyId, Name, Signaturklasse, Schiffsklasse, Bearing, Entfernung, Reaktor-,
+Schild-, Antriebs- und Waffenleistung sowie Hull. Es werden keine Weltkoordinaten,
+KI-Interna oder vollstaendigen WorldStates an den Browser uebertragen.
+
+Bruecken-Kontakte
+-----------------
+Beim Eintritt in ein Gefecht besitzt die Bruecke zunaechst keinerlei Gegnerkontakt:
+- keine Gegnerdarstellung auf der taktischen Karte
+- keine Gegnernamen
+- keine Randpfeile
+- keine Contacts-Information
+- kein Gegnerziel fuer den Bruecken-Autopiloten
+
+Eine erfolgreiche Spektrometer-Identifikation erzeugt ueber den Station Server
+den Command identify_contact. Der Core prueft, ob die EnemyId zum aktuellen
+Encounter gehoert, und markiert den Gegner danach als sichtbaren Brueckenkontakt.
+Diese bestaetigte Kenntnis bleibt fuer den laufenden Encounter auch ueber einen
+Hyperraumwechsel erhalten.
+
+Karte, Auswahl per Mausklick, Contacts-Fenster und Autopilot nutzen ausschliesslich
+World.VisibleEnemies. Die eigentliche Kampf-, Treffer- und KI-Logik nutzt weiterhin
+World.CurrentEnemies und wird durch die Darstellung nicht veraendert.
+
+Hyperraum und Eintrittsplanung
+------------------------------
+Der Warp-Ablauf wurde zum Hyperraum-Ablauf erweitert:
+1. Warp Drive verlaesst das Gefecht und wechselt in den Hyperraum.
+2. Die Sternenkarte waehlt den Encounter.
+3. Die freie Karte wird fuer die Eintrittsplanung geoeffnet.
+4. Der Spieler setzt per Linksklick einen roten Eintrittspunkt.
+5. Jump bringt das Schiff erst danach an diesen Punkt in den Realraum.
+
+Die Eintrittsplanung kennt keine echte Gegnerposition als Karteninformation.
+Beim Wechsel in die Planung erzeugt der Core stattdessen eine reproduzierbare
+LAST KNOWN POSITION mit einer gleichmaessig verteilten Unsicherheit von maximal
+300 m um die zu diesem Zeitpunkt echte Gegnerposition.
+
+Darstellung in der Eintrittsplanung:
+- Ein graues X mit der Beschriftung LAST KNOWN POSITION ist sofort sichtbar.
+- Es ist vor dem Setzen eines Eintrittspunkts keine Distanzlinie sichtbar.
+- Nach Linksklick erscheint ein rotes X fuer den Eintrittspunkt.
+- Erst dann wird eine Linie vom roten X zum grauen X sowie deren Entfernung gezeigt.
+- Die freie Karte wird auf die letzte bekannte Position zentriert.
+
+Beim realen Eintritt werden wie bisher Schiffposition und -bewegung gesetzt,
+Subsysteme repariert und der Schild vollstaendig wiederhergestellt. Hull-Schaden
+bleibt erhalten.
+
+Station Server und Protokoll
+----------------------------
+Der gemeinsame Station Server liefert die Browserdateien aus und betreibt einen
+WebSocket-Endpunkt auf Port 47870. Protokollversion ist 9.
+
+Sensorium Client -> Server:
+- hello (station: sensorium, protocolVersion: 9)
+- active_sonar
+- identify_contact mit enemyId
+
+Server -> Sensorium:
+- welcome
+- sensorium_state
+- error
+
+Netzwerk-Commands werden thread-sicher im SensoriumCommandBuffer gepuffert.
+Flight liest sie im Physics-Tick und reicht daraus einen normalen SensorCommand
+an den Core weiter. Netzwerk-Threads schreiben niemals direkt in den WorldState.
+
+Weitere V2.0-Aenderungen
+------------------------
+- Gegnerklassen und Namen sind an die Sensorium-Bibliothek angepasst:
+  Cetus/Corvette, Argus/Frigate und Atlas/Cruiser.
+- Enemy-AI-Debug bleibt als Browser-Station verfuegbar.
+- Armarium, Reactorium und Debug wurden auf Protokollversion 9 aktualisiert.
+- Sternenkarten-Buttons zeigen keine Gegneranzahl mehr und verraten damit keine
+  unaufgeklaerten Gegner.
+
+Tests und Validierung
+---------------------
+Automatisierte Core-Tests: 74/74 bestanden.
+
+Abgedeckt sind unter anderem:
+- Sensorium-State ohne WorldState-Leak
+- Nordausrichtung der Sensor-Peilung
+- aktive Sonar-Alarmierung
+- Brueckenkontakt nach Spektrometer-Bestaetigung
+- komplette Kontaktfreigabe durch aktives Sonar
+- WebSocket-Handshake, State-Transfer und Sensorium-Commands
+- Hyperraum-Start, Encounter-Auswahl und Eintrittsplanung
+- Last-Known-Position innerhalb der 300-m-Unsicherheitsgrenze
+- bestehende Physik-, Waffen-, Energie-, Schild-, Hull-, KI- und Warp-Tests
+
+Build: erfolgreich, keine Warnungen oder Fehler.
+Godot-Headless-Smoke-Test: bestanden.
+
+Bekannte Grenzen / naechste sinnvolle Schritte
+----------------------------------------------
+- Spektrumsignaturen und Erkennungspruefung entstehen derzeit im Sensorium-
+  Prototyp-Frontend. Der Core validiert nur die EnemyId des bestaetigten Commands.
+- Aktives Sonar liefert absichtlich perfekte Positions- und Systeminformationen.
+- Es gibt noch keine Sensorfehler, Reichweiten-/Signalmodellierung, Stoerung,
+  Kontaktalterung, Mehrzielpriorisierung oder Sensorfusion.
+- Armarium nutzt weiterhin seinen eigenen Ziel-Snapshot und ist noch nicht an die
+  Sensorium-Kontaktfreigabe gekoppelt.
+- Eine spaetere Version kann die Sensorberechnung vollstaendig in den Core
+  verlagern und alle Stationen aus einem gemeinsamen Kontaktmodell versorgen.

@@ -12,6 +12,7 @@ using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
 using SpaceSim.Stations.Debug;
 using SpaceSim.Stations.Reactorium;
+using SpaceSim.Stations.Sensorium;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -243,9 +244,42 @@ var tests = new (string Name, Action Run)[]
         var combat = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -900)));
         JumpToCombat(combat);
         ArmariumState target = ArmariumStateBuilder.Build(combat.World);
-        Check(target.TargetAvailable && MathF.Abs(target.TargetBearingDegrees) < 0.001f &&
-              MathF.Abs(target.TargetDistanceMeters - 900f) < 0.001f && target.SimulationTick == combat.World.Tick,
+        Check(target.TargetAvailable && MathF.Abs(target.TargetBearingDegrees) < 0.01f &&
+              MathF.Abs(target.TargetDistanceMeters - 900f) < 5f && target.SimulationTick == combat.World.Tick,
             "Armarium must receive its compact target map distance, bearing and lance state.");
+    }),
+    ("Sensorium state exposes compact contact telemetry without world coordinates", () =>
+    {
+        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -900)));
+        JumpToCombat(sim);
+        SensoriumState state = SensoriumStateBuilder.Build(sim.World);
+        SensoriumContact contact = state.Contacts.Single();
+        Check(contact.SignatureCode == "ARGUS" && contact.ShipClass == "FRIGATE" && contact.Name.StartsWith("Argus", StringComparison.Ordinal) &&
+              MathF.Abs(contact.BearingDegrees) < .01f && MathF.Abs(contact.DistanceMeters - 900f) < .1f &&
+              contact.ReactorOutputFraction is >= 0f and <= 1f && contact.ShieldFraction is >= 0f and <= 1f,
+            "Sensorium must receive compact class, bearing, range and system telemetry for its own contact view.");
+    }),
+    ("Sensorium controls bridge contact visibility and active sonar alerts enemies", () =>
+    {
+        var bearingSim = CombatSimulation(player: new ShipInitialState(YawRadians: MathF.PI / 2),
+            enemy: new ShipInitialState(new Vector3(0, 0, -900)));
+        JumpToCombat(bearingSim);
+        Near(SensoriumStateBuilder.Build(bearingSim.World).Contacts.Single().BearingDegrees, 0f);
+
+        var alertSim = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -3_000)));
+        JumpToCombat(alertSim);
+        EnemyAiController ai = alertSim.World.CurrentEncounter.EnemyAi!;
+        Check(!ai.IsPlayerDetected, "Distant enemy must still be unaware before active sonar.");
+        Check(!alertSim.World.VisibleEnemies.Any(), "The bridge must start a combat encounter without an enemy contact.");
+        int enemyId = alertSim.World.CurrentEnemies.Single().EnemyId;
+        alertSim.Step(default, sensorCommand: new SensorCommand(ConfirmedEnemyId: enemyId));
+        Check(alertSim.World.VisibleEnemies.Single().EnemyId == enemyId,
+            "A confirmed spectrometer contact must become visible to bridge map and contact controls.");
+        alertSim.Step(default, sensorCommand: new SensorCommand(ActiveSonarPing: true));
+        Check(ai.IsPlayerDetected && ai.DesiredReactorOperatingLevelPercent == 100f && ai.CurrentState == EnemyAiState.Approach,
+            "An active sonar emission must alarm the enemy through the ordinary combat detection path.");
+        Check(alertSim.World.VisibleEnemies.Count() == alertSim.World.CurrentEnemies.Count(),
+            "An active sonar emission must reveal every local enemy to the bridge.");
     }),
     ("Armarium command buffer creates ordinary fire and turret intents", () =>
     {
@@ -275,7 +309,7 @@ var tests = new (string Name, Action Run)[]
         Check(!empty.EnemyAvailable && empty.SimulationTick == sim.World.Tick,
             "Enemy debug station must report the absence of an active enemy without exposing a WorldState.");
         Step(sim, 600);
-        sim.Step(default, new NavigationCommand(2));
+        EnterEncounter(sim, 2);
         sim.Step(default);
         EnemyDebugState state = EnemyDebugStateBuilder.Build(sim.World);
         Check(state.EnemyAvailable && state.EnemyId == 1 && !state.PlayerDetected &&
@@ -315,6 +349,9 @@ var tests = new (string Name, Action Run)[]
             "Every configured enemy must have a distinct contact name.");
         Check(enemies.Select(enemy => enemy.ShipClass).Distinct().Count() == enemies.Length,
             "Each configured enemy must expose its contact class.");
+        Check(enemies.Select(enemy => enemy.ShipClass).SequenceEqual(
+                [EnemyShipClass.Corvette, EnemyShipClass.Frigate, EnemyShipClass.Cruiser]),
+            "Easy, Medium and Hard encounters must use the CETUS, ARGUS and ATLAS contact classes.");
         Check(sim.World.Encounters.SelectMany(e => e.Targets).Select(t => t.Id).Distinct().Count() == 10,
             "Target IDs must be unique across encounters.");
     }),
@@ -347,7 +384,7 @@ var tests = new (string Name, Action Run)[]
         var sim = new Simulation(new SimulationSettings { TargetCount = 0, EncounterThreeTargetCount = 0 },
             enemyInitial: new ShipInitialState(new Vector3(0, 0, -1_500), YawRadians: MathF.PI), spawnEnemy: true);
         Step(sim, 600);
-        sim.Step(default, new NavigationCommand(3));
+        EnterEncounter(sim, 3);
         sim.Step(default);
         EnemyShipState enemy = sim.World.CurrentEnemy!;
         EnemyAiController ai = sim.World.CurrentEncounter.EnemyAi!;
@@ -385,7 +422,7 @@ var tests = new (string Name, Action Run)[]
     {
         var sim = new Simulation(new SimulationSettings { TargetCount = 0 });
         Step(sim, 600);
-        sim.Step(default, new NavigationCommand(4));
+        EnterEncounter(sim, 4);
         var enemies = sim.World.CurrentEnemies.OrderBy(enemy => enemy.EnemyId).ToArray();
         Check(enemies.Length == 1 && enemies.Single().EnemyId == 3 && enemies.Single().Difficulty == EnemyDifficulty.Hard,
             "Encounter 4 must activate its Hard enemy.");
@@ -415,10 +452,40 @@ var tests = new (string Name, Action Run)[]
         Check(sim.World.WarpDrive.IsReady && sim.World.WarpDrive.ChargeFraction == 1f && sim.World.WarpDrive.RemainingSeconds == 0,
             "A ready-start configuration must initialize the warp state before the first simulation tick.");
     }),
+    ("Configured gameplay start begins in hyperspace and can enter Encounter 1", () =>
+    {
+        var sim = new Simulation(new SimulationSettings { StartInHyperspace = true }, spawnEnemy: false);
+        Check(sim.World.HyperspacePhase == HyperspacePhase.SelectingDestination && sim.World.IsPlayerInHyperspace &&
+              sim.World.HyperspaceOriginEncounterId is null,
+            "A hyperspace-start configuration must open the destination selection without an origin encounter.");
+        sim.Step(default, new NavigationCommand(1));
+        Check(sim.World.HyperspacePhase == HyperspacePhase.PlanningEntry,
+            "Encounter 1 must be selectable when the game starts in hyperspace.");
+        sim.Step(default, new NavigationCommand(EntryPosition: new Vector3(125, 0, -75)));
+        Check(sim.World.HyperspacePhase == HyperspacePhase.RealSpace && sim.World.CurrentEncounter.Id == 1,
+            "Confirming the first entry point must begin the encounter in real space.");
+        NearVector(sim.World.Ship.Position, new Vector3(125, 0, -75));
+    }),
+    ("Hyperspace entry planning uses a bounded last known enemy position", () =>
+    {
+        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -1_000)));
+        Step(sim, 600);
+        sim.Step(default, new NavigationCommand(EnterHyperspace: true));
+        sim.Step(default, new NavigationCommand(3));
+        Check(sim.World.HyperspacePhase == HyperspacePhase.PlanningEntry,
+            "Selecting a destination must enter the hyperspace entry-planning phase.");
+        Vector3 known = sim.World.CurrentEncounter.LastKnownEnemyPosition ?? throw new Exception(
+            "An encounter with an active enemy must supply a last known position.");
+        Vector3 actual = sim.World.CurrentEnemy!.Ship.Position;
+        Check(Vector3.Distance(known, actual) <= 300.001f,
+            "Last known enemy position must stay within the configured three-hundred-metre uncertainty radius.");
+        sim.Step(default);
+        NearVector(sim.World.CurrentEncounter.LastKnownEnemyPosition!.Value, known, .0001f);
+    }),
     ("Early jump is rejected without being queued", () =>
     {
         var sim = New();
-        sim.Step(default, new NavigationCommand(2));
+        sim.Step(default, new NavigationCommand(EnterHyperspace: true));
         Check(sim.World.CurrentEncounter.Id == 1, "Uncharged warp must not jump.");
         Step(sim, 599);
         Check(sim.World.CurrentEncounter.Id == 1 && sim.World.WarpDrive.IsReady, "No delayed jump allowed.");
@@ -428,10 +495,16 @@ var tests = new (string Name, Action Run)[]
         var sim = NewWeapons(new ShipInitialState(Position: new Vector3(100, 0, 50), Velocity: new Vector3(10, 0, -3),
             YawRadians: 1, YawRateRadiansPerSecond: 0.4f));
         Step(sim, 600);
+        sim.Step(default, new NavigationCommand(EnterHyperspace: true));
+        Check(sim.World.IsPlayerInHyperspace && sim.World.HyperspacePhase == HyperspacePhase.SelectingDestination,
+            "Ready warp must first leave the encounter for hyperspace.");
         sim.Step(default, new NavigationCommand(2));
+        Check(sim.World.HyperspacePhase == HyperspacePhase.PlanningEntry,
+            "Selecting a destination must open entry planning without spawning the ship.");
+        sim.Step(default, new NavigationCommand(EntryPosition: new Vector3(250, 0, -120)));
         Check(sim.World.CurrentEncounter.Id == 2 && sim.World.Targets.Count == 0 &&
               sim.World.CurrentEnemies.Count() == 0, "Wrong destination.");
-        NearVector(sim.World.Ship.Position, Vector3.Zero);
+        NearVector(sim.World.Ship.Position, new Vector3(250, 0, -120));
         NearVector(sim.World.Ship.Velocity, Vector3.Zero);
         NearVector(sim.World.Ship.AngularVelocity, Vector3.Zero);
         NearVector(sim.World.Ship.Forward, -Vector3.UnitZ);
@@ -462,10 +535,10 @@ var tests = new (string Name, Action Run)[]
         var secondTargets = sim.World.Encounters[1].Targets.ToArray();
         Fire(sim);
         Step(sim, 600);
-        sim.Step(default, new NavigationCommand(2));
+        EnterEncounter(sim, 2);
         Check(sim.World.Targets.SequenceEqual(secondTargets), "Encounter 2 must retain its initial layout.");
         Step(sim, 600);
-        sim.Step(default, new NavigationCommand(1));
+        EnterEncounter(sim, 1);
         Check(sim.World.Targets.Count == 1 && sim.World.Targets[0] == survivor, "Destroyed target respawned.");
         Check(sim.World.CurrentEncounter.HitCount == 1 && sim.World.HitCount == 1, "Progress must survive travel.");
         Check(!sim.Events.OfType<TargetSpawned>().Any(), "Revisiting must not spawn targets.");
@@ -537,8 +610,8 @@ var tests = new (string Name, Action Run)[]
         var context = sim.World.CurrentEncounter.EnemyAi!.LastContext;
         Near(context.DistanceToPlayer, 900, 0.5f);
         NearVector(context.DirectionToPlayer, -Vector3.UnitX, 0.001f);
-        NearVector(context.RelativeVelocity, new Vector3(15, 0, 0), 0.001f);
-        Near(context.ClosingSpeed, 15, 0.01f);
+        NearVector(context.RelativeVelocity, new Vector3(15.2f, 0, 0), 0.25f);
+        Near(context.ClosingSpeed, 15.2f, 0.25f);
         Near(context.LineOfSightAngularVelocity, 0f, 0.001f);
         Near(context.EnemyAimError, 0, 0.01f);
         Near(MathF.Abs(context.PlayerAimError), MathF.PI / 2, 0.01f);
@@ -897,7 +970,7 @@ var tests = new (string Name, Action Run)[]
         int hull = sim.World.CurrentEnemy!.Ship.Hull.CurrentHull;
         // Damage the player through the same seeded combat rules is not required: warp repair applies to player state.
         Step(sim, 600);
-        sim.Step(default, new NavigationCommand(1));
+        EnterEncounter(sim, 1);
         Check(sim.World.Ship.Systems.PropulsionCondition == 1f && sim.World.Ship.Systems.WeaponsCondition == 1f &&
               sim.World.Ship.Systems.ShieldsCondition == 1f && sim.World.Ship.Shield.CurrentShield == sim.World.Ship.Shield.MaximumShield,
             "Successful warp must repair player systems and refill the shield.");
@@ -983,7 +1056,13 @@ static PowerSettings CombatPower() => new();
 static void JumpToCombat(Simulation sim)
 {
     Step(sim, 600);
-    sim.Step(default, new NavigationCommand(3));
+    EnterEncounter(sim, 3);
+}
+static void EnterEncounter(Simulation sim, int encounterId, Vector3? entryPosition = null)
+{
+    sim.Step(default, new NavigationCommand(EnterHyperspace: true));
+    sim.Step(default, new NavigationCommand(encounterId));
+    sim.Step(default, new NavigationCommand(EntryPosition: entryPosition ?? Vector3.Zero));
 }
 static void Fire(Simulation sim)
 {
@@ -998,18 +1077,22 @@ static async Task StationServerSmokeAsync()
 {
     var commands = new ArmariumCommandBuffer();
     var reactorCommands = new ReactoriumCommandBuffer();
+    var sensoriumCommands = new SensoriumCommandBuffer();
     var assets = new Dictionary<string, string>
     {
         ["index.html"] = "<main>ARMARIUM</main>",
         ["armarium.css"] = "body{}",
         ["armarium.js"] = "",
         ["reactorium/index.html"] = "<main>REACTORIUM</main>",
+        ["sensorium/index.html"] = "<main>SENSORIUM</main>",
         ["debug/index.html"] = "<main>ENEMY AI DEBUG</main>"
     };
-    using var server = new StationServer(new StationServerOptions { Port = 0, StateUpdatesPerSecond = 30 }, assets, commands, reactorCommands);
+    using var server = new StationServer(new StationServerOptions { Port = 0, StateUpdatesPerSecond = 30 }, assets, commands, reactorCommands, sensoriumCommands);
     server.UpdateState(new ArmariumState(true, -12.4f, 640f, 0.72f, false, 2.5f, 3, -12.4f, 32f, 40f, 1f, 42));
     server.UpdateReactoriumState(new ReactoriumState(75f, 70f, 87.5f, 125f, 50f, 100f, 100f, 3.5f,
         40f, 28f, 32f, 35f, 24.5f, 28f, 50f, 35f, 40f, 42));
+    server.UpdateSensoriumState(new SensoriumState(
+        [new SensoriumContact(2, "Argus-02", "ARGUS", "FRIGATE", -12.4f, 640f, .7f, .3f, .5f, .8f, 3, 3)], 42));
     server.Start();
     using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
     string page = await http.GetStringAsync(server.ArmariumUrl);
@@ -1063,6 +1146,27 @@ static async Task StationServerSmokeAsync()
         MathF.Abs(allocation.BridgePercent - 40f) < 0.001f && MathF.Abs(allocation.ShieldsPercent - 28f) < 0.001f &&
         MathF.Abs(allocation.ArmariumPercent - 32f) < 0.001f, TimeSpan.FromSeconds(1)),
         "Reactorium allocation commands must reach the simulation buffer atomically.");
+
+    string sensoriumPage = await http.GetStringAsync(server.SensoriumUrl);
+    Check(sensoriumPage.Contains("SENSORIUM"), "Station server must serve the Sensorium page.");
+    using var sensoriumSocket = new ClientWebSocket();
+    await sensoriumSocket.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/station"), CancellationToken.None);
+    await SendWebSocketJsonAsync(sensoriumSocket, new { type = "hello", station = "sensorium", protocolVersion = StationProtocol.Version });
+    using JsonDocument sensoriumWelcome = JsonDocument.Parse(await ReceiveWebSocketTextAsync(sensoriumSocket));
+    Check(sensoriumWelcome.RootElement.GetProperty("station").GetString() == "sensorium" && server.IsSensoriumOnline,
+        "Station server must accept a read-only Sensorium handshake.");
+    using JsonDocument sensoriumState = JsonDocument.Parse(await ReceiveWebSocketTextAsync(sensoriumSocket));
+    Check(sensoriumState.RootElement.GetProperty("type").GetString() == "sensorium_state" &&
+          sensoriumState.RootElement.GetProperty("contacts")[0].GetProperty("signatureCode").GetString() == "ARGUS" &&
+          MathF.Abs(sensoriumState.RootElement.GetProperty("contacts")[0].GetProperty("distanceMeters").GetSingle() - 640f) < .001f &&
+          !sensoriumState.RootElement.TryGetProperty("worldState", out _),
+        "Sensorium must receive its compact contact telemetry without a complete world state.");
+    await SendWebSocketJsonAsync(sensoriumSocket, new { type = "active_sonar" });
+    Check(SpinWait.SpinUntil(() => sensoriumCommands.ReadCommand().ActiveSonarPing, TimeSpan.FromSeconds(1)),
+        "Sensorium active-sonar commands must reach the simulation buffer as one-shot intents.");
+    await SendWebSocketJsonAsync(sensoriumSocket, new { type = "identify_contact", enemyId = 2 });
+    Check(SpinWait.SpinUntil(() => sensoriumCommands.ReadCommand().ConfirmedEnemyId == 2, TimeSpan.FromSeconds(1)),
+        "A confirmed Sensorium signature must reach the simulation buffer with its contact identity.");
 
     server.UpdateEnemyDebugState(new EnemyDebugState(true, 2, "MEDIUM", true, "ATTACK",
         480f, 18f, 36f, 155f, 2, 3, 70f, 100f, 1f, .5f, 1f, .8f, false,

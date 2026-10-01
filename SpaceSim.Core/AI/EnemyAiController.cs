@@ -68,6 +68,16 @@ public sealed class EnemyAiController
         LastCommand = default;
     }
 
+    /// <summary>External active sonar has revealed the player; use the normal combat-detection path.</summary>
+    internal void Alert() => IsPlayerDetected = true;
+
+    /// <summary>Without a player ship in the encounter, an enemy only continues its normal patrol.</summary>
+    internal ShipCommand TickWithoutPlayer(EnemyShipState enemy, GameState gameState)
+    {
+        if (enemy.IsDestroyed || gameState == GameState.GameOver) return LastCommand = default;
+        return LastCommand = Patrol(enemy.Ship);
+    }
+
     private void EvaluateTransitions()
     {
         if (TimeInState < _settings.MinimumStateDuration) return;

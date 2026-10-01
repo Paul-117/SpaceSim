@@ -1,4 +1,4 @@
-﻿# SpaceSim 1.9.6
+# SpaceSim 2.0.0
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
@@ -40,7 +40,7 @@ bei 0 Prozent ist das System ausgefallen. Hull 0 zerstÃ¶rt Spieler oder Gegner
 Die effektive Leistung jedes Systems lautet **Power Factor x Condition**.
 Antriebsschaden skaliert Schub und Drehmoment, Waffenschaden die Laderate und
 Schildschaden die Regeneration. Bereits geladene Lanze und bestehende SchildstÃ¤rke
-bleiben unverÃ¤ndert.
+bleiben unveraendert.
 
 Ein erfolgreicher Warp repariert alle drei Subsysteme und fÃ¼llt den Schild auf,
 repariert aber keine Hull Integrity. Das Speed Limit ist gameplaybedingt:
@@ -54,7 +54,7 @@ abgebaut werden.
 **`Start.cmd` doppelklicken.** Das Skript baut das Projekt und startet das Spiel.
 Alternativ im Workspace:
 
-Der aktuelle Arbeitsstand ist **1.9.6**. Er umfasst die externe Waffenstation **Armarium**, das angeschlossene **Reactorium**, die Ã¼berarbeitete BrÃ¼ckenansicht, Gegnerpatrouillen, den vorhaltebasierten Fly-by-Anflug und die freie taktische Karte. Der Stand ist fuer `v1.9.6` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Der aktuelle Arbeitsstand ist **2.0.0**. Er umfasst Armarium, Reactorium und das neue **Sensorium** als externe Browser-Station. Die Bruecke zeigt Gegner erst nach einer Sensorium-Identifikation oder aktiven Sonaremission. Der Stand ist fuer `v2.0` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1
@@ -91,7 +91,7 @@ Godot-Projekt und die Pfade in den Skripten gemeinsam anpassen.
 | A | Drehmoment nach links |
 | D | Drehmoment nach rechts |
 | Mausrad hoch / runter | Taktische Ansicht hinein- / herauszoomen |
-| F | BrÃ¼ckenlanze einmal abfeuern, wenn bereit |
+| F | Brueckenlanze einmal abfeuern, wenn bereit |
 | Leertaste | Freie taktische Karte ein-/ausschalten |
 | W / A / S / D bei freier Karte | Kamera verschieben; das Schiff erhÃ¤lt dabei keinen Schubbefehl. Gegner-Randpfeile sind ausgeblendet, die gestrichelte Kurslinie bleibt sichtbar. |
 | Linksklick auf sichtbaren Gegner | Kontakt im rechten `CONTACTS`-Fenster auswÃ¤hlen |
@@ -115,7 +115,7 @@ Ein Treffer zÃ¤hlt sofort und entfernt das Ziel dauerhaft fÃ¼r diese Sitzung
 sichtbare Strahl bleibt nur 0,16 Sekunden bestehen. Auch beim Wegfliegen oder
 ZurÃ¼ckspringen werden keine Ziele ersetzt.
 
-## Armarium und Reactorium Station Server (V1.9)
+## Armarium, Reactorium und Sensorium Station Server (V2.0)
 
 Beim Start von SpaceSim startet auf dem Haupt-PC der Station Server auf Port
 **47870**. Er liefert den Armarium-Webclient aus und akzeptiert dessen WebSocket-
@@ -143,7 +143,7 @@ Karte leer. Der Sektor zeigt die Begrenzung der Lanzenlafette bei -5/+5 Grad, ih
 aktuelle cyanfarbene Ausrichtung und den Gegner nur innerhalb dieses Bereichs und
 der Reichweite. Die Armarium-Oberflaeche verwendet immer genau die aktuelle
 Fensterhoehe und benoetigt keine Scrollleiste. **Leertaste**
-im Browser sendet genau einen `fire_lance`-Befehl. Die lokale BrÃ¼cke feuert mit
+im Browser sendet genau einen `fire_lance`-Befehl. Die lokale Bruecke feuert mit
 **F**; die Leertaste des Armariums bleibt weiterhin dessen eigener Fire-Command.
 
 Die kompakte Waffenzeile zeigt rechts LANCE, Ladebalken und Lafettenwinkel. Links
@@ -160,7 +160,7 @@ Haupt-PC thread-sicher gepuffert und erst im normalen `ShipCommand` des naechste
 Simulationsticks verarbeitet. Das Armarium nutzt derzeit die exakte Gegnerposition;
 eine spaetere Sensorium-Quelle kann den Bearing liefern, ohne den Webclient zu aendern.
 
-Das WebSocket-Protokoll hat Version **7**. Der Client identifiziert sich beim
+Das WebSocket-Protokoll hat Version **9**. Der Client identifiziert sich beim
 Verbindungsaufbau als `armarium`, zeigt `ARMARIUM ONLINE/OFFLINE` und verbindet sich
 nach einem Abbruch automatisch erneut. Details stehen in
 [StationProtocol.md](docs/StationProtocol.md).
@@ -175,7 +175,7 @@ Leistung liefert der Reaktor **125 PU**. Die Reactorium-Ansicht verwendet wieder
 den wabbernden Reaktorkern aus dem Stationsprototyp; seine GrÃ¶ÃŸe und Bewegung
 folgen dem vom Core Ã¼bertragenen tatsÃ¤chlichen Output.
 
-Das Reactorium verteilt diese Leistung mit drei Slidern: **BrÃ¼cke**, **Schilde**
+Das Reactorium verteilt diese Leistung mit drei Slidern: **Bruecke**, **Schilde**
 und **Armarium**. Die Werte sind Prozent des aktuellen Reaktor-Outputs und zeigen
 direkt daneben die daraus autoritativ abgeleiteten PU. Die Anfangsverteilung
 40/28/32 Prozent nutzt bei 125 PU die Stationsmaxima von 50/35/40 PU. Ein Slider
@@ -188,7 +188,7 @@ er Fuel abhÃ¤ngig vom tatsÃ¤chlichen Betriebslevel: bei minimaler aktiver Le
 0,2 U/min, bei 100 Prozent 7,0 U/min mit quadratischem Verlauf dazwischen. Bei
 0 U wird der Reaktor im Core abgeschaltet; Output und gelieferte Stationsleistung
 werden 0. Eine Betankung existiert derzeit noch nicht. Die drei Stationen
-fordern ihre Leistung innerhalb ihres Reactorium-Budgets selbst an: BrÃ¼cke maximal
+fordern ihre Leistung innerhalb ihres Reactorium-Budgets selbst an: Bruecke maximal
 50 PU, Armarium maximal 40 PU und Schilde maximal 35 PU. Der Core liefert keiner
 Station mehr Energie als ihr zugewiesenes Budget.
 
@@ -205,6 +205,42 @@ wenn sie gerade nicht betÃ¤tigt werden. Von maximal 50 PU bleiben W damit hÃ�
 Stationsleistung unter 30 PU, erhalten S, A und D jeweils denselben linearen
 Leistungsfaktor; W erhÃ¤lt dann keine Leistung.
 
+### Sensorium
+
+Das Sensorium ist unter `http://127.0.0.1:47870/sensorium/` erreichbar; im LAN
+wird `127.0.0.1` durch die IP des Haupt-PCs ersetzt. Es verwendet das vorhandene
+HTML/CSS/Canvas-Frontend und verbindet sich mit dem Station Server per WebSocket
+Protokoll **9**. Die Station sendet ausschliesslich Sensorabsichten; die
+autoritative Simulation entscheidet ueber die daraus entstehenden Brueckenkontakte.
+
+Das aktive Sonar (`O`) zeigt alle Gegner des aktuellen Encounters sofort als rote
+Kontakte mit exakter relativer Peilung und Entfernung. Die passive Ansicht steuert
+mit `A`/`D` eine Spektrometerachse. Sie zeigt die echte Systemspektrum-Signatur des
+am besten ausgerichteten Gegners; ausserhalb von **+-10 Grad** ist das Signal stark
+gedaempft. Mit den Pfeiltasten wird die Bibliothek CETUS/Corvette,
+ARGUS/Frigate und ATLAS/Cruiser gewaehlt. `Enter` bestaetigt eine passende Signatur,
+`L` wechselt danach zwischen den bestaetigten Kontakten. `P` schaltet die
+Spektrometer-Nachfuehrung auf den aktuell rechts dargestellten bestaetigten Kontakt.
+Sie bleibt auch bei aktivem Sonar aktiv; manuelles A/D schaltet sie wieder aus. Die Kontaktdaten enthalten
+Name, Klasse, vier Systemleistungen, exakte Sonarentfernung und Hull.
+
+Beim Eintritt in ein Gefecht besitzt die Bruecke zunaechst keine Gegnerkontakte:
+keine Kartendarstellung, Randanzeige, Contacts-Information oder Autopilot-Ziel.
+Eine gueltige Spektrometer-Bestaetigung (`Enter` bei passender Bibliothek und
+Ausrichtung) uebergibt den Kontakt an die Bruecke; die Bestaetigung bleibt fuer den
+laufenden Encounter erhalten. Eine aktive Sonaremission gibt der Bruecke sofort alle
+lokalen Positionen und Kontaktinformationen frei und alarmiert zugleich alle Gegner.
+
+Bei der Eintrittsplanung im Hyperraum markiert die Karte eine **LAST KNOWN POSITION**.
+Sie wird beim Beginn der Planung aus der echten Gegnerposition mit einer Unsicherheit
+von maximal 300 m erzeugt. Die angezeigte Distanzlinie endet an diesem bekannten
+Punkt, nicht an der aktuellen echten Gegnerposition.
+
+Beide Sensoransichten sind fest auf Welt-Norden ausgerichtet und drehen sich nicht
+mit dem Bug des Spielerschiffs. Jedes Umschalten der aktiven Sonaransicht sendet
+eine aktive Emission aus: Alle Gegner im aktuellen Encounter werden dadurch sofort
+alarmiert und gehen in denselben Kampfzustand wie bei einer Nahdistanz-Erkennung.
+
 ### Enemy AI Debug
 
 Die schreibgeschuetzte Entwicklungsstation ist unter
@@ -217,10 +253,10 @@ Lanzenladung, Subsystemzustand sowie Reaktor- und Energieprofil. Existiert im
 aktuellen Encounter kein Gegner, zeigt die Seite das explizit an. Die Daten sind
 ein gezielter Debug-Snapshot und kein uebertragener `WorldState`.
 
-### BrÃ¼cke 1.9.1
+### Bruecke 1.9.1
 
 Das bisherige Fenster **ENERGY** oben rechts ist entfernt. Die bisherigen Treffer-
-und Lanzenboxen sind ebenfalls nicht mehr Teil der BrÃ¼cke, damit diese Informationen
+und Lanzenboxen sind ebenfalls nicht mehr Teil der Bruecke, damit diese Informationen
 spÃ¤ter als eigene Stationen laufen kÃ¶nnen.
 
 Unten links zeigt die Triebwerksbox **MAIN THRUSTERS**, **STARBOARD THRUSTERS**,
@@ -614,7 +650,7 @@ ein Remote-Repository ist noch nicht eingerichtet.
 
 Version **1.1.0** ist mit dem annotierten Tag **`v1.1`** gesichert.
 Die Ã„nderungen gegenÃ¼ber v1.0 stehen in [SpaceSim_v1.1_Changelog.txt](SpaceSim_v1.1_Changelog.txt).
-Der bestehende Tag `v1.0` bleibt unverÃ¤ndert und enthÃ¤lt weiterhin die
+Der bestehende Tag `v1.0` bleibt unveraendert und enthÃ¤lt weiterhin die
 ursprÃ¼ngliche Version ohne Warp Drive. `SpaceSim_v1.0_Uebersicht.txt`
 dokumentiert diesen historischen Stand.
 
@@ -641,7 +677,7 @@ Der Tag `v1.0` bleibt dabei auf dem ursprÃ¼nglichen Versionsstand.
 Godot-BinÃ¤rdateien, Build-Ausgaben und lokale Caches sind ausgeschlossen.
 Ein lokales Git-Repository ersetzt keine Sicherung auf einem anderen DatentrÃ¤ger.
 
-Der ursprÃ¼ngliche Projektauftrag bleibt unverÃ¤ndert in `Plan` erhalten.
+Der ursprÃ¼ngliche Projektauftrag bleibt unveraendert in `Plan` erhalten.
 
 
 ### Target tracking and protected braking 1.9.6
@@ -663,3 +699,25 @@ The browser debug station at `http://127.0.0.1:47870/debug/` shows PASS/BLOCK
 for every enemy firing gate: detected combat, ATTACK state, lance readiness,
 1 km range, target ahead, aim error/tolerance, ray hit and fire command. It
 also shows the equivalent player-lance hit diagnostics.
+
+### Hyperraum-Navigation
+
+Das Spiel beginnt im **Hyperraum** auf der Sternenkarte. Der erste gewaehlte
+Encounter, einschliesslich Encounter 1, wird erst nach dem Setzen und
+Bestaetigen eines Eintrittspunkts betreten. Ein bereiter **Warp Drive** startet
+spaeter ebenfalls keinen direkten Encounterwechsel mehr: Ein Klick auf Warp
+Drive entfernt das Spielerschiff aus dem aktuellen Realraum und oeffnet die
+Sternenkarte. Erst dort wird mit **Jump** ein anderer Encounter als Ziel
+bestimmt. Danach erscheint die freie taktische Karte ohne Bruecken-HUD,
+Schiffsanzeige, Contacts oder Autopilot. Sie startet auf dem aktiven Gegner des
+Ziel-Encounters zentriert; W/A/S/D verschiebt die Karte weiterhin und die
+Leertaste schaltet in diesem Modus nicht um.
+
+Ein Linksklick setzt einen roten Eintrittspunkt. Eine bernsteinfarbene Linie
+zum Gegner zeigt dabei die geplante Eintrittsdistanz. Die bisherige Warp-Drive-
+Box heisst dann **Jump** und ist erst nach einem gesetzten Punkt aktiv. Ihr
+Klick setzt das Schiff an die gewaehlte Position, mit null Geschwindigkeit und
+Standardrotation, repariert wie bisher die Subsysteme, fuellt den Schild auf
+und blendet die normale Bruecke wieder ein. Erst dieses Reentry-Ereignis loest
+den Warp-Sound aus. Der bekannte cyanfarbene Eintrittsring laeuft dabei fuer
+drei Sekunden; die Distanzlinie verschwindet sofort.

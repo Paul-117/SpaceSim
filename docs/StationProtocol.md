@@ -1,13 +1,13 @@
-# Station Protocol v7
+# Station Protocol v9
 
 Der SpaceSim-Haupt-PC ist der alleinige Simulationsserver. Browser-Stationen senden
 nur Bedienabsichten und erhalten kleine, stationsspezifische Snapshots.
 
 ## Transport
 
-- HTTP: `http://<host>:47870/armarium/`, `http://<host>:47870/reactorium/` oder `http://<host>:47870/debug/`
+- HTTP: `http://<host>:47870/armarium/`, `http://<host>:47870/reactorium/`, `http://<host>:47870/sensorium/` oder `http://<host>:47870/debug/`
 - WebSocket: `ws://<host>:47870/station`
-- Protokollversion: `7`
+- Protokollversion: `9`
 - Textnachrichten: UTF-8 JSON mit camelCase-Feldern
 
 ## Client zu Server
@@ -17,14 +17,14 @@ nur Bedienabsichten und erhalten kleine, stationsspezifische Snapshots.
 Muss die erste WebSocket-Nachricht sein.
 
 ```json
-{ "type": "hello", "station": "armarium", "protocolVersion": 7 }
+{ "type": "hello", "station": "armarium", "protocolVersion": 9 }
 ```
 
 | Feld | Typ | Bedeutung |
 | --- | --- | --- |
 | `type` | string | Immer `hello`. |
-| `station` | string | `armarium`, `reactorium` oder `debug`. |
-| `protocolVersion` | integer | Muss `7` sein. |
+| `station` | string | `armarium`, `reactorium`, `sensorium` oder `debug`. |
+| `protocolVersion` | integer | Muss `9` sein. |
 
 Bei falscher Stationskennung oder Version sendet der Server `error` und beendet die
 Stationsverbindung.
@@ -65,7 +65,7 @@ relativ zur Schiffsnase begrenzt.
 ### `welcome`
 
 ```json
-{ "type": "welcome", "station": "armarium", "protocolVersion": 7 }
+{ "type": "welcome", "station": "armarium", "protocolVersion": 8 }
 ```
 
 Bestetigt eine kompatible Stationsverbindung.
@@ -115,7 +115,7 @@ beschraenkt.
 ### `error`
 
 ```json
-{ "type": "error", "code": "protocol_mismatch", "message": "Expected a supported station using protocol 7." }
+{ "type": "error", "code": "protocol_mismatch", "message": "Expected a supported station using protocol 8." }
 ```
 
 | Feld | Typ | Bedeutung |
@@ -131,7 +131,7 @@ Das Reactorium verwendet denselben HTTP-/WebSocket-Server unter
 ### Reactorium Client zu Server
 
 ```json
-{ "type": "hello", "station": "reactorium", "protocolVersion": 7 }
+{ "type": "hello", "station": "reactorium", "protocolVersion": 8 }
 ```
 
 ```json
@@ -234,3 +234,64 @@ Zusätzlich enthält der Snapshot `propulsionCondition`, `weaponsCondition` und
 `enemyAvailable: false` signalisiert, dass der aktuelle Encounter keinen aktiven
 Gegner besitzt. Der Server serialisiert keinen `WorldState`; die Nachricht ist
 gezielt auf die Fehlersuche der Gegner-KI beschränkt.
+
+## Sensorium (V2.0)
+
+Das Sensorium ist unter `http://<host>:47870/sensorium/` erreichbar und meldet sich
+mit `station: "sensorium"` an. Es sendet nur Sensorabsichten; der Server leitet
+diese als gepufferte Befehle an die autoritative Simulation weiter.
+
+### Client zu Server: `identify_contact`
+
+```json
+{
+  "type": "identify_contact",
+  "enemyId": 2
+}
+```
+
+Diese Nachricht entsteht nur nach einer gueltigen Spektrometer-Bestaetigung:
+passende Signaturbibliothek und ein Kontakt innerhalb der Ausrichtungstoleranz.
+Der Core validiert die Enemy-ID im aktuellen Encounter und gibt den Kontakt danach
+fuer Karte, Contacts und Autopilot der Bruecke frei.
+
+### Client zu Server: `active_sonar`
+
+```json
+{ "type": "active_sonar" }
+```
+
+Jede Umschaltung des aktiven Sonars ist eine Emission. Sie gibt alle lokalen
+Gegnerkontakte an die Bruecke weiter und alarmiert die Gegner.
+
+### Server zu Client: `sensorium_state`
+
+```json
+{
+  "type": "sensorium_state",
+  "contacts": [
+    {
+      "enemyId": 2,
+      "name": "Argus-02",
+      "signatureCode": "ARGUS",
+      "shipClass": "FRIGATE",
+      "bearingDegrees": -12.4,
+      "distanceMeters": 640.0,
+      "reactorOutputFraction": 0.70,
+      "shieldFraction": 0.30,
+      "propulsionOutputFraction": 0.50,
+      "weaponsOutputFraction": 0.80,
+      "hull": 3,
+      "maximumHull": 3
+    }
+  ],
+  "simulationTick": 1234
+}
+```
+
+Der Snapshot enthaelt nur Sensorium-Kontaktwerte: relative Peilung, Entfernung,
+Signaturklasse und vier Systemleistungen. Er enthaelt keine Weltkoordinaten,
+KI-Daten oder einen vollstaendigen `WorldState`. Das Frontend zeigt aktivem Sonar
+alle Kontakte. In der passiven Peilung muss die Spektrometerachse innerhalb von
+±10 Grad auf einen Kontakt zeigen; die passende Bibliothek und `Enter` bestaetigen
+die Identifikation lokal in der Station.

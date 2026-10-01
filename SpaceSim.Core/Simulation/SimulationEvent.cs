@@ -12,6 +12,7 @@ public sealed record WeaponFired(Vector3 Origin, Vector3 End, int? TargetId,
 public sealed record TargetHit(int TargetId, Vector3 Position) : SimulationEvent;
 public sealed record TargetSpawned(int TargetId, Vector3 Position, int EncounterId) : SimulationEvent;
 public sealed record EncounterChanged(int FromEncounterId, int ToEncounterId) : SimulationEvent;
+public sealed record EnteredHyperspace(int FromEncounterId) : SimulationEvent;
 public sealed record EnemyDestroyed(int EnemyId, Vector3 Position) : SimulationEvent;
 public sealed record PlayerDestroyed(int EnemyId, Vector3 Position) : SimulationEvent;
 public sealed record ShipCollision(int EnemyId, Vector3 Position) : SimulationEvent;

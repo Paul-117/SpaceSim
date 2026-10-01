@@ -1,5 +1,5 @@
 (() => {
-  const protocolVersion = 7;
+  const protocolVersion = 9;
   const visibleBearingDegrees = 7.5;
   const tacticalMapRadiusMeters = 1000;
   const tacticalMapHalfAngleDegrees = 30;

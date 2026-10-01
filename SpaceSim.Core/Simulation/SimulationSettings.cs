@@ -28,6 +28,8 @@ public sealed record SimulationSettings
     public float WarpChargeSeconds { get; init; } = 10f;
     /// <summary>Gameplay start option used by the bridge: begins with a ready warp drive.</summary>
     public bool StartWarpReady { get; init; }
+    /// <summary>Gameplay start option: begin outside encounters on the destination star map.</summary>
+    public bool StartInHyperspace { get; init; }
     public int TargetCount { get; init; } = 10;
     public int EncounterTwoTargetCount { get; init; }
     public int EncounterThreeTargetCount { get; init; }

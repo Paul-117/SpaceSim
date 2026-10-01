@@ -14,6 +14,7 @@ using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
 using SpaceSim.Stations.Debug;
 using SpaceSim.Stations.Reactorium;
+using SpaceSim.Stations.Sensorium;
 using NVector3 = System.Numerics.Vector3;
 using NQuaternion = System.Numerics.Quaternion;
 
@@ -34,6 +35,7 @@ public partial class Flight : Node
     private readonly SoundEffects _sounds = new();
     private readonly ArmariumCommandBuffer _armariumCommands = new();
     private readonly ReactoriumCommandBuffer _reactoriumCommands = new();
+    private readonly SensoriumCommandBuffer _sensoriumCommands = new();
     private StationServer? _stationServer;
     private NavigationCommand _pendingNavigation;
     private NVector3 _previousPosition;
@@ -59,6 +61,8 @@ public partial class Flight : Node
     private int? _autopilotTargetId;
     private long _armariumTargetHitSequence;
     private float _armariumLastTargetHitBearingDegrees;
+    private Vector2? _hyperspaceEntryPoint;
+    private HyperspacePhase _lastHyperspacePhase;
 
     public override void _Ready()
     {
@@ -73,7 +77,8 @@ public partial class Flight : Node
         BindWorld();
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
-        _hud.WarpMapRequested += () => _starMap.Open();
+        _hud.WarpMapRequested += () => _pendingNavigation = new NavigationCommand(EnterHyperspace: true);
+        _hud.HyperspaceJumpRequested += ConfirmHyperspaceEntry;
         _starMap.JumpRequested += id => _pendingNavigation = new NavigationCommand(id);
         _gameOver.RestartRequested += RestartGame;
         var backdrop = new CanvasLayer { Layer = -10 };
@@ -92,9 +97,12 @@ public partial class Flight : Node
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
         StartStationServer();
-        if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest) _starMap.Open();
+        _lastHyperspacePhase = _simulation.World.HyperspacePhase;
+        if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest &&
+            _simulation.World.HyperspacePhase == HyperspacePhase.SelectingDestination)
+            _starMap.Open();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.9.6 | Core 60 Hz | Armarium and Reactorium station server enabled");
+        GD.Print("SpaceSim 2.0.0 | Core 60 Hz | Armarium, Reactorium and Sensorium station server enabled");
     }
 
     private Simulation CreateSimulation()
@@ -107,7 +115,7 @@ public partial class Flight : Node
             ? new Simulation(new SimulationSettings { TargetCount = testTargetCount },
                 initialTargets: Enumerable.Range(0, testTargetCount).Select(i =>
                     i == 0 ? new NVector3(0, 0, -300) : new NVector3(200 + 40 * i, 0, 200)), spawnEnemy: false)
-            : new Simulation(new SimulationSettings { StartWarpReady = true });
+            : new Simulation(new SimulationSettings { StartInHyperspace = true });
     }
 
     private void BindWorld()
@@ -131,17 +139,23 @@ public partial class Flight : Node
                 ["reactorium/index.html"] = Godot.FileAccess.GetFileAsString("res://Reactorium/index.html"),
                 ["reactorium/reactorium.css"] = Godot.FileAccess.GetFileAsString("res://Reactorium/reactorium.css"),
                 ["reactorium/reactorium.js"] = Godot.FileAccess.GetFileAsString("res://Reactorium/reactorium.js"),
+                ["sensorium/index.html"] = Godot.FileAccess.GetFileAsString("res://Sensorium/index.html"),
+                ["sensorium/sensorium.css"] = Godot.FileAccess.GetFileAsString("res://Sensorium/sensorium.css"),
+                ["sensorium/sensorium.js"] = Godot.FileAccess.GetFileAsString("res://Sensorium/sensorium.js"),
                 ["debug/index.html"] = Godot.FileAccess.GetFileAsString("res://Debug/index.html"),
                 ["debug/debug.css"] = Godot.FileAccess.GetFileAsString("res://Debug/debug.css"),
                 ["debug/debug.js"] = Godot.FileAccess.GetFileAsString("res://Debug/debug.js")
             };
-            _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, _reactoriumCommands, GD.Print);
+            _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, _reactoriumCommands,
+                _sensoriumCommands, GD.Print);
             _stationServer.Start();
             PublishArmariumState();
             _stationServer.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
+            _stationServer.UpdateSensoriumState(SensoriumStateBuilder.Build(_simulation.World));
             _stationServer.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World, _simulation.Settings));
             GD.Print($"Armarium available at {_stationServer.ArmariumUrl}");
             GD.Print($"Reactorium available at {_stationServer.ReactoriumUrl}");
+            GD.Print($"Sensorium available at {_stationServer.SensoriumUrl}");
             GD.Print($"Enemy AI debug station available at {_stationServer.DebugUrl}");
         }
         catch (Exception exception)
@@ -159,21 +173,33 @@ public partial class Flight : Node
     public override void _Input(InputEvent input)
     {
         if (_gameOver.Visible) return;
-        if (!_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false } autopilotKey &&
+        if (_simulation.World.HyperspacePhase == HyperspacePhase.PlanningEntry &&
+            input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } entryClick &&
+            IsTacticalMapPoint(entryClick.Position))
+        {
+            _hyperspaceEntryPoint = ScreenToWorld(entryClick.Position);
+            // The Jump button can be clicked in the same rendered frame as the map click.
+            // Keep its state in sync instead of waiting for the next HUD process pass.
+            _hud.IsHyperspacePlanning = true;
+            _hud.HasHyperspaceEntryPoint = true;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (_simulation.World.IsPlayerInRealSpace && !_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false } autopilotKey &&
             (autopilotKey.PhysicalKeycode == Key.P || autopilotKey.Keycode == Key.P))
         {
             ToggleAutopilot();
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (!_starMap.Visible && input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click &&
+        if (_simulation.World.IsPlayerInRealSpace && !_starMap.Visible && input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click &&
             IsTacticalMapPoint(click.Position) && _arena.TrySelectEnemy(ScreenToWorld(click.Position), out int enemyId))
         {
             _selectedEnemyId = enemyId;
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (!_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false } key &&
+        if (_simulation.World.IsPlayerInRealSpace && !_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false } key &&
             (key.PhysicalKeycode == Key.Space || key.Keycode == Key.Space))
         {
             ToggleFreeCamera();
@@ -194,7 +220,7 @@ public partial class Flight : Node
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
+        if (_simulation.World.IsPlayerInRealSpace && _starMap.Visible && input is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
         {
             _starMap.Close();
             GetViewport().SetInputAsHandled();
@@ -240,30 +266,52 @@ public partial class Flight : Node
         if (_warpScenario is null) _lastCommand = _smokeTest
             ? new ShipCommand(MainThrust: _simulation.World.Tick >= 181, YawLeft: _simulation.World.Tick >= 451,
                 FireLance: _simulation.World.Tick == 450)
-            : _keyboard.ReadCommand(allowFlightControls: !_freeCameraMode);
+            : _keyboard.ReadCommand(allowFlightControls: _simulation.World.IsPlayerInRealSpace && !_freeCameraMode);
         if (_enemySmokeTest)
         {
             _lastCommand = default;
             if (_simulation.World.Tick == 600) _pendingNavigation = new NavigationCommand(3);
         }
-        ApplyAutopilotControl();
-        ApplyArmariumControl();
+        if (_simulation.World.IsPlayerInRealSpace)
+        {
+            ApplyAutopilotControl();
+            ApplyArmariumControl();
+        }
         float? reactorLevel = _reactoriumCommands.TryReadOperatingLevel(out float requestedLevel) ? requestedLevel : null;
         PowerAllocation? allocation = _reactoriumCommands.TryReadAllocation(out PowerAllocation requestedAllocation)
             ? requestedAllocation : null;
         ReactorCommand reactorCommand = new(reactorLevel, allocation);
-        _simulation.Step(_lastCommand, _pendingNavigation, reactorCommand);
+        SensoriumCommand sensoriumCommand = _sensoriumCommands.ReadCommand();
+        _simulation.Step(_lastCommand, _pendingNavigation, reactorCommand,
+            new SensorCommand(sensoriumCommand.ActiveSonarPing, sensoriumCommand.ConfirmedEnemyId));
         _pendingNavigation = default;
         RecordArmariumTargetHit();
         PublishArmariumState();
         _stationServer?.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
+        _stationServer?.UpdateSensoriumState(SensoriumStateBuilder.Build(_simulation.World));
         _stationServer?.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World, _simulation.Settings));
+        if (_simulation.Events.OfType<EnteredHyperspace>().Any())
+        {
+            _autopilot = null;
+            _autopilotTargetId = null;
+            _keyboard.Clear();
+            _starMap.Open();
+        }
+        if (_lastHyperspacePhase != _simulation.World.HyperspacePhase)
+        {
+            HandleHyperspacePhaseChanged(_simulation.World.HyperspacePhase);
+            _lastHyperspacePhase = _simulation.World.HyperspacePhase;
+        }
         if (_simulation.Events.OfType<EncounterChanged>().Any())
         {
             // Do not interpolate across different local coordinate systems.
             _previousPosition = _simulation.World.Ship.Position;
             _previousRotation = _simulation.World.Ship.Rotation;
             _starMap.Close();
+            _hyperspaceEntryPoint = null;
+            _freeCameraMode = false;
+            _ship.Visible = true;
+            _ship.StartReentry(_visualTime);
         }
         _arena.ShowEvents(_simulation.Events);
         _sounds.Update(_simulation.World, _simulation.Settings, _lastCommand, _simulation.Events);
@@ -286,9 +334,9 @@ public partial class Flight : Node
                 _gameOver.RestartButton.EmitSignal(Button.SignalName.Pressed);
             }
         }
-        if (_warpSmokeTest && _simulation.World.Tick >= 1205)
+        if (_warpSmokeTest && _simulation.World.Tick >= 610)
         {
-            GD.Print("WARP SMOKE PASS: mouse controls, live map, charge gate, jumps both ways, persistent targets.");
+            GD.Print("WARP SMOKE PASS: hyperspace exit, destination choice, entry point and re-entry.");
             GetTree().Quit();
         }
         if (_smokeTest)
@@ -353,6 +401,8 @@ public partial class Flight : Node
         _gameOver.Hide();
         _enemyGameOverFrames = 0;
         _armariumCommands.Clear();
+        _hyperspaceEntryPoint = null;
+        _lastHyperspacePhase = _simulation.World.HyperspacePhase;
         if (_enemySmokeTest) _enemySmokeRestarted = true;
     }
 
@@ -369,15 +419,25 @@ public partial class Flight : Node
         _ship.Rotation = MathF.Atan2(forward.X, -forward.Z);
         _ship.Refresh(_lastCommand, _simulation.World.Lance.IsReady, _visualTime,
             _simulation.World.LanceAim.YawOffsetDegrees);
+        _ship.Visible = _simulation.World.IsPlayerInRealSpace;
         UpdateCamera((float)delta);
         _arena.ShipPosition = _ship.Position;
         _arena.ShipForward = new Vector2(forward.X, forward.Z).Normalized();
         _arena.CameraPosition = _camera.Position;
         _arena.CameraZoom = _cameraZoom;
         _arena.IsFreeCamera = _freeCameraMode;
+        _arena.HidePlayerGuidance = _simulation.World.IsPlayerInHyperspace;
+        _arena.HyperspaceEntryPoint = _hyperspaceEntryPoint;
+        _arena.HyperspaceEnemyPoint = _simulation.World.HyperspacePhase == HyperspacePhase.PlanningEntry &&
+                                     _simulation.World.CurrentEncounter.LastKnownEnemyPosition is { } lastKnownPosition
+            ? ViewSettings.Project(lastKnownPosition)
+            : null;
         UpdateSelectedContact();
         _hud.CameraZoom = _cameraZoom;
         _hud.IsFreeCamera = _freeCameraMode;
+        _hud.IsHyperspacePlanning = _simulation.World.HyperspacePhase == HyperspacePhase.PlanningEntry;
+        _hud.HasHyperspaceEntryPoint = _hyperspaceEntryPoint is not null;
+        _thrusterPanel.Visible = _simulation.World.IsPlayerInRealSpace;
         _hud.Command = _lastCommand;
         _thrusterPanel.Command = _lastCommand;
         _hud.ArmariumOnline = _stationServer?.IsArmariumOnline == true;
@@ -428,6 +488,23 @@ public partial class Flight : Node
         _stars.CameraPosition = _camera.Position;
     }
 
+    private void HandleHyperspacePhaseChanged(HyperspacePhase phase)
+    {
+        if (phase != HyperspacePhase.PlanningEntry) return;
+        _starMap.Close();
+        _hyperspaceEntryPoint = null;
+        _freeCameraMode = true;
+        NVector3? lastKnownPosition = _simulation.World.CurrentEncounter.LastKnownEnemyPosition;
+        _freeCameraPosition = lastKnownPosition is null ? Vector2.Zero : ViewSettings.Project(lastKnownPosition.Value);
+        _camera.Position = _freeCameraPosition;
+    }
+
+    private void ConfirmHyperspaceEntry()
+    {
+        if (_simulation.World.HyperspacePhase != HyperspacePhase.PlanningEntry || _hyperspaceEntryPoint is not { } entry) return;
+        _pendingNavigation = new NavigationCommand(EntryPosition: ViewSettings.Unproject(entry));
+    }
+
     private bool IsTacticalMapPoint(Vector2 screenPosition)
     {
         Vector2 size = GetViewport().GetVisibleRect().Size;
@@ -439,7 +516,7 @@ public partial class Flight : Node
 
     private void UpdateSelectedContact()
     {
-        var enemies = _simulation.World.CurrentEnemies.ToArray();
+        var enemies = _simulation.World.VisibleEnemies.ToArray();
         if (!enemies.Any(enemy => enemy.EnemyId == _selectedEnemyId))
             _selectedEnemyId = enemies.FirstOrDefault()?.EnemyId;
         _arena.SelectedEnemyId = _selectedEnemyId;
@@ -462,9 +539,9 @@ public partial class Flight : Node
             _autopilotTargetId = null;
             return;
         }
-        EnemyShipState? target = _simulation.World.CurrentEnemies
+        EnemyShipState? target = _simulation.World.VisibleEnemies
             .FirstOrDefault(enemy => enemy.EnemyId == _selectedEnemyId) ??
-            _simulation.World.CurrentEnemies.FirstOrDefault();
+            _simulation.World.VisibleEnemies.FirstOrDefault();
         if (target is null) return;
         _autopilot = new AutopilotController(_simulation.Settings.EnemyAi,
             _simulation.Settings.ReverseThrustNewtons / _simulation.Settings.ShipMassKg);
@@ -499,7 +576,7 @@ public partial class Flight : Node
     }
 
     private EnemyShipState? CurrentAutopilotTarget() => _autopilotTargetId is int targetId
-        ? _simulation.World.CurrentEnemies.FirstOrDefault(enemy => enemy.EnemyId == targetId)
+        ? _simulation.World.VisibleEnemies.FirstOrDefault(enemy => enemy.EnemyId == targetId)
         : null;
 
     private async void CaptureFrame()

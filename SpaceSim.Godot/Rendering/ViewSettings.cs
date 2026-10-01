@@ -17,5 +17,6 @@ public static class ViewSettings
     public static readonly Color Panel = new(0.035f, 0.059f, 0.090f, 0.95f);
 
     public static Vector2 Project(NVector3 position) => new(position.X * PixelsPerMeter, position.Z * PixelsPerMeter);
+    public static NVector3 Unproject(Vector2 position) => new(position.X / PixelsPerMeter, 0f, position.Y / PixelsPerMeter);
     public static Color Alpha(Color color, float alpha) => new(color.R, color.G, color.B, alpha);
 }

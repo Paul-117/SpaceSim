@@ -1,5 +1,5 @@
 (() => {
-  const protocolVersion = 7;
+  const protocolVersion = 9;
   const reconnectDelayMs = 1500;
   const fields = ["enemy-id", "difficulty", "mode", "ai-state", "distance", "closing-speed", "relative-speed", "enemy-speed", "hull", "shield", "lance", "lance-ready", "reactor-level", "reactor-power", "fuel", "propulsion-power", "weapons-power", "shields-power", "enemy-combat-active", "enemy-attack-state", "enemy-lance-ready", "enemy-target-range", "enemy-target-front", "enemy-aim", "enemy-ray-hit", "enemy-fire-ready", "player-lance-ready", "player-target-range", "player-target-front", "player-aim", "player-ray-hit", "player-fire-ready", "tick"];
   const elements = Object.fromEntries(fields.map(id => [id, document.getElementById(id)]));

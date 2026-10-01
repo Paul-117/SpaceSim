@@ -7,7 +7,7 @@ namespace SpaceSim.Core.Navigation;
 internal static class WarpDriveSystem
 {
     public static void Step(WorldState world, NavigationCommand command, SimulationSettings settings,
-        List<SimulationEvent> events)
+        List<SimulationEvent> events, Random navigationRandom)
     {
         var drive = world.WarpDrive;
         drive.ChargedSeconds = Math.Min(settings.WarpChargeSeconds,
@@ -18,26 +18,50 @@ internal static class WarpDriveSystem
         drive.ChargeFraction = (float)(drive.ChargedSeconds / settings.WarpChargeSeconds);
         drive.RemainingSeconds = settings.WarpChargeSeconds - drive.ChargedSeconds;
 
-        if (!drive.IsReady || command.JumpToEncounterId is not { } destinationId ||
-            destinationId == world.CurrentEncounter.Id) return;
-        var destination = world.Encounters.FirstOrDefault(e => e.Id == destinationId);
-        if (destination is null) return;
+        if (world.HyperspacePhase == HyperspacePhase.RealSpace && command.EnterHyperspace && drive.IsReady)
+        {
+            world.HyperspaceOriginEncounterId = world.CurrentEncounter.Id;
+            world.HyperspacePhase = HyperspacePhase.SelectingDestination;
+            Drain(drive, settings);
+            events.Add(new EnteredHyperspace(world.CurrentEncounter.Id));
+            return;
+        }
 
-        int originId = world.CurrentEncounter.Id;
-        world.CurrentEncounter = destination;
-        // Each encounter has its own local origin; a jump arrives at rest.
-        world.Ship.Position = Vector3.Zero;
+        // At the initial game start there is no origin encounter, so Encounter 1 is a valid first destination too.
+        bool maySelectCurrentEncounter = world.HyperspaceOriginEncounterId is null;
+        if (world.HyperspacePhase == HyperspacePhase.SelectingDestination && command.JumpToEncounterId is { } destinationId &&
+            (destinationId != world.CurrentEncounter.Id || maySelectCurrentEncounter))
+        {
+            var destination = world.Encounters.FirstOrDefault(e => e.Id == destinationId);
+            if (destination is null) return;
+            world.CurrentEncounter = destination;
+            destination.CaptureLastKnownEnemyPosition(navigationRandom, 300f);
+            world.HyperspacePhase = HyperspacePhase.PlanningEntry;
+            return;
+        }
+
+        if (world.HyperspacePhase != HyperspacePhase.PlanningEntry || command.EntryPosition is not { } entry) return;
+        int originId = world.HyperspaceOriginEncounterId ?? world.CurrentEncounter.Id;
+        world.Ship.Position = new Vector3(entry.X, 0f, entry.Z);
         world.Ship.Velocity = Vector3.Zero;
         world.Ship.Rotation = Quaternion.Identity;
         world.Ship.AngularVelocity = Vector3.Zero;
         world.Ship.Systems.Repair();
         world.Ship.Shield.CurrentShield = world.Ship.Shield.MaximumShield;
         world.Ship.Shield.RechargeDelayRemaining = 0f;
+        world.HyperspaceOriginEncounterId = null;
+        world.HyperspacePhase = HyperspacePhase.RealSpace;
+        // Re-entry is the completed warp. The next charge cycle begins on the following simulation tick.
+        Drain(drive, settings);
         events.Add(new SystemsRepaired(WeaponOwner.Player, null, world.Ship.Position));
+        events.Add(new EncounterChanged(originId, world.CurrentEncounter.Id));
+    }
+
+    private static void Drain(WarpDriveState drive, SimulationSettings settings)
+    {
         drive.ChargedSeconds = 0;
         drive.ChargeFraction = 0;
         drive.RemainingSeconds = settings.WarpChargeSeconds;
         drive.IsReady = false;
-        events.Add(new EncounterChanged(originId, destinationId));
     }
 }

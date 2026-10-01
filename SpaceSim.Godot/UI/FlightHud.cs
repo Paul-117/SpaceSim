@@ -17,8 +17,11 @@ public partial class FlightHud : Control
     public bool AutopilotActive { get; set; }
     public string AutopilotTargetName { get; set; } = "-";
     public float CameraZoom { get; set; } = 1f;
+    public bool IsHyperspacePlanning { get; set; }
+    public bool HasHyperspaceEntryPoint { get; set; }
     public Button WarpButton { get; } = CockpitButton.Create("Warp Drive");
     public event Action? WarpMapRequested;
+    public event Action? HyperspaceJumpRequested;
     private Font Font => ThemeDB.FallbackFont;
     private readonly StyleBoxFlat _panelStyle = new()
     {
@@ -35,7 +38,13 @@ public partial class FlightHud : Control
         WarpButton.AddThemeStyleboxOverride("normal", WarpStyle(new Color(0f, 0f, 0f, 0f), ViewSettings.Cyan));
         WarpButton.AddThemeStyleboxOverride("hover", WarpStyle(new Color(.1f, .24f, .31f, .25f), ViewSettings.Cyan));
         WarpButton.AddThemeStyleboxOverride("pressed", WarpStyle(new Color(.15f, .34f, .42f, .35f), ViewSettings.Cyan));
-        WarpButton.Pressed += () => WarpMapRequested?.Invoke();
+        // Godot's default disabled style is opaque and used to cover the charge bar while the drive charged.
+        WarpButton.AddThemeStyleboxOverride("disabled", WarpStyle(new Color(0f, 0f, 0f, 0f), ViewSettings.Amber));
+        WarpButton.Pressed += () =>
+        {
+            if (IsHyperspacePlanning) HyperspaceJumpRequested?.Invoke();
+            else WarpMapRequested?.Invoke();
+        };
         AddChild(WarpButton);
     }
 
@@ -44,6 +53,9 @@ public partial class FlightHud : Control
         Vector2 viewport = GetViewportRect().Size;
         WarpButton.Position = new Vector2(viewport.X / 2f - 100, 10);
         WarpButton.Size = new Vector2(200, 30);
+        WarpButton.Text = IsHyperspacePlanning ? "Jump" : "Warp Drive";
+        WarpButton.Visible = true;
+        WarpButton.Disabled = IsHyperspacePlanning ? !HasHyperspaceEntryPoint : !World.WarpDrive.IsReady;
         QueueRedraw();
     }
 
@@ -52,11 +64,17 @@ public partial class FlightHud : Control
         if (World is null) return;
         float width = GetViewportRect().Size.X;
         float height = GetViewportRect().Size.Y;
+        if (IsHyperspacePlanning)
+        {
+            Text(new Vector2(width / 2f - 128f, 78), "HYPERRAUM  /  EINTRITTSPUNKT SETZEN", 13, ViewSettings.Cyan);
+            Text(new Vector2(width / 2f - 174f, height - 30), "LINKSKLICK: ROTER EINTRITTSPUNKT", 12, ViewSettings.Muted);
+            return;
+        }
         DrawRect(new Rect2(0, 0, width, 154), new Color(.0196f, .0314f, .0549f, .96f));
         DrawRect(new Rect2(0, height - 154, width, 154), new Color(.0196f, .0314f, .0549f, .96f));
         Text(new Vector2(30, 35), "SPACESIM", 23, ViewSettings.Text);
         Text(new Vector2(165, 34), $"/  {World.CurrentEncounter.Name.ToUpperInvariant()}", 13, ViewSettings.Muted);
-        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.9.6", 12, ViewSettings.Cyan);
+        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 2.0.0", 12, ViewSettings.Cyan);
         Text(new Vector2(width - 510, 33), ArmariumOnline ? "ARMARIUM ONLINE" : "ARMARIUM OFFLINE", 12,
             ArmariumOnline ? ViewSettings.Green : ViewSettings.Muted);
         DrawWarpLoadBar(width);
@@ -74,7 +92,7 @@ public partial class FlightHud : Control
             $"INTEGRITY {World.Ship.Hull.CurrentHull}/{World.Ship.Hull.MaximumHull}  SYS ENG {World.Ship.Systems.PropulsionCondition * 100:0}% WPN {World.Ship.Systems.WeaponsCondition * 100:0}% SHD {World.Ship.Systems.ShieldsCondition * 100:0}%", 11, ViewSettings.Muted);
         RightText(width - 30, height - 109, $"KURS {heading:000.0} DEG    SIM {World.TimeSeconds:0.0}s", 12, ViewSettings.Muted);
         DrawLine(new Vector2(30, height - 96), new Vector2(width - 30, height - 96), ViewSettings.Line, 1);
-        var enemies = World.CurrentEnemies.ToArray();
+        var enemies = World.VisibleEnemies.ToArray();
         var enemy = enemies.FirstOrDefault(candidate => candidate.EnemyId == SelectedEnemyId) ?? enemies.FirstOrDefault();
         if (enemy is not null) DrawContacts(width, enemy);
         DrawAutopilot(width);

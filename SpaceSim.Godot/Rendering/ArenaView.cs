@@ -17,6 +17,9 @@ public partial class ArenaView : Node2D
     public Vector2 CameraPosition { get; set; }
     /// <summary>Detached mode suppresses ship-centred off-screen enemy guidance.</summary>
     public bool IsFreeCamera { get; set; }
+    public bool HidePlayerGuidance { get; set; }
+    public Vector2? HyperspaceEntryPoint { get; set; }
+    public Vector2? HyperspaceEnemyPoint { get; set; }
     /// <summary>Presentation-only contact selection made from the bridge map.</summary>
     public int? SelectedEnemyId { get; set; }
     /// <summary>Current Camera2D magnification; indicators use it to derive visible world bounds.</summary>
@@ -58,9 +61,9 @@ public partial class ArenaView : Node2D
     public override void _Draw()
     {
         if (World is null) return;
-        DrawAimAndDrift();
+        if (!HidePlayerGuidance) DrawAimAndDrift();
         DrawEnemy();
-        if (!IsFreeCamera) DrawEnemyIndicator();
+        if (!HidePlayerGuidance && !IsFreeCamera) DrawEnemyIndicator();
         foreach (var target in World.Targets)
         {
             Vector2 center = ViewSettings.Project(target.Position);
@@ -76,7 +79,29 @@ public partial class ArenaView : Node2D
             DrawString(ThemeDB.FallbackFont, center + new Vector2(radius + 15, 4),
                 $"T{target.Id:00}  {distance:0} m", fontSize: 12, modulate: ViewSettings.Muted);
         }
-        DrawNearestIndicator();
+        if (!HidePlayerGuidance) DrawNearestIndicator();
+        if (HyperspaceEnemyPoint is { } lastKnown)
+        {
+            Color marker = new Color("94a0a3");
+            DrawLine(lastKnown + new Vector2(-9, -9), lastKnown + new Vector2(9, 9), marker, 1.8f, true);
+            DrawLine(lastKnown + new Vector2(-9, 9), lastKnown + new Vector2(9, -9), marker, 1.8f, true);
+            DrawString(ThemeDB.FallbackFont, lastKnown + new Vector2(14, -10), "LAST KNOWN POSITION",
+                fontSize: 12, modulate: marker);
+        }
+        if (HyperspaceEntryPoint is { } entry)
+        {
+            if (HyperspaceEnemyPoint is { } knownPoint)
+            {
+                DrawLine(entry, knownPoint, ViewSettings.Alpha(ViewSettings.Amber, .72f), 1.4f, true);
+                float distanceMeters = entry.DistanceTo(knownPoint) / ViewSettings.PixelsPerMeter;
+                Vector2 midpoint = entry.Lerp(knownPoint, .5f);
+                DrawString(ThemeDB.FallbackFont, midpoint + new Vector2(8, -7), $"{distanceMeters:0} m",
+                    fontSize: 12, modulate: ViewSettings.Amber);
+            }
+            DrawLine(entry + new Vector2(-15, -15), entry + new Vector2(15, 15), new Color("ff6577"), 2, true);
+            DrawLine(entry + new Vector2(-15, 15), entry + new Vector2(15, -15), new Color("ff6577"), 2, true);
+            DrawArc(entry, 23, 0, MathF.Tau, 32, ViewSettings.Alpha(new Color("ff6577"), .7f), 1.2f, true);
+        }
         foreach (var beam in _beams)
         {
             float alpha = 1f - beam.Age / ViewSettings.BeamDurationSeconds;
@@ -127,7 +152,7 @@ public partial class ArenaView : Node2D
         enemyId = 0;
         if (World is null) return false;
         float radius = 28f / MathF.Max(0.001f, CameraZoom);
-        var enemy = World.CurrentEnemies
+        var enemy = World.VisibleEnemies
             .Select(candidate => new { Enemy = candidate, DistanceSquared = (ViewSettings.Project(candidate.Ship.Position) - worldPosition).LengthSquared() })
             .Where(candidate => candidate.DistanceSquared <= radius * radius)
             .OrderBy(candidate => candidate.DistanceSquared)
@@ -139,7 +164,7 @@ public partial class ArenaView : Node2D
 
     private void DrawEnemy()
     {
-        foreach (var enemy in World.CurrentEnemies)
+        foreach (var enemy in World.VisibleEnemies)
             DrawEnemy(enemy);
     }
 
@@ -175,7 +200,7 @@ public partial class ArenaView : Node2D
 
     private void DrawEnemyIndicator()
     {
-        foreach (var enemy in World.CurrentEnemies)
+        foreach (var enemy in World.VisibleEnemies)
             DrawEnemyIndicator(enemy);
     }
 

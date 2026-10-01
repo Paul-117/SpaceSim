@@ -17,10 +17,10 @@ internal static class EnemyDifficultyProfiles
     public static EnemyDifficultyProfile Create(EnemyDifficulty difficulty, EnemyAiSettings normalAi) => difficulty switch
     {
         EnemyDifficulty.Easy => new EnemyDifficultyProfile(
-            normalAi with { FireAimTolerance = Radians(2f) }, "Kestrel", EnemyShipClass.Scout),
+            normalAi with { FireAimTolerance = Radians(2f) }, "Cetus", EnemyShipClass.Corvette),
         EnemyDifficulty.Hard => new EnemyDifficultyProfile(
-            normalAi with { FireAimTolerance = Radians(5f) }, "Leviathan", EnemyShipClass.Destroyer),
-        _ => new EnemyDifficultyProfile(normalAi, "Marauder", EnemyShipClass.Raider)
+            normalAi with { FireAimTolerance = Radians(5f) }, "Atlas", EnemyShipClass.Cruiser),
+        _ => new EnemyDifficultyProfile(normalAi, "Argus", EnemyShipClass.Frigate)
     };
 
     private static float Radians(float degrees) => degrees * MathF.PI / 180f;

@@ -9,6 +9,13 @@ public partial class ShipView : Node2D
     private bool _ready;
     private float _time;
     private float _lanceTurretAngleDegrees;
+    private float _reentryTime = float.NegativeInfinity;
+
+    public void StartReentry(float time)
+    {
+        _reentryTime = time;
+        QueueRedraw();
+    }
 
     public void Refresh(ShipCommand command, bool ready, float time, float lanceTurretAngleDegrees)
     {
@@ -21,6 +28,16 @@ public partial class ShipView : Node2D
 
     public override void _Draw()
     {
+        float reentryAge = _time - _reentryTime;
+        if (reentryAge is >= 0f and < 3f)
+        {
+            float progress = reentryAge / 3f;
+            float radius = 90f * (1f - progress) + 12f;
+            DrawArc(Vector2.Zero, radius, 0f, MathF.Tau, 48,
+                ViewSettings.Alpha(ViewSettings.Cyan, 1f - progress), 2.5f, true);
+            DrawCircle(Vector2.Zero, radius * .72f,
+                ViewSettings.Alpha(ViewSettings.Cyan, .08f * (1f - progress)));
+        }
         float flicker = 3f * MathF.Sin(_time * 47f);
         if (_command.MainThrust)
         {

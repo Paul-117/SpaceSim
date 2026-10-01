@@ -1,5 +1,5 @@
 (() => {
-  const protocolVersion = 7;
+  const protocolVersion = 9;
   const slider = document.querySelector('#operating-level');
   const canvas = document.querySelector('#reactor-canvas');
   const context = canvas.getContext('2d');

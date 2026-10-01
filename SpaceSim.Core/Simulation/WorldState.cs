@@ -14,6 +14,10 @@ public sealed class WorldState
     public LanceAimState LanceAim { get; } = new();
     public Vector3 LanceDirection => LanceAimSystem.GetDirection(Ship.Forward, LanceAim.YawOffsetDegrees);
     public WarpDriveState WarpDrive { get; } = new();
+    public HyperspacePhase HyperspacePhase { get; internal set; }
+    public bool IsPlayerInRealSpace => HyperspacePhase == HyperspacePhase.RealSpace;
+    public bool IsPlayerInHyperspace => !IsPlayerInRealSpace;
+    public int? HyperspaceOriginEncounterId { get; internal set; }
     public IReadOnlyList<EncounterState> Encounters { get; }
     public EncounterState CurrentEncounter { get; internal set; }
     internal List<TargetState> MutableTargets => CurrentEncounter.MutableTargets;
@@ -21,6 +25,9 @@ public sealed class WorldState
     public int HitCount { get; internal set; }
     public GameState GameState { get; internal set; } = GameState.Running;
     public IEnumerable<EnemyShipState> CurrentEnemies => CurrentEncounter.Enemies.Where(enemy => !enemy.IsDestroyed);
+    /// <summary>Sensorium-confirmed enemies available to bridge UI and controls.</summary>
+    public IEnumerable<EnemyShipState> VisibleEnemies => CurrentEnemies
+        .Where(enemy => CurrentEncounter.IsBridgeContactVisible(enemy.EnemyId));
     /// <summary>Convenience access to the first active enemy; use CurrentEnemies for encounter logic.</summary>
     public EnemyShipState? CurrentEnemy => CurrentEnemies.FirstOrDefault();
     public long Tick { get; internal set; }
