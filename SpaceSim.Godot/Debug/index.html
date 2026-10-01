@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -15,32 +15,43 @@
     <p id="no-enemy" class="notice">NO ACTIVE ENEMY IN THIS ENCOUNTER</p>
     <section id="dashboard" class="dashboard" hidden>
       <section class="panel contact"><h2>CONTACT / DECISION</h2>
-        <dl><dt>ENEMY</dt><dd id="enemy-id">—</dd><dt>DIFFICULTY</dt><dd id="difficulty">—</dd>
-          <dt>MODE</dt><dd id="mode">—</dd><dt>FSM STATE</dt><dd id="ai-state">—</dd></dl>
+        <dl><dt>ENEMY</dt><dd id="enemy-id">-</dd><dt>DIFFICULTY</dt><dd id="difficulty">-</dd>
+          <dt>MODE</dt><dd id="mode">-</dd><dt>FSM STATE</dt><dd id="ai-state">-</dd></dl>
       </section>
       <section class="panel motion"><h2>RELATIVE MOTION</h2>
-        <dl><dt>DISTANCE</dt><dd id="distance">—</dd><dt>CLOSING</dt><dd id="closing-speed">—</dd>
-          <dt>RELATIVE SPEED</dt><dd id="relative-speed">—</dd><dt>ENEMY SPEED</dt><dd id="enemy-speed">—</dd></dl>
+        <dl><dt>DISTANCE</dt><dd id="distance">-</dd><dt>CLOSING</dt><dd id="closing-speed">-</dd>
+          <dt>RELATIVE SPEED</dt><dd id="relative-speed">-</dd><dt>ENEMY SPEED</dt><dd id="enemy-speed">-</dd></dl>
       </section>
       <section class="panel combat"><h2>COMBAT CONDITION</h2>
-        <dl><dt>HULL</dt><dd id="hull">—</dd><dt>SHIELD</dt><dd id="shield">—</dd>
-          <dt>LANCE</dt><dd id="lance">—</dd><dt>LANCE READY</dt><dd id="lance-ready">—</dd></dl>
+        <dl><dt>HULL</dt><dd id="hull">-</dd><dt>SHIELD</dt><dd id="shield">-</dd>
+          <dt>LANCE</dt><dd id="lance">-</dd><dt>LANCE READY</dt><dd id="lance-ready">-</dd></dl>
       </section>
       <section class="panel systems"><h2>SUBSYSTEM CONDITION</h2>
-        <div class="system"><span>PROPULSION</span><div class="track"><i id="propulsion-condition"></i></div><b id="propulsion-condition-label">—</b></div>
-        <div class="system"><span>WEAPONS</span><div class="track"><i id="weapons-condition"></i></div><b id="weapons-condition-label">—</b></div>
-        <div class="system"><span>SHIELDS</span><div class="track"><i id="shields-condition"></i></div><b id="shields-condition-label">—</b></div>
+        <div class="system"><span>PROPULSION</span><div class="track"><i id="propulsion-condition"></i></div><b id="propulsion-condition-label">-</b></div>
+        <div class="system"><span>WEAPONS</span><div class="track"><i id="weapons-condition"></i></div><b id="weapons-condition-label">-</b></div>
+        <div class="system"><span>SHIELDS</span><div class="track"><i id="shields-condition"></i></div><b id="shields-condition-label">-</b></div>
       </section>
       <section class="panel reactor"><h2>ENEMY REACTOR</h2>
-        <dl><dt>TARGET / ACTUAL</dt><dd id="reactor-level">—</dd><dt>OUTPUT / DRAW</dt><dd id="reactor-power">—</dd><dt>FUEL</dt><dd id="fuel">—</dd></dl>
+        <dl><dt>TARGET / ACTUAL</dt><dd id="reactor-level">-</dd><dt>OUTPUT / DRAW</dt><dd id="reactor-power">-</dd><dt>FUEL</dt><dd id="fuel">-</dd></dl>
       </section>
       <section class="panel power"><h2>POWER PROFILE / DELIVERY</h2>
-        <div class="power-row"><span>PROPULSION</span><b id="propulsion-power">—</b></div>
-        <div class="power-row"><span>WEAPONS</span><b id="weapons-power">—</b></div>
-        <div class="power-row"><span>SHIELDS</span><b id="shields-power">—</b></div>
+        <div class="power-row"><span>PROPULSION</span><b id="propulsion-power">-</b></div>
+        <div class="power-row"><span>WEAPONS</span><b id="weapons-power">-</b></div>
+        <div class="power-row"><span>SHIELDS</span><b id="shields-power">-</b></div>
+      </section>
+      <section class="panel fire"><h2>ENEMY FIRE GATES</h2>
+        <dl><dt>COMBAT ACTIVE</dt><dd id="enemy-combat-active">-</dd><dt>ATTACK STATE</dt><dd id="enemy-attack-state">-</dd>
+          <dt>LANCE READY</dt><dd id="enemy-lance-ready">-</dd><dt>IN RANGE (1,000 m)</dt><dd id="enemy-target-range">-</dd>
+          <dt>TARGET IN FRONT</dt><dd id="enemy-target-front">-</dd><dt>AIM ERROR / LIMIT</dt><dd id="enemy-aim">-</dd>
+          <dt>RAY WOULD HIT</dt><dd id="enemy-ray-hit">-</dd><dt>FIRE COMMAND</dt><dd id="enemy-fire-ready">-</dd></dl>
+      </section>
+      <section class="panel fire"><h2>PLAYER LANCE DIAGNOSTICS</h2>
+        <dl><dt>LANCE READY</dt><dd id="player-lance-ready">-</dd><dt>IN RANGE (1,000 m)</dt><dd id="player-target-range">-</dd>
+          <dt>TARGET IN FRONT</dt><dd id="player-target-front">-</dd><dt>AIM ERROR / AUTOPILOT</dt><dd id="player-aim">-</dd>
+          <dt>RAY WOULD HIT</dt><dd id="player-ray-hit">-</dd><dt>FIRE PERMIT (F)</dt><dd id="player-fire-ready">-</dd></dl>
       </section>
     </section>
-    <footer><span>READ ONLY — SIMULATION REMAINS AUTHORITATIVE ON THE MAIN PC</span><span id="tick">TICK —</span><span>PROTOCOL 7</span></footer>
+    <footer><span>READ ONLY - SIMULATION REMAINS AUTHORITATIVE ON THE MAIN PC</span><span id="tick">TICK -</span><span>PROTOCOL 7</span></footer>
   </main>
   <script src="debug.js"></script>
 </body>

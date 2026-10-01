@@ -56,7 +56,7 @@ public partial class FlightHud : Control
         DrawRect(new Rect2(0, height - 154, width, 154), new Color(.0196f, .0314f, .0549f, .96f));
         Text(new Vector2(30, 35), "SPACESIM", 23, ViewSettings.Text);
         Text(new Vector2(165, 34), $"/  {World.CurrentEncounter.Name.ToUpperInvariant()}", 13, ViewSettings.Muted);
-        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.9.5", 12, ViewSettings.Cyan);
+        Text(new Vector2(width - 226, 33), "FLIGHT LAB     /     V 1.9.6", 12, ViewSettings.Cyan);
         Text(new Vector2(width - 510, 33), ArmariumOnline ? "ARMARIUM ONLINE" : "ARMARIUM OFFLINE", 12,
             ArmariumOnline ? ViewSettings.Green : ViewSettings.Muted);
         DrawWarpLoadBar(width);

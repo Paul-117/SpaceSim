@@ -280,7 +280,9 @@ var tests = new (string Name, Action Run)[]
         EnemyDebugState state = EnemyDebugStateBuilder.Build(sim.World);
         Check(state.EnemyAvailable && state.EnemyId == 1 && !state.PlayerDetected &&
               state.Difficulty == "EASY" && state.AiState == "ACQUIRE" && state.ReactorOperatingLevelPercent == 50f &&
-              state.PropulsionRequested == 50f && state.PropulsionDraw > 0f && state.WeaponsDraw == 0f && state.ShieldsDraw == 0f,
+              state.PropulsionRequested == 50f && state.PropulsionDraw > 0f && state.WeaponsDraw == 0f && state.ShieldsDraw == 0f &&
+              state.EnemyFireControl is { CombatActive: false, FireCommandWouldBeIssued: false } &&
+              state.PlayerFireControl is { HasTarget: true, AimToleranceDegrees: 2f },
             "Enemy debug state must expose only the active patrol enemy's meaningful AI and power telemetry.");
     }),
     ("Armarium turret input never changes the ship thrusters", () =>
@@ -537,6 +539,7 @@ var tests = new (string Name, Action Run)[]
         NearVector(context.DirectionToPlayer, -Vector3.UnitX, 0.001f);
         NearVector(context.RelativeVelocity, new Vector3(15, 0, 0), 0.001f);
         Near(context.ClosingSpeed, 15, 0.01f);
+        Near(context.LineOfSightAngularVelocity, 0f, 0.001f);
         Near(context.EnemyAimError, 0, 0.01f);
         Near(MathF.Abs(context.PlayerAimError), MathF.PI / 2, 0.01f);
     }),
@@ -556,8 +559,8 @@ var tests = new (string Name, Action Run)[]
         JumpToCombat(sim);
         sim.Step(default);
         var command = sim.World.CurrentEncounter.EnemyAi!.LastCommand;
-        Check(!command.ReverseThrust && (command.YawLeft || command.YawRight),
-            "A fast collision course must begin a normal yaw-and-thrust fly-by, not reverse straight at the player.");
+        Check(!command.MainThrust && !command.ReverseThrust && (command.YawLeft || command.YawRight),
+            "A fast close-range collision course must begin a normal yaw-and-thrust fly-by, not turn around for main-engine braking.");
     }),
     ("Combat AI uses one shared range and difficulty changes only aim tolerance", () =>
     {
@@ -569,6 +572,8 @@ var tests = new (string Name, Action Run)[]
             "A detected opponent must directly approach or attack without an EVADE state.");
         Check(sim.Settings.EnemyAi.MinimumCombatDistance == 250f && sim.Settings.EnemyAi.MaximumCombatDistance == 900f,
             "All enemies must share the configured 250-900 metre combat range.");
+        Check(sim.Settings.EnemyAi.NoMainEngineTurnDistanceMeters == 2_000f,
+            "Enemy and bridge autopilot must protect against main-engine turnarounds within two kilometres.");
         Check(MathF.Abs(ai.FireAimToleranceRadians - MathF.PI / 180f * 3f) < .001f,
             "Medium must retain the central three-degree firing tolerance.");
     }),
@@ -1075,6 +1080,10 @@ static async Task StationServerSmokeAsync()
           debugState.RootElement.GetProperty("enemyAvailable").GetBoolean() &&
           debugState.RootElement.GetProperty("aiState").GetString() == "ATTACK" &&
           MathF.Abs(debugState.RootElement.GetProperty("distanceToPlayer").GetSingle() - 480f) < .001f &&
+          debugState.RootElement.TryGetProperty("enemyFireControl", out JsonElement enemyFireControl) &&
+          enemyFireControl.TryGetProperty("rayWouldHit", out _) &&
+          debugState.RootElement.TryGetProperty("playerFireControl", out JsonElement playerFireControl) &&
+          playerFireControl.TryGetProperty("aimToleranceDegrees", out _) &&
           !debugState.RootElement.TryGetProperty("worldState", out _),
         "Debug station must receive its focused AI telemetry rather than a complete world snapshot.");
 }

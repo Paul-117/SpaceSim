@@ -24,11 +24,14 @@ public sealed record EnemyAiSettings
     public float MaximumAttackRelativeSpeed { get; init; } = 35f;
     /// <summary>Separation targeted by a high-speed fly-by; must exceed the 100 metre collision distance.</summary>
     public float FlybySafetyDistanceMeters { get; init; } = 180f;
+    /// <summary>Inside this distance braking must not turn the ship around for main-engine thrust.</summary>
+    public float NoMainEngineTurnDistanceMeters { get; init; } = 2_000f;
     /// <summary>Minimum lead time used to estimate the player's near-future course.</summary>
     public float MinimumInterceptLeadSeconds { get; init; } = 4f;
     public float RotationKp { get; init; } = 2.4f;
     public float RotationKd { get; init; } = 2.8f;
-    public float TurnCommandThreshold { get; init; } = 0.08f;
+    /// <summary>Small deadband so the controller still closes the final few degrees of aim error.</summary>
+    public float TurnCommandThreshold { get; init; } = 0.03f;
     public float ThrustAlignmentAngle { get; init; } = Degrees(18f);
     public float ShipHitRadiusMeters { get; init; } = 16f;
 
@@ -47,6 +50,7 @@ public sealed record EnemyAiSettings
         Positive(MaximumApproachClosingSpeed, nameof(MaximumApproachClosingSpeed));
         Positive(MaximumAttackRelativeSpeed, nameof(MaximumAttackRelativeSpeed));
         Positive(FlybySafetyDistanceMeters, nameof(FlybySafetyDistanceMeters));
+        Positive(NoMainEngineTurnDistanceMeters, nameof(NoMainEngineTurnDistanceMeters));
         Positive(MinimumInterceptLeadSeconds, nameof(MinimumInterceptLeadSeconds));
         Positive(RotationKp, nameof(RotationKp));
         Positive(RotationKd, nameof(RotationKd));

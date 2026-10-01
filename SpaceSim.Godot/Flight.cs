@@ -94,7 +94,7 @@ public partial class Flight : Node
         StartStationServer();
         if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest) _starMap.Open();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 1.9.5 | Core 60 Hz | Armarium and Reactorium station server enabled");
+        GD.Print("SpaceSim 1.9.6 | Core 60 Hz | Armarium and Reactorium station server enabled");
     }
 
     private Simulation CreateSimulation()
@@ -139,7 +139,7 @@ public partial class Flight : Node
             _stationServer.Start();
             PublishArmariumState();
             _stationServer.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
-            _stationServer.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World));
+            _stationServer.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World, _simulation.Settings));
             GD.Print($"Armarium available at {_stationServer.ArmariumUrl}");
             GD.Print($"Reactorium available at {_stationServer.ReactoriumUrl}");
             GD.Print($"Enemy AI debug station available at {_stationServer.DebugUrl}");
@@ -257,7 +257,7 @@ public partial class Flight : Node
         RecordArmariumTargetHit();
         PublishArmariumState();
         _stationServer?.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
-        _stationServer?.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World));
+        _stationServer?.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World, _simulation.Settings));
         if (_simulation.Events.OfType<EncounterChanged>().Any())
         {
             // Do not interpolate across different local coordinate systems.

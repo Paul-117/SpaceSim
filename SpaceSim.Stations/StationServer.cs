@@ -436,6 +436,8 @@ public sealed class StationServer : IDisposable
         public float PropulsionDraw => State.PropulsionDraw;
         public float WeaponsDraw => State.WeaponsDraw;
         public float ShieldsDraw => State.ShieldsDraw;
+        public FireControlDebug EnemyFireControl => State.EnemyFireControl ?? FireControlDebug.Unavailable;
+        public FireControlDebug PlayerFireControl => State.PlayerFireControl ?? FireControlDebug.Unavailable;
         public long SimulationTick => State.SimulationTick;
     }
 }

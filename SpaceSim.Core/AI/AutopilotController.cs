@@ -9,6 +9,9 @@ namespace SpaceSim.Core.AI;
 /// </summary>
 public sealed class AutopilotController
 {
+    /// <summary>Bridge autopilot holds the nose within two degrees; it never fires the lance itself.</summary>
+    public const float AimToleranceDegrees = 2f;
+    private const float AimToleranceRadians = AimToleranceDegrees * MathF.PI / 180f;
     private readonly EnemyAiSettings _settings;
     private readonly float _nominalReverseAcceleration;
     private FlightContext _context;
@@ -63,14 +66,16 @@ public sealed class AutopilotController
     }
 
     private ShipCommand Approach(ShipState ship, ShipState target) =>
-        IsOverspeedCollisionRisk() ? Flyby(ship, target) : VelocityControl(ship, PlannedInterceptVelocity(ship, target));
+        IsOverspeedCollisionRisk()
+            ? Flyby(ship, target) : VelocityControl(ship, PlannedInterceptVelocity(ship, target));
 
     private ShipCommand Reposition(ShipState ship, ShipState target) =>
-        IsOverspeedCollisionRisk() ? Flyby(ship, target) : VelocityControl(ship, PlannedInterceptVelocity(ship, target));
+        IsOverspeedCollisionRisk()
+            ? Flyby(ship, target) : VelocityControl(ship, PlannedInterceptVelocity(ship, target));
 
     private ShipCommand AttackPosition(ShipState ship)
     {
-        var turn = TurnToward(ship, _context.DirectionToTarget);
+        var turn = TurnToward(ship, _context.DirectionToTarget, _context.LineOfSightAngularVelocity);
         bool aligned = MathF.Abs(_context.AimError) < _settings.ThrustAlignmentAngle;
         bool flyby = HasSafeFlybyTrajectory();
         bool main = !flyby && _context.Distance > _settings.PreferredCombatDistance + 40f &&
@@ -124,15 +129,24 @@ public sealed class AutopilotController
         Vector3 side = Vector3.Cross(Vector3.UnitY, _context.DirectionToTarget);
         Vector3 ownRelativeVelocity = ship.Velocity - target.Velocity;
         if (Vector3.Dot(ownRelativeVelocity, side) < 0f) side = -side;
-        float flybySpeed = MathF.Max(_settings.MaximumAttackRelativeSpeed, ownRelativeVelocity.Length());
-        Vector3 desiredVelocity = target.Velocity + side * flybySpeed - _context.DirectionToTarget * 10f;
-        return VelocityControl(ship, desiredVelocity);
+        var turn = TurnToward(ship, side);
+        float sideAngle = MathF.Abs(SignedPlanarAngle(ship.Forward, side));
+        bool main = sideAngle <= _settings.ThrustAlignmentAngle;
+        return new ShipCommand(MainThrust: main, YawLeft: turn.Left, YawRight: turn.Right);
     }
 
     private ShipCommand VelocityControl(ShipState ship, Vector3 desiredVelocity)
     {
         Vector3 error = desiredVelocity - ship.Velocity;
         if (error.LengthSquared() < 4f) return TurnTowardCommand(ship, _context.DirectionToTarget);
+        bool protectedCombatDistance = _context.Distance <= _settings.NoMainEngineTurnDistanceMeters;
+        bool brakingTowardTarget = _context.ClosingSpeed > _settings.MaximumAttackRelativeSpeed &&
+                                  Vector3.Dot(error, ship.Forward) < 0f;
+        if (protectedCombatDistance && brakingTowardTarget)
+        {
+            var aimTurn = TurnToward(ship, _context.DirectionToTarget, _context.LineOfSightAngularVelocity);
+            return new ShipCommand(ReverseThrust: true, YawLeft: aimTurn.Left, YawRight: aimTurn.Right);
+        }
         Vector3 desiredThrust = Vector3.Normalize(error);
         var turn = TurnToward(ship, desiredThrust);
         float angle = MathF.Abs(SignedPlanarAngle(ship.Forward, desiredThrust));
@@ -143,15 +157,19 @@ public sealed class AutopilotController
 
     private ShipCommand TurnTowardCommand(ShipState ship, Vector3 direction)
     {
-        var turn = TurnToward(ship, direction);
+        var turn = TurnToward(ship, direction, _context.LineOfSightAngularVelocity);
         return new ShipCommand(YawLeft: turn.Left, YawRight: turn.Right);
     }
 
-    private (bool Left, bool Right) TurnToward(ShipState ship, Vector3 direction)
+    private (bool Left, bool Right) TurnToward(ShipState ship, Vector3 direction, float targetAngularVelocity = 0f)
     {
         float error = SignedPlanarAngle(ship.Forward, direction);
-        float signal = _settings.RotationKp * error - _settings.RotationKd * ship.AngularVelocity.Y;
-        return (signal > _settings.TurnCommandThreshold, signal < -_settings.TurnCommandThreshold);
+        if (MathF.Abs(error) <= AimToleranceRadians + 0.000001f) return default;
+        // Match the target bearing's apparent angular velocity as well as its current direction.
+        float signal = _settings.RotationKp * error +
+                       _settings.RotationKd * (targetAngularVelocity - ship.AngularVelocity.Y);
+        if (MathF.Abs(signal) <= 0.000001f) signal = error;
+        return (signal > 0f, signal < 0f);
     }
 
     private void ChangeState(AutopilotState state)
@@ -169,7 +187,7 @@ public sealed class AutopilotController
     }
 
     private readonly record struct FlightContext(Vector3 RelativePosition, Vector3 DirectionToTarget,
-        Vector3 RelativeVelocity, float Distance, float ClosingSpeed, float AimError)
+        Vector3 RelativeVelocity, float Distance, float ClosingSpeed, float LineOfSightAngularVelocity, float AimError)
     {
         public static FlightContext Create(ShipState ship, ShipState target)
         {
@@ -177,8 +195,12 @@ public sealed class AutopilotController
             float distance = relativePosition.Length();
             Vector3 direction = distance > .0001f ? relativePosition / distance : ship.Forward;
             Vector3 relativeVelocity = target.Velocity - ship.Velocity;
+            float lineOfSightAngularVelocity = distance > .0001f
+                ? Vector3.Cross(relativePosition, relativeVelocity).Y / (distance * distance)
+                : 0f;
             return new(relativePosition, direction, relativeVelocity, distance,
-                -Vector3.Dot(relativeVelocity, direction), SignedPlanarAngle(ship.Forward, direction));
+                -Vector3.Dot(relativeVelocity, direction), lineOfSightAngularVelocity,
+                SignedPlanarAngle(ship.Forward, direction));
         }
     }
 }

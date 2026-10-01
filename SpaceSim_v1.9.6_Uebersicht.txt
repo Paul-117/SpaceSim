@@ -1,0 +1,81 @@
+﻿SpaceSim V1.9.6 - Implementierungsuebersicht
+===============================================
+
+Version und Ziel
+---------------
+- Projektversion: 1.9.6.
+- Dieser Stand verbessert die Zielnachfuehrung von Gegner-KI und Bruecken-
+  Autopilot sowie das Verhalten bei zu hoher Annnaeherungsgeschwindigkeit.
+- Die autoritative Simulation bleibt vollstaendig in SpaceSim.Core. KI und
+  Autopilot erzeugen ausschliesslich normale ShipCommands.
+
+Zielnachfuehrung
+----------------
+- Der AI-Kontext berechnet pro Tick neben Entfernung, Relativgeschwindigkeit,
+  Closing Speed und Aim Error jetzt auch die Winkelgeschwindigkeit der Sichtlinie.
+- Der Drehregler verwendet einen PD-Term auf die Differenz aus sichtbarer
+  Ziel-Winkelgeschwindigkeit und eigener Winkelgeschwindigkeit.
+- Damit bleibt bei seitlicher Relativbewegung kein konstanter Nachlauf von
+  mehreren Grad bestehen. Dies ist keine Projektilvorhalteberechnung; die Lanze
+  trifft weiterhin entlang ihrer aktuellen, sofortigen Raycast-Richtung.
+- Die bisherige zu aggressive Abstimmung wurde zur stabileren Grundabstimmung
+  zurueckgestellt: RotationKp 2.4, RotationKd 2.8, TurnCommandThreshold 0.03.
+- Der Spieler-Autopilot arbeitet mit einer Ausrichtungstoleranz von 2 Grad und
+  feuert weiterhin niemals selbst.
+
+Anflug, Bremsen und Fly-by
+--------------------------
+- Die Kampfdistanz bleibt 250 bis 900 m; die normale Lanzenreichweite betraegt
+  weiterhin 1.000 m.
+- Innerhalb von 2.000 m ist eine 180-Grad-Wende zum Bremsen mit Main Thrust
+  verboten. Der zentrale Parameter lautet
+  EnemyAiSettings.NoMainEngineTurnDistanceMeters = 2,000.
+- Fordert die Geschwindigkeitsplanung innerhalb dieser Distanz eine Beschleunigung
+  hinter der aktuellen Nase, bleibt die Nase am Gegner und Reverse Thrust bremst.
+- Bei vorhergesagter Kollision fuehrt die KI einen tangentialen Fly-by aus.
+  Sie dreht zunaechst in die gewaehlt seitliche Richtung. Main Thrust wird erst
+  eingesetzt, wenn die Nase diese Tangente erreicht hat. Dadurch wird keine
+  Bremswende mit praesentiertem Heck erzeugt.
+- Beide Regeln gelten identisch fuer EnemyAiController und AutopilotController.
+  Sie setzen nie Position, Velocity oder Rotation direkt.
+
+Browser-Debugstation
+--------------------
+- http://127.0.0.1:47870/debug/ zeigt fuer Gegner und Spieler PASS oder BLOCK
+  fuer die aktuell berechneten Feuer- und Trefferbedingungen.
+- Gegner: Combat aktiv, ATTACK-State, Lance Ready, 1-km-Reichweite, Ziel vor
+  der Nase, Aim Error gegen Schwierigkeits-Toleranz, Raycast-Hit und Fire Command.
+- Spieler: Lance Ready, Reichweite, Ziel vor der Lanze, Aim Error gegen die
+  2-Grad-Autopilottoleranz, Raycast-Hit und Feuerfreigabe fuer F.
+- Die Anzeige ist ein fokussierter Stations-Snapshot und enthaelt keinen
+  vollstaendigen WorldState.
+
+Geaenderte Dateien
+------------------
+- SpaceSim.Core/AI/EnemyAiContext.cs
+- SpaceSim.Core/AI/EnemyAiController.cs
+- SpaceSim.Core/AI/AutopilotController.cs
+- SpaceSim.Core/AI/EnemyAiSettings.cs
+- SpaceSim.Stations/Debug/EnemyDebugState.cs
+- SpaceSim.Stations/StationServer.cs
+- SpaceSim.Godot/Flight.cs
+- SpaceSim.Godot/Debug/index.html, debug.js und debug.css
+- SpaceSim.Godot/project.godot und UI/FlightHud.cs
+- SpaceSim.Core.Tests/Program.cs
+- README.md
+
+Tests und Build
+---------------
+- Vollstaendiger .NET-/Godot-Debug-Build: erfolgreich, 0 Warnungen, 0 Fehler.
+- Automatisierte Core- und Stations-Tests: 70/70 bestanden.
+- Godot-Headless-Smoke-Test: bestanden.
+- Der Test fuer einen schnellen Kollisionskurs prueft, dass der erste Fly-by-
+  Tick weder Main noch Reverse Thrust fuer eine Bremswende verwendet.
+
+Bekannte Grenzen
+---------------
+- Der Fly-by hat weiterhin keine Hindernis- oder Mehrschiff-Kollisionsvermeidung.
+- Der Drehregler verwendet diskrete volle Yaw-ShipCommands; er kann bei extremen
+  Relativgeschwindigkeiten noch sichtbar pendeln und bleibt ein Tuningpunkt.
+- Eine manuelle Spielsitzung mit sehr hohen Geschwindigkeiten bleibt als
+  Gameplay-Abnahme nach diesem automatisierten Stand sinnvoll.

@@ -163,15 +163,17 @@ public sealed class EnemyAiController
         Vector3 side = Vector3.Cross(Vector3.UnitY, LastContext.DirectionToPlayer);
         Vector3 enemyRelativeVelocity = enemy.Velocity - player.Velocity;
         if (Vector3.Dot(enemyRelativeVelocity, side) < 0f) side = -side;
-        float flybySpeed = MathF.Max(_settings.MaximumAttackRelativeSpeed, enemyRelativeVelocity.Length());
-        // Keep moving past the player on a tangent, with a small outward component.
-        Vector3 desiredVelocity = player.Velocity + side * flybySpeed - LastContext.DirectionToPlayer * 10f;
-        return VelocityControl(enemy, desiredVelocity);
+        // First rotate into the tangent. Feeding the target velocity into VelocityControl here can point the
+        // desired acceleration behind the ship and cause the forbidden 180 degree main-engine braking turn.
+        var turn = TurnToward(enemy, side);
+        float sideAngle = MathF.Abs(EnemyAiContext.SignedPlanarAngle(enemy.Forward, side));
+        bool main = sideAngle <= _settings.ThrustAlignmentAngle;
+        return new ShipCommand(MainThrust: main, YawLeft: turn.Left, YawRight: turn.Right);
     }
 
     private ShipCommand Attack(EnemyShipState enemy, ShipState player, float lanceRange)
     {
-        var turn = TurnToward(enemy.Ship, LastContext.DirectionToPlayer);
+        var turn = TurnToward(enemy.Ship, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
         bool aligned = MathF.Abs(LastContext.EnemyAimError) < _settings.ThrustAlignmentAngle;
         bool flyby = HasSafeFlybyTrajectory();
         bool main = !flyby && LastContext.DistanceToPlayer > _settings.PreferredCombatDistance + 40f &&
@@ -188,6 +190,16 @@ public sealed class EnemyAiController
     {
         Vector3 error = desiredVelocity - enemy.Velocity;
         if (error.LengthSquared() < 4f) return TurnTowardCommand(enemy, LastContext.DirectionToPlayer);
+        bool protectedCombatDistance = LastContext.DistanceToPlayer <= _settings.NoMainEngineTurnDistanceMeters;
+        bool brakingTowardTarget = LastContext.ClosingSpeed > _settings.MaximumAttackRelativeSpeed &&
+                                  Vector3.Dot(error, enemy.Forward) < 0f;
+        if (protectedCombatDistance && brakingTowardTarget)
+        {
+            // Keep the nose in the fight and use the dedicated reverse thruster; do not expose the stern
+            // by turning around to brake with the main engine.
+            var aimTurn = TurnToward(enemy, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
+            return new ShipCommand(ReverseThrust: true, YawLeft: aimTurn.Left, YawRight: aimTurn.Right);
+        }
         Vector3 desiredThrust = Vector3.Normalize(error);
         var turn = TurnToward(enemy, desiredThrust);
         float angle = MathF.Abs(EnemyAiContext.SignedPlanarAngle(enemy.Forward, desiredThrust));
@@ -198,14 +210,17 @@ public sealed class EnemyAiController
 
     private ShipCommand TurnTowardCommand(ShipState ship, Vector3 direction)
     {
-        var turn = TurnToward(ship, direction);
+        var turn = TurnToward(ship, direction, LastContext.LineOfSightAngularVelocity);
         return new ShipCommand(YawLeft: turn.Left, YawRight: turn.Right);
     }
 
-    private (bool Left, bool Right) TurnToward(ShipState ship, Vector3 direction)
+    private (bool Left, bool Right) TurnToward(ShipState ship, Vector3 direction, float targetAngularVelocity = 0f)
     {
         float error = EnemyAiContext.SignedPlanarAngle(ship.Forward, direction);
-        float signal = _settings.RotationKp * error - _settings.RotationKd * ship.AngularVelocity.Y;
+        // PD controller on the moving line of sight: rate error must be relative to the target bearing,
+        // otherwise a ship that tracks a lateral fly-by retains a permanent angular offset.
+        float signal = _settings.RotationKp * error +
+                       _settings.RotationKd * (targetAngularVelocity - ship.AngularVelocity.Y);
         return (signal > _settings.TurnCommandThreshold, signal < -_settings.TurnCommandThreshold);
     }
 

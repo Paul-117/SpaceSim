@@ -1,9 +1,9 @@
-; SpaceSim 1.4 — presentation and input only; authoritative state lives in Core.
+; SpaceSim 1.4 â€” presentation and input only; authoritative state lives in Core.
 config_version=5
 
 [application]
 config/name="SpaceSim | Lance test range"
-config/version="1.9.5"
+config/version="1.9.6"
 run/main_scene="res://Scenes/Flight.tscn"
 config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
 

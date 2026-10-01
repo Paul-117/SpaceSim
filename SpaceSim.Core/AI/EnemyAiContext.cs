@@ -12,6 +12,7 @@ public readonly record struct EnemyAiContext(
     Vector3 RelativeVelocity,
     float DistanceToPlayer,
     float ClosingSpeed,
+    float LineOfSightAngularVelocity,
     float EnemyAimError,
     float PlayerAimError,
     float EnemyLanceCharge,
@@ -24,7 +25,11 @@ public readonly record struct EnemyAiContext(
         Vector3 direction = distance > 0.0001f ? relativePosition / distance : enemy.Ship.Forward;
         Vector3 relativeVelocity = player.Velocity - enemy.Ship.Velocity;
         float closingSpeed = -Vector3.Dot(relativeVelocity, direction);
+        float lineOfSightAngularVelocity = distance > 0.0001f
+            ? Vector3.Cross(relativePosition, relativeVelocity).Y / (distance * distance)
+            : 0f;
         return new EnemyAiContext(relativePosition, direction, relativeVelocity, distance, closingSpeed,
+            lineOfSightAngularVelocity,
             SignedPlanarAngle(enemy.Ship.Forward, direction),
             SignedPlanarAngle(player.Forward, -direction),
             enemy.Lance.ChargeFraction, playerLance.ChargeFraction);
@@ -37,4 +42,3 @@ public readonly record struct EnemyAiContext(
         return MathF.Atan2(Vector3.Cross(a, b).Y, Vector3.Dot(a, b));
     }
 }
-
