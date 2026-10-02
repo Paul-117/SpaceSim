@@ -22,6 +22,7 @@ namespace SpaceSim.GodotClient;
 
 public partial class Flight : Node
 {
+    private const string BridgePreferencesPath = "user://bridge_preferences.cfg";
     private Simulation _simulation = null!;
     private readonly KeyboardShipControl _keyboard = new();
     private readonly ArenaView _arena = new();
@@ -63,6 +64,7 @@ public partial class Flight : Node
     private float _armariumLastTargetHitBearingDegrees;
     private Vector2? _hyperspaceEntryPoint;
     private HyperspacePhase _lastHyperspacePhase;
+    private bool _sensoriumEnabled = true;
 
     public override void _Ready()
     {
@@ -72,6 +74,7 @@ public partial class Flight : Node
         _enemySmokeTest = OS.GetCmdlineUserArgs().Contains("--enemy-smoke-test");
         _capturePath = OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith("--capture="))?[10..];
         _simulation = CreateSimulation();
+        _sensoriumEnabled = LoadSensoriumEnabled();
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
         _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
         BindWorld();
@@ -80,6 +83,8 @@ public partial class Flight : Node
         _hud.WarpMapRequested += () => _pendingNavigation = new NavigationCommand(EnterHyperspace: true);
         _hud.HyperspaceJumpRequested += ConfirmHyperspaceEntry;
         _starMap.JumpRequested += id => _pendingNavigation = new NavigationCommand(id);
+        _starMap.SensoriumEnabled = _sensoriumEnabled;
+        _starMap.SensoriumEnabledChanged += SetSensoriumEnabled;
         _gameOver.RestartRequested += RestartGame;
         var backdrop = new CanvasLayer { Layer = -10 };
         AddChild(backdrop);
@@ -120,6 +125,7 @@ public partial class Flight : Node
 
     private void BindWorld()
     {
+        _simulation.World.RequireSensoriumConfirmationForBridgeContacts = _sensoriumEnabled;
         _arena.World = _simulation.World;
         _hud.World = _simulation.World;
         _hud.Settings = _simulation.Settings;
@@ -379,6 +385,24 @@ public partial class Flight : Node
 
     private void PublishArmariumState() => _stationServer?.UpdateState(ArmariumStateBuilder.Build(
         _simulation.World, _armariumTargetHitSequence, _armariumLastTargetHitBearingDegrees));
+
+    private static bool LoadSensoriumEnabled()
+    {
+        var preferences = new ConfigFile();
+        return preferences.Load(BridgePreferencesPath) == Error.Ok
+            ? preferences.GetValue("bridge", "sensorium_enabled", true).AsBool()
+            : true;
+    }
+
+    private void SetSensoriumEnabled(bool enabled)
+    {
+        _sensoriumEnabled = enabled;
+        _simulation.World.RequireSensoriumConfirmationForBridgeContacts = enabled;
+        var preferences = new ConfigFile();
+        preferences.SetValue("bridge", "sensorium_enabled", enabled);
+        if (preferences.Save(BridgePreferencesPath) != Error.Ok)
+            GD.PushWarning("Could not save bridge preferences.");
+    }
 
     private void RestartGame()
     {

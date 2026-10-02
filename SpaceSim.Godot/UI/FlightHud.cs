@@ -66,7 +66,8 @@ public partial class FlightHud : Control
         float height = GetViewportRect().Size.Y;
         if (IsHyperspacePlanning)
         {
-            Text(new Vector2(width / 2f - 128f, 78), "HYPERRAUM  /  EINTRITTSPUNKT SETZEN", 13, ViewSettings.Cyan);
+            Text(new Vector2(width / 2f - 180f, 78), "HYPERRAUM-EINTRITTSKARTE  /  EINTRITTSPUNKT SETZEN", 13, ViewSettings.Cyan);
+            RightText(width - 30, 78, $"SCALE {FormatZoomScale()}", 12, ViewSettings.Muted);
             Text(new Vector2(width / 2f - 174f, height - 30), "LINKSKLICK: ROTER EINTRITTSPUNKT", 12, ViewSettings.Muted);
             return;
         }
@@ -85,9 +86,8 @@ public partial class FlightHud : Control
         Metric(276, 64, metricWidth, "WINKELGESCHWINDIGKEIT", $"{World.Ship.AngularVelocity.Y:+0.000;-0.000;0.000}", "rad/s");
 
         float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(World.Ship.Forward.X, -World.Ship.Forward.Z)), 360);
-        string scale = CameraZoom is >= .01f and <= 10_000f ? $"{CameraZoom:0.00}x" : $"{CameraZoom:0.###E+0}x";
         RightText(width - 30, height - 154,
-            $"POS  X {World.Ship.Position.X,9:0.0}   Z {World.Ship.Position.Z,9:0.0} m    SCALE {scale}", 12, ViewSettings.Muted);
+            $"POS  X {World.Ship.Position.X,9:0.0}   Z {World.Ship.Position.Z,9:0.0} m    SCALE {FormatZoomScale()}", 12, ViewSettings.Muted);
         RightText(width - 30, height - 132,
             $"INTEGRITY {World.Ship.Hull.CurrentHull}/{World.Ship.Hull.MaximumHull}  SYS ENG {World.Ship.Systems.PropulsionCondition * 100:0}% WPN {World.Ship.Systems.WeaponsCondition * 100:0}% SHD {World.Ship.Systems.ShieldsCondition * 100:0}%", 11, ViewSettings.Muted);
         RightText(width - 30, height - 109, $"KURS {heading:000.0} DEG    SIM {World.TimeSeconds:0.0}s", 12, ViewSettings.Muted);
@@ -165,4 +165,6 @@ public partial class FlightHud : Control
     private void Text(Vector2 position, string text, int size, Color color) => DrawString(Font, position, text, fontSize: size, modulate: color);
     private void RightText(float right, float y, string text, int size, Color color) =>
         Text(new Vector2(right - Font.GetStringSize(text, fontSize: size).X, y), text, size, color);
+    private string FormatZoomScale() =>
+        CameraZoom is >= .01f and <= 10_000f ? $"{CameraZoom:0.00}x" : $"{CameraZoom:0.###E+0}x";
 }

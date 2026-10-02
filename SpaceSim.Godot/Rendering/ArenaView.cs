@@ -83,24 +83,31 @@ public partial class ArenaView : Node2D
         if (HyperspaceEnemyPoint is { } lastKnown)
         {
             Color marker = new Color("94a0a3");
-            DrawLine(lastKnown + new Vector2(-9, -9), lastKnown + new Vector2(9, 9), marker, 1.8f, true);
-            DrawLine(lastKnown + new Vector2(-9, 9), lastKnown + new Vector2(9, -9), marker, 1.8f, true);
-            DrawString(ThemeDB.FallbackFont, lastKnown + new Vector2(14, -10), "LAST KNOWN POSITION",
-                fontSize: 12, modulate: marker);
+            float markerHalfSize = ScreenPixelsToWorld(9);
+            DrawLine(lastKnown + new Vector2(-markerHalfSize, -markerHalfSize), lastKnown + new Vector2(markerHalfSize, markerHalfSize),
+                marker, ScreenPixelsToWorld(1.8f), true);
+            DrawLine(lastKnown + new Vector2(-markerHalfSize, markerHalfSize), lastKnown + new Vector2(markerHalfSize, -markerHalfSize),
+                marker, ScreenPixelsToWorld(1.8f), true);
+            DrawString(ThemeDB.FallbackFont, lastKnown + new Vector2(ScreenPixelsToWorld(14), ScreenPixelsToWorld(-10)), "LAST KNOWN POSITION",
+                fontSize: ScreenFontSize(12), modulate: marker);
         }
         if (HyperspaceEntryPoint is { } entry)
         {
             if (HyperspaceEnemyPoint is { } knownPoint)
             {
-                DrawLine(entry, knownPoint, ViewSettings.Alpha(ViewSettings.Amber, .72f), 1.4f, true);
+                DrawLine(entry, knownPoint, ViewSettings.Alpha(ViewSettings.Amber, .72f), ScreenPixelsToWorld(1.4f), true);
                 float distanceMeters = entry.DistanceTo(knownPoint) / ViewSettings.PixelsPerMeter;
                 Vector2 midpoint = entry.Lerp(knownPoint, .5f);
-                DrawString(ThemeDB.FallbackFont, midpoint + new Vector2(8, -7), $"{distanceMeters:0} m",
-                    fontSize: 12, modulate: ViewSettings.Amber);
+                DrawString(ThemeDB.FallbackFont, midpoint + new Vector2(ScreenPixelsToWorld(8), ScreenPixelsToWorld(-7)), $"{distanceMeters:0} m",
+                    fontSize: ScreenFontSize(12), modulate: ViewSettings.Amber);
             }
-            DrawLine(entry + new Vector2(-15, -15), entry + new Vector2(15, 15), new Color("ff6577"), 2, true);
-            DrawLine(entry + new Vector2(-15, 15), entry + new Vector2(15, -15), new Color("ff6577"), 2, true);
-            DrawArc(entry, 23, 0, MathF.Tau, 32, ViewSettings.Alpha(new Color("ff6577"), .7f), 1.2f, true);
+            float entryHalfSize = ScreenPixelsToWorld(15);
+            DrawLine(entry + new Vector2(-entryHalfSize, -entryHalfSize), entry + new Vector2(entryHalfSize, entryHalfSize),
+                new Color("ff6577"), ScreenPixelsToWorld(2), true);
+            DrawLine(entry + new Vector2(-entryHalfSize, entryHalfSize), entry + new Vector2(entryHalfSize, -entryHalfSize),
+                new Color("ff6577"), ScreenPixelsToWorld(2), true);
+            DrawArc(entry, ScreenPixelsToWorld(23), 0, MathF.Tau, 32, ViewSettings.Alpha(new Color("ff6577"), .7f),
+                ScreenPixelsToWorld(1.2f), true);
         }
         foreach (var beam in _beams)
         {
@@ -313,6 +320,10 @@ public partial class ArenaView : Node2D
 
     private Vector2 VisibleWorldHalfExtent(Vector2 screenMargin) =>
         (GetViewportRect().Size / 2f - screenMargin) / MathF.Max(0.001f, CameraZoom);
+
+    private float ScreenPixelsToWorld(float pixels) => pixels / MathF.Max(0.001f, CameraZoom);
+
+    private int ScreenFontSize(int pixels) => Math.Max(1, Mathf.RoundToInt(ScreenPixelsToWorld(pixels)));
 
     private Rect2 VisibleWorldRect()
     {

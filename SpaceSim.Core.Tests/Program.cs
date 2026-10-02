@@ -272,6 +272,10 @@ var tests = new (string Name, Action Run)[]
         Check(!ai.IsPlayerDetected, "Distant enemy must still be unaware before active sonar.");
         Check(!alertSim.World.VisibleEnemies.Any(), "The bridge must start a combat encounter without an enemy contact.");
         int enemyId = alertSim.World.CurrentEnemies.Single().EnemyId;
+        alertSim.World.RequireSensoriumConfirmationForBridgeContacts = false;
+        Check(alertSim.World.VisibleEnemies.Single().EnemyId == enemyId,
+            "Disabling Sensorium confirmation must expose every active contact to the bridge.");
+        alertSim.World.RequireSensoriumConfirmationForBridgeContacts = true;
         alertSim.Step(default, sensorCommand: new SensorCommand(ConfirmedEnemyId: enemyId));
         Check(alertSim.World.VisibleEnemies.Single().EnemyId == enemyId,
             "A confirmed spectrometer contact must become visible to bridge map and contact controls.");

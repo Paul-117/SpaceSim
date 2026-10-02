@@ -10,13 +10,19 @@ public partial class StarMap : Control
 {
     public WorldState World { get; set; } = null!;
     public event Action<int>? JumpRequested;
+    public event Action<bool>? SensoriumEnabledChanged;
     public Button JumpButton { get; } = CockpitButton.Create("Jump");
     public Button CloseButton { get; } = CockpitButton.Create("Zurück zum Flug  [Esc]");
+    public bool SensoriumEnabled { get; set; } = true;
     private readonly Dictionary<int, Button> _destinations = new();
+    private readonly Button _optionsButton = CockpitButton.Create("⚙");
+    private readonly CheckButton _sensoriumToggle = new() { Text = "SENSORIUM", FocusMode = FocusModeEnum.None };
     public int? SelectedEncounterId { get; private set; }
     private Rect2 _panel;
+    private Rect2 _optionsPanel;
     private Vector2 _destinationSize;
     private int _destinationColumns;
+    private bool _optionsOpen;
 
     public Button DestinationButton(int id) => _destinations[id];
 
@@ -33,6 +39,19 @@ public partial class StarMap : Control
         }
         AddChild(JumpButton);
         AddChild(CloseButton);
+        _optionsButton.TooltipText = "Brückenoptionen";
+        _optionsButton.AddThemeFontSizeOverride("font_size", 19);
+        _optionsButton.Pressed += () => { _optionsOpen = !_optionsOpen; Refresh(); };
+        _sensoriumToggle.ButtonPressed = SensoriumEnabled;
+        _sensoriumToggle.AddThemeFontSizeOverride("font_size", 12);
+        _sensoriumToggle.AddThemeColorOverride("font_color", ViewSettings.Text);
+        _sensoriumToggle.Toggled += enabled =>
+        {
+            SensoriumEnabled = enabled;
+            SensoriumEnabledChanged?.Invoke(enabled);
+        };
+        AddChild(_sensoriumToggle);
+        AddChild(_optionsButton);
         CloseButton.Pressed += Close;
         JumpButton.Pressed += () =>
         {
@@ -48,11 +67,16 @@ public partial class StarMap : Control
     public void Open()
     {
         SelectedEncounterId = null;
+        _optionsOpen = false;
         Refresh();
         Show();
     }
 
-    public void Close() => Hide();
+    public void Close()
+    {
+        _optionsOpen = false;
+        Hide();
+    }
     public override void _Process(double delta)
     {
         if (Visible) Refresh();
@@ -89,6 +113,12 @@ public partial class StarMap : Control
         CloseButton.Size = new Vector2(235, 44);
         CloseButton.Position = _panel.Position + new Vector2(32, _panel.Size.Y - 58);
         CloseButton.Visible = World.IsPlayerInRealSpace;
+        _optionsButton.Size = new Vector2(34, 34);
+        _optionsButton.Position = _panel.Position + new Vector2(_panel.Size.X - 50, 17);
+        _optionsPanel = new Rect2(_panel.Position + new Vector2(_panel.Size.X - 262, 74), new Vector2(244, 58));
+        _sensoriumToggle.Position = _optionsPanel.Position + new Vector2(12, 24);
+        _sensoriumToggle.Size = new Vector2(_optionsPanel.Size.X - 24, 28);
+        _sensoriumToggle.Visible = _optionsOpen;
         QueueRedraw();
     }
 
@@ -102,8 +132,15 @@ public partial class StarMap : Control
         Vector2 origin = _panel.Position;
         Text(origin + new Vector2(32, 39), "STERNENKARTE", 23, ViewSettings.Text);
         Text(origin + new Vector2(32, 66), "Sprungpunkt auswählen und mit Jump bestätigen.", 14, ViewSettings.Muted);
-        Text(origin + new Vector2(_panel.Size.X - 240, 37), "LIVE  /  SIMULATION LÄUFT", 12, ViewSettings.Cyan);
-        Text(origin + new Vector2(_panel.Size.X - 240, 61), $"{World.CurrentEncounter.Name}  ·  {World.TimeSeconds:0.0} s", 13, ViewSettings.Muted);
+        Text(origin + new Vector2(_panel.Size.X - 278, 37), "LIVE  /  SIMULATION LÄUFT", 12, ViewSettings.Cyan);
+        Text(origin + new Vector2(_panel.Size.X - 278, 61), $"{World.CurrentEncounter.Name}  ·  {World.TimeSeconds:0.0} s", 13, ViewSettings.Muted);
+
+        if (_optionsOpen)
+        {
+            DrawRect(_optionsPanel, ViewSettings.Panel);
+            DrawRect(_optionsPanel, ViewSettings.Line, false, 1);
+            Text(_optionsPanel.Position + new Vector2(12, 17), "BRÜCKENOPTIONEN", 10, ViewSettings.Muted);
+        }
 
         for (int i = 1; i < World.Encounters.Count; i++)
             DrawLine(PointPosition(i - 1), PointPosition(i), ViewSettings.Line, 1, true);

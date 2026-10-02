@@ -82,6 +82,27 @@ Skriptaufrufe nur fÃ¼r den jeweiligen PowerShell-Prozess gesetzt.
 Bei einer anderen Godot-Installation die Paketquelle, die SDK-Version im
 Godot-Projekt und die Pfade in den Skripten gemeinsam anpassen.
 
+## Schnellstart unter Linux
+
+Vorausgesetzt werden das **.NET SDK 10** und **Godot 4.7.2 .NET fuer Linux**.
+Die Godot-Standardversion ohne C#-Unterstuetzung reicht nicht. Das offizielle
+Linux-.NET-Archiv von https://godotengine.org/download/linux/ kann direkt in den
+Projektordner entpackt werden. Anschliessend:
+
+```bash
+./Start_Linux.sh
+```
+
+Der Starthelfer findet die entpackte Godot-Datei automatisch, baut das Projekt
+mit den darin enthaltenen .NET-Paketen und startet das Spiel. Liegt Godot an
+einem anderen Ort, kann die ausfuehrbare Datei explizit angegeben werden:
+
+```bash
+GODOT_BIN=/pfad/zu/Godot_v4.7.2-stable_mono_linux.x86_64 ./Start_Linux.sh
+```
+
+Der Editor laesst sich mit `./Start_Linux.sh --editor` oeffnen.
+
 ## Steuerung
 
 | Taste | Wirkung |
