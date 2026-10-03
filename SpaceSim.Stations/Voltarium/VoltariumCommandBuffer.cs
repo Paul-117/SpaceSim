@@ -1,10 +1,10 @@
 using System.Threading;
 using SpaceSim.Core.Power;
 
-namespace SpaceSim.Stations.Reactorium;
+namespace SpaceSim.Stations.Voltarium;
 
 /// <summary>Thread-safe reactor setpoint intent. The simulation consumes it on its own physics tick.</summary>
-public sealed class ReactoriumCommandBuffer
+public sealed class VoltariumCommandBuffer
 {
     private int _levelTenths = -1;
     private long _allocationPacked = -1;

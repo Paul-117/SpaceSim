@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://Assets/Bridge/Contacts-Rahmen.png" id="1_frame"]
+
+[node name="ContactsPanel" type="Control"]
+mouse_filter = 2
+
+[node name="Frame" type="Sprite2D" parent="."]
+position = Vector2(0, 0)
+texture = ExtResource("1_frame")
+centered = false
+region_enabled = true
+region_rect = Rect2(15, 120, 860, 1335)
+scale = Vector2(0.540698, 0.456929)

@@ -6,7 +6,7 @@ using System.Text;
 using System.Text.Json;
 using SpaceSim.Stations.Armarium;
 using SpaceSim.Stations.Debug;
-using SpaceSim.Stations.Reactorium;
+using SpaceSim.Stations.Voltarium;
 using SpaceSim.Stations.Sensorium;
 
 namespace SpaceSim.Stations;
@@ -28,14 +28,14 @@ public sealed class StationServer : IDisposable
     private readonly StationServerOptions _options;
     private readonly IReadOnlyDictionary<string, string> _assets;
     private readonly ArmariumCommandBuffer _armariumCommands;
-    private readonly ReactoriumCommandBuffer _reactoriumCommands;
+    private readonly VoltariumCommandBuffer _voltariumCommands;
     private readonly SensoriumCommandBuffer _sensoriumCommands;
     private readonly Action<string>? _log;
     private readonly ConcurrentDictionary<int, StationConnection> _connections = new();
     private readonly CancellationTokenSource _stopping = new();
     private readonly TcpListener _listener;
     private ArmariumState _latestState = new(false, 0f, 0f, 0f, false, 0f, 0, 0f, 0f, 40f, 1f, 0);
-    private ReactoriumState _latestReactoriumState = new(100f, 100f, 125f, 125f, 0f, 100f, 100f, 0f,
+    private VoltariumState _latestVoltariumState = new(100f, 100f, 125f, 125f, 0f, 100f, 100f, 0f,
         40f, 28f, 32f, 50f, 35f, 40f, 50f, 35f, 40f, 0);
     private SensoriumState _latestSensoriumState = new(Array.Empty<SensoriumContact>(), 0);
     private EnemyDebugState _latestEnemyDebugState = new(false, 0, "NONE", false, "NONE",
@@ -48,18 +48,18 @@ public sealed class StationServer : IDisposable
     private bool _started;
 
     public StationServer(StationServerOptions options, IReadOnlyDictionary<string, string> assets,
-        ArmariumCommandBuffer armariumCommands, ReactoriumCommandBuffer reactoriumCommands, Action<string>? log = null)
-        : this(options, assets, armariumCommands, reactoriumCommands, new SensoriumCommandBuffer(), log) { }
+        ArmariumCommandBuffer armariumCommands, VoltariumCommandBuffer voltariumCommands, Action<string>? log = null)
+        : this(options, assets, armariumCommands, voltariumCommands, new SensoriumCommandBuffer(), log) { }
 
     public StationServer(StationServerOptions options, IReadOnlyDictionary<string, string> assets,
-        ArmariumCommandBuffer armariumCommands, ReactoriumCommandBuffer reactoriumCommands,
+        ArmariumCommandBuffer armariumCommands, VoltariumCommandBuffer voltariumCommands,
         SensoriumCommandBuffer sensoriumCommands, Action<string>? log = null)
     {
         _options = options;
         _options.Validate();
         _assets = assets;
         _armariumCommands = armariumCommands;
-        _reactoriumCommands = reactoriumCommands;
+        _voltariumCommands = voltariumCommands;
         _sensoriumCommands = sensoriumCommands;
         _log = log;
         _listener = new TcpListener(IPAddress.Any, options.Port);
@@ -67,16 +67,16 @@ public sealed class StationServer : IDisposable
 
     public StationServer(StationServerOptions options, IReadOnlyDictionary<string, string> assets,
         ArmariumCommandBuffer armariumCommands, Action<string>? log = null)
-        : this(options, assets, armariumCommands, new ReactoriumCommandBuffer(), log) { }
+        : this(options, assets, armariumCommands, new VoltariumCommandBuffer(), log) { }
 
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
     public string ArmariumUrl => $"http://127.0.0.1:{Port}/armarium/";
-    public string ReactoriumUrl => $"http://127.0.0.1:{Port}/reactorium/";
+    public string VoltariumUrl => $"http://127.0.0.1:{Port}/voltarium/";
     public string SensoriumUrl => $"http://127.0.0.1:{Port}/sensorium/";
     public string DebugUrl => $"http://127.0.0.1:{Port}/debug/";
     /// <summary>True once an Armarium browser has completed its protocol handshake.</summary>
     public bool IsArmariumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.ArmariumStation);
-    public bool IsReactoriumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.ReactoriumStation);
+    public bool IsVoltariumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.VoltariumStation);
     public bool IsSensoriumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.SensoriumStation);
     public bool IsDebugOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.DebugStation);
 
@@ -91,7 +91,7 @@ public sealed class StationServer : IDisposable
     }
 
     public void UpdateState(ArmariumState state) => Volatile.Write(ref _latestState, state);
-    public void UpdateReactoriumState(ReactoriumState state) => Volatile.Write(ref _latestReactoriumState, state);
+    public void UpdateVoltariumState(VoltariumState state) => Volatile.Write(ref _latestVoltariumState, state);
     public void UpdateSensoriumState(SensoriumState state) => Volatile.Write(ref _latestSensoriumState, state);
     public void UpdateEnemyDebugState(EnemyDebugState state) => Volatile.Write(ref _latestEnemyDebugState, state);
 
@@ -179,7 +179,7 @@ public sealed class StationServer : IDisposable
             if (!connection.IsAccepted)
             {
                 bool knownStation = string.Equals(command.Station, StationProtocol.ArmariumStation, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(command.Station, StationProtocol.ReactoriumStation, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(command.Station, StationProtocol.VoltariumStation, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(command.Station, StationProtocol.SensoriumStation, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(command.Station, StationProtocol.DebugStation, StringComparison.OrdinalIgnoreCase);
                 if (command.Type != "hello" || !knownStation || command.ProtocolVersion != StationProtocol.Version)
@@ -201,11 +201,11 @@ public sealed class StationServer : IDisposable
                     string.Equals(command.Direction, "right", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
                 _armariumCommands.SetTurretDirection(active ? direction : 0);
             }
-            else if (connection.Station == StationProtocol.ReactoriumStation && command.Type == "reactor_level" && command.LevelPercent is float level)
-                _reactoriumCommands.SetOperatingLevel(level);
-            else if (connection.Station == StationProtocol.ReactoriumStation && command.Type == "power_allocation" &&
+            else if (connection.Station == StationProtocol.VoltariumStation && command.Type == "reactor_level" && command.LevelPercent is float level)
+                _voltariumCommands.SetOperatingLevel(level);
+            else if (connection.Station == StationProtocol.VoltariumStation && command.Type == "power_allocation" &&
                 command.BridgePercent is float bridge && command.ShieldsPercent is float shields && command.ArmariumPercent is float armarium)
-                _reactoriumCommands.SetAllocation(bridge, shields, armarium);
+                _voltariumCommands.SetAllocation(bridge, shields, armarium);
             else if (connection.Station == StationProtocol.SensoriumStation && command.Type == "active_sonar")
                 _sensoriumCommands.RequestActiveSonarPing();
             else if (connection.Station == StationProtocol.SensoriumStation && command.Type == "identify_contact" &&
@@ -226,7 +226,7 @@ public sealed class StationServer : IDisposable
                 {
                     object message = connection.Station switch
                     {
-                        StationProtocol.ReactoriumStation => new ReactoriumStateMessage(Volatile.Read(ref _latestReactoriumState), Interlocked.Increment(ref _sequence)),
+                        StationProtocol.VoltariumStation => new VoltariumStateMessage(Volatile.Read(ref _latestVoltariumState), Interlocked.Increment(ref _sequence)),
                         StationProtocol.SensoriumStation => new SensoriumStateMessage(Volatile.Read(ref _latestSensoriumState), Interlocked.Increment(ref _sequence)),
                         StationProtocol.DebugStation => new EnemyDebugStateMessage(Volatile.Read(ref _latestEnemyDebugState), Interlocked.Increment(ref _sequence)),
                         _ => new ArmariumStateMessage(Volatile.Read(ref _latestState), Interlocked.Increment(ref _sequence))
@@ -255,8 +255,8 @@ public sealed class StationServer : IDisposable
             return;
         }
         string asset = path == "/armarium/" ? "armarium/index.html" : path.StartsWith("/armarium/", StringComparison.Ordinal)
-            ? "armarium/" + path[10..] : path == "/reactorium/" ? "reactorium/index.html" :
-            path.StartsWith("/reactorium/", StringComparison.Ordinal) ? "reactorium/" + path[12..] :
+            ? "armarium/" + path[10..] : path == "/voltarium/" ? "voltarium/index.html" :
+            path.StartsWith("/voltarium/", StringComparison.Ordinal) ? "voltarium/" + path[12..] :
             path == "/sensorium/" ? "sensorium/index.html" : path.StartsWith("/sensorium/", StringComparison.Ordinal)
                 ? "sensorium/" + path[11..] :
             path == "/debug/" ? "debug/index.html" : path.StartsWith("/debug/", StringComparison.Ordinal)
@@ -408,9 +408,9 @@ public sealed class StationServer : IDisposable
         public float LanceSystemCondition => State.LanceSystemCondition;
         public long SimulationTick => State.SimulationTick;
     }
-    private sealed record ReactoriumStateMessage(ReactoriumState State, long ConnectionSequence)
+    private sealed record VoltariumStateMessage(VoltariumState State, long ConnectionSequence)
     {
-        public string Type { get; } = "reactorium_state";
+        public string Type { get; } = "voltarium_state";
         public float TargetOperatingLevelPercent => State.TargetOperatingLevelPercent;
         public float OperatingLevelPercent => State.OperatingLevelPercent;
         public float OutputPower => State.OutputPower;

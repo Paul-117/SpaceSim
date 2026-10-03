@@ -3,15 +3,15 @@ config_version=5
 
 [application]
 config/name="SpaceSim | Lance test range"
-config/version="2.0.0"
+config/version="2.1.2"
 run/main_scene="res://Scenes/Flight.tscn"
 config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
 
 [display]
-window/size/viewport_width=1280
-window/size/viewport_height=800
-window/size/window_width_override=1280
-window/size/window_height_override=800
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/window_width_override=1920
+window/size/window_height_override=1080
 window/stretch/mode="canvas_items"
 
 [dotnet]

@@ -5,7 +5,7 @@ nur Bedienabsichten und erhalten kleine, stationsspezifische Snapshots.
 
 ## Transport
 
-- HTTP: `http://<host>:47870/armarium/`, `http://<host>:47870/reactorium/`, `http://<host>:47870/sensorium/` oder `http://<host>:47870/debug/`
+- HTTP: `http://<host>:47870/armarium/`, `http://<host>:47870/voltarium/`, `http://<host>:47870/sensorium/` oder `http://<host>:47870/debug/`
 - WebSocket: `ws://<host>:47870/station`
 - Protokollversion: `9`
 - Textnachrichten: UTF-8 JSON mit camelCase-Feldern
@@ -23,7 +23,7 @@ Muss die erste WebSocket-Nachricht sein.
 | Feld | Typ | Bedeutung |
 | --- | --- | --- |
 | `type` | string | Immer `hello`. |
-| `station` | string | `armarium`, `reactorium`, `sensorium` oder `debug`. |
+| `station` | string | `armarium`, `voltarium`, `sensorium` oder `debug`. |
 | `protocolVersion` | integer | Muss `9` sein. |
 
 Bei falscher Stationskennung oder Version sendet der Server `error` und beendet die
@@ -101,7 +101,7 @@ Bestetigt eine kompatible Stationsverbindung.
 | `lanceTurretAngleDegrees` | number | Aktueller horizontaler Lafettenwinkel: negativ links, positiv rechts. |
 | `targetHitSequence` | integer | Erhoeht sich nach jedem vom Core bestaetigten Spieler-Lanzentreffer. |
 | `lastTargetHitBearingDegrees` | number | Bearing des zuletzt bestaetigten Treffers fuer den kurzen Zielhilfe-Effekt. |
-| `availablePower` | number | Aktuelles, vom Reactorium zugewiesenes Armarium-Budget in PU. |
+| `availablePower` | number | Aktuelles, vom Voltarium zugewiesenes Armarium-Budget in PU. |
 | `maximumPower` | number | Maximale Energieaufnahme der Armarium-Station in PU. |
 | `lanceSystemCondition` | number | Zustand des Waffensystems von 0 bis 1. |
 | `simulationTick` | integer | Tick des verwendeten Simulations-Snapshots. |
@@ -123,15 +123,15 @@ beschraenkt.
 | `code` | string | Maschinenlesbarer Fehlercode. |
 | `message` | string | Lesbare Fehlerbeschreibung. |
 
-## Reactorium (V1.9)
+## Voltarium (V1.9)
 
-Das Reactorium verwendet denselben HTTP-/WebSocket-Server unter
-`http://<host>:47870/reactorium/` und meldet sich mit `station: "reactorium"` an.
+Das Voltarium verwendet denselben HTTP-/WebSocket-Server unter
+`http://<host>:47870/voltarium/` und meldet sich mit `station: "voltarium"` an.
 
-### Reactorium Client zu Server
+### Voltarium Client zu Server
 
 ```json
-{ "type": "hello", "station": "reactorium", "protocolVersion": 8 }
+{ "type": "hello", "station": "voltarium", "protocolVersion": 8 }
 ```
 
 ```json
@@ -149,11 +149,11 @@ Die drei Werte sind Prozent des aktuellen Reaktor-Outputs. Sie dürfen zusammen
 höchstens 100 ergeben. Der Server puffert nur die Absicht; der Core prüft die
 Werte und setzt die Zuweisung im nächsten Simulationstick.
 
-### Reactorium Server zu Client
+### Voltarium Server zu Client
 
 ```json
 {
-  "type": "reactorium_state",
+  "type": "voltarium_state",
   "targetOperatingLevelPercent": 75,
   "operatingLevelPercent": 68.3,
   "outputPower": 85.38,
@@ -175,7 +175,7 @@ Werte und setzt die Zuweisung im nächsten Simulationstick.
 }
 ```
 
-`targetOperatingLevelPercent` ist der vom Reactorium angeforderte Sollwert.
+`targetOperatingLevelPercent` ist der vom Voltarium angeforderte Sollwert.
 `operatingLevelPercent` ist die reale, vom Core gerampte Reaktorleistung. Der
 Weg von 0 auf 100 Prozent dauert 60 Simulationssekunden. Bei 100 Prozent liefert
 der Reaktor 125 PU.

@@ -13,7 +13,7 @@ using SpaceSim.GodotClient.Audio;
 using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
 using SpaceSim.Stations.Debug;
-using SpaceSim.Stations.Reactorium;
+using SpaceSim.Stations.Voltarium;
 using SpaceSim.Stations.Sensorium;
 using NVector3 = System.Numerics.Vector3;
 using NQuaternion = System.Numerics.Quaternion;
@@ -31,11 +31,12 @@ public partial class Flight : Node
     private readonly Starfield _stars = new();
     private readonly FlightHud _hud = new();
     private readonly ThrusterStatusPanel _thrusterPanel = new();
+    private BridgeUi _bridgeUi = null!;
     private readonly StarMap _starMap = new();
     private readonly GameOverOverlay _gameOver = new();
     private readonly SoundEffects _sounds = new();
     private readonly ArmariumCommandBuffer _armariumCommands = new();
-    private readonly ReactoriumCommandBuffer _reactoriumCommands = new();
+    private readonly VoltariumCommandBuffer _voltariumCommands = new();
     private readonly SensoriumCommandBuffer _sensoriumCommands = new();
     private StationServer? _stationServer;
     private NavigationCommand _pendingNavigation;
@@ -74,6 +75,7 @@ public partial class Flight : Node
         _enemySmokeTest = OS.GetCmdlineUserArgs().Contains("--enemy-smoke-test");
         _capturePath = OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith("--capture="))?[10..];
         _simulation = CreateSimulation();
+        _bridgeUi = GD.Load<PackedScene>("res://UI/Bridge/BridgeUI.tscn").Instantiate<BridgeUi>();
         _sensoriumEnabled = LoadSensoriumEnabled();
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
         _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
@@ -82,6 +84,7 @@ public partial class Flight : Node
         _previousRotation = _simulation.World.Ship.Rotation;
         _hud.WarpMapRequested += () => _pendingNavigation = new NavigationCommand(EnterHyperspace: true);
         _hud.HyperspaceJumpRequested += ConfirmHyperspaceEntry;
+        _bridgeUi.WarpMapRequested += () => _pendingNavigation = new NavigationCommand(EnterHyperspace: true);
         _starMap.JumpRequested += id => _pendingNavigation = new NavigationCommand(id);
         _starMap.SensoriumEnabled = _sensoriumEnabled;
         _starMap.SensoriumEnabledChanged += SetSensoriumEnabled;
@@ -99,6 +102,7 @@ public partial class Flight : Node
         AddChild(cockpit);
         cockpit.AddChild(_hud);
         cockpit.AddChild(_thrusterPanel);
+        cockpit.AddChild(_bridgeUi);
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
         StartStationServer();
@@ -107,7 +111,8 @@ public partial class Flight : Node
             _simulation.World.HyperspacePhase == HyperspacePhase.SelectingDestination)
             _starMap.Open();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim 2.0.0 | Core 60 Hz | Armarium, Reactorium and Sensorium station server enabled");
+        GD.Print("SpaceSim " + ProjectSettings.GetSetting("application/config/version", "2.1.2").AsString() +
+            " | Core 60 Hz | Armarium, Voltarium and Sensorium station server enabled");
     }
 
     private Simulation CreateSimulation()
@@ -130,6 +135,7 @@ public partial class Flight : Node
         _hud.World = _simulation.World;
         _hud.Settings = _simulation.Settings;
         _thrusterPanel.World = _simulation.World;
+        _bridgeUi.World = _simulation.World;
         _starMap.World = _simulation.World;
     }
 
@@ -142,9 +148,9 @@ public partial class Flight : Node
                 ["armarium/index.html"] = Godot.FileAccess.GetFileAsString("res://Armarium/index.html"),
                 ["armarium/armarium.css"] = Godot.FileAccess.GetFileAsString("res://Armarium/armarium.css"),
                 ["armarium/armarium.js"] = Godot.FileAccess.GetFileAsString("res://Armarium/armarium.js"),
-                ["reactorium/index.html"] = Godot.FileAccess.GetFileAsString("res://Reactorium/index.html"),
-                ["reactorium/reactorium.css"] = Godot.FileAccess.GetFileAsString("res://Reactorium/reactorium.css"),
-                ["reactorium/reactorium.js"] = Godot.FileAccess.GetFileAsString("res://Reactorium/reactorium.js"),
+                ["voltarium/index.html"] = Godot.FileAccess.GetFileAsString("res://Voltarium/index.html"),
+                ["voltarium/voltarium.css"] = Godot.FileAccess.GetFileAsString("res://Voltarium/voltarium.css"),
+                ["voltarium/voltarium.js"] = Godot.FileAccess.GetFileAsString("res://Voltarium/voltarium.js"),
                 ["sensorium/index.html"] = Godot.FileAccess.GetFileAsString("res://Sensorium/index.html"),
                 ["sensorium/sensorium.css"] = Godot.FileAccess.GetFileAsString("res://Sensorium/sensorium.css"),
                 ["sensorium/sensorium.js"] = Godot.FileAccess.GetFileAsString("res://Sensorium/sensorium.js"),
@@ -152,15 +158,15 @@ public partial class Flight : Node
                 ["debug/debug.css"] = Godot.FileAccess.GetFileAsString("res://Debug/debug.css"),
                 ["debug/debug.js"] = Godot.FileAccess.GetFileAsString("res://Debug/debug.js")
             };
-            _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, _reactoriumCommands,
+            _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, _voltariumCommands,
                 _sensoriumCommands, GD.Print);
             _stationServer.Start();
             PublishArmariumState();
-            _stationServer.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
+            _stationServer.UpdateVoltariumState(VoltariumStateBuilder.Build(_simulation.World));
             _stationServer.UpdateSensoriumState(SensoriumStateBuilder.Build(_simulation.World));
             _stationServer.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World, _simulation.Settings));
             GD.Print($"Armarium available at {_stationServer.ArmariumUrl}");
-            GD.Print($"Reactorium available at {_stationServer.ReactoriumUrl}");
+            GD.Print($"Voltarium available at {_stationServer.VoltariumUrl}");
             GD.Print($"Sensorium available at {_stationServer.SensoriumUrl}");
             GD.Print($"Enemy AI debug station available at {_stationServer.DebugUrl}");
         }
@@ -283,8 +289,8 @@ public partial class Flight : Node
             ApplyAutopilotControl();
             ApplyArmariumControl();
         }
-        float? reactorLevel = _reactoriumCommands.TryReadOperatingLevel(out float requestedLevel) ? requestedLevel : null;
-        PowerAllocation? allocation = _reactoriumCommands.TryReadAllocation(out PowerAllocation requestedAllocation)
+        float? reactorLevel = _voltariumCommands.TryReadOperatingLevel(out float requestedLevel) ? requestedLevel : null;
+        PowerAllocation? allocation = _voltariumCommands.TryReadAllocation(out PowerAllocation requestedAllocation)
             ? requestedAllocation : null;
         ReactorCommand reactorCommand = new(reactorLevel, allocation);
         SensoriumCommand sensoriumCommand = _sensoriumCommands.ReadCommand();
@@ -293,7 +299,7 @@ public partial class Flight : Node
         _pendingNavigation = default;
         RecordArmariumTargetHit();
         PublishArmariumState();
-        _stationServer?.UpdateReactoriumState(ReactoriumStateBuilder.Build(_simulation.World));
+        _stationServer?.UpdateVoltariumState(VoltariumStateBuilder.Build(_simulation.World));
         _stationServer?.UpdateSensoriumState(SensoriumStateBuilder.Build(_simulation.World));
         _stationServer?.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World, _simulation.Settings));
         if (_simulation.Events.OfType<EnteredHyperspace>().Any())
@@ -354,7 +360,7 @@ public partial class Flight : Node
                 bool passed = _smokeSawShot && _smokeSawHit && _simulation.World.HitCount == 1 &&
                               _simulation.World.Ship.Velocity.Length() > 1f &&
                               _simulation.World.Ship.AngularVelocity.Y > 0f;
-                passed &= _simulation.World.Targets.Count == 0 && _thrusterPanel.GetParent() is not null;
+                passed &= _simulation.World.Targets.Count == 0 && _hud.GetParent() is not null;
                 GD.Print(passed ? "SMOKE PASS: power UI, shields, fixed ticks, thrust, rotation, lance, hit, no respawn." : "SMOKE FAIL");
                 GetTree().Quit(passed ? 0 : 1);
             }
@@ -461,9 +467,14 @@ public partial class Flight : Node
         _hud.IsFreeCamera = _freeCameraMode;
         _hud.IsHyperspacePlanning = _simulation.World.HyperspacePhase == HyperspacePhase.PlanningEntry;
         _hud.HasHyperspaceEntryPoint = _hyperspaceEntryPoint is not null;
-        _thrusterPanel.Visible = _simulation.World.IsPlayerInRealSpace;
+        _hud.Visible = !_simulation.World.IsPlayerInRealSpace;
+        _thrusterPanel.Visible = false;
         _hud.Command = _lastCommand;
         _thrusterPanel.Command = _lastCommand;
+        _bridgeUi.IsBridgeActive = _simulation.World.IsPlayerInRealSpace;
+        _bridgeUi.Command = _lastCommand;
+        _bridgeUi.AutopilotActive = _autopilot is not null;
+        _bridgeUi.AutopilotTargetName = CurrentAutopilotTarget()?.Name ?? "-";
         _hud.ArmariumOnline = _stationServer?.IsArmariumOnline == true;
         _hud.IsFocused = _keyboard.IsFocused;
         bool captureReady = _enemySmokeTest

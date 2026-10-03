@@ -54,7 +54,7 @@ abgebaut werden.
 **`Start.cmd` doppelklicken.** Das Skript baut das Projekt und startet das Spiel.
 Alternativ im Workspace:
 
-Der aktuelle Arbeitsstand ist **2.0.0**. Er umfasst Armarium, Reactorium und das neue **Sensorium** als externe Browser-Station. Die Bruecke zeigt Gegner erst nach einer Sensorium-Identifikation oder aktiven Sonaremission. Der Stand ist fuer `v2.0` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
+Der aktuelle Arbeitsstand ist **2.0.0**. Er umfasst Armarium, Voltarium und das neue **Sensorium** als externe Browser-Station. Die Bruecke zeigt Gegner erst nach einer Sensorium-Identifikation oder aktiven Sonaremission. Der Stand ist fuer `v2.0` bereit; ein Git-Tag wird nur auf ausdrueckliche Anweisung erstellt.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start.ps1
@@ -136,7 +136,7 @@ Ein Treffer zÃ¤hlt sofort und entfernt das Ziel dauerhaft fÃ¼r diese Sitzung
 sichtbare Strahl bleibt nur 0,16 Sekunden bestehen. Auch beim Wegfliegen oder
 ZurÃ¼ckspringen werden keine Ziele ersetzt.
 
-## Armarium, Reactorium und Sensorium Station Server (V2.0)
+## Armarium, Voltarium und Sensorium Station Server (V2.0)
 
 Beim Start von SpaceSim startet auf dem Haupt-PC der Station Server auf Port
 **47870**. Er liefert den Armarium-Webclient aus und akzeptiert dessen WebSocket-
@@ -186,17 +186,17 @@ Verbindungsaufbau als `armarium`, zeigt `ARMARIUM ONLINE/OFFLINE` und verbindet 
 nach einem Abbruch automatisch erneut. Details stehen in
 [StationProtocol.md](docs/StationProtocol.md).
 
-### Reactorium
+### Voltarium
 
-Das Reactorium ist unter `http://127.0.0.1:47870/reactorium/` erreichbar. Sein
+Das Voltarium ist unter `http://127.0.0.1:47870/voltarium/` erreichbar. Sein
 Operating-Level-Schieberegler setzt den autoritativen **Sollwert** von 0 bis
 100 Prozent. Die physische Reaktorleistung folgt diesem Sollwert trÃ¤ge und benÃ¶tigt
 fÃ¼r den Weg von 0 auf 100 Prozent exakt **60 Simulationssekunden**. Bei voller
-Leistung liefert der Reaktor **125 PU**. Die Reactorium-Ansicht verwendet wieder
+Leistung liefert der Reaktor **125 PU**. Die Voltarium-Ansicht verwendet wieder
 den wabbernden Reaktorkern aus dem Stationsprototyp; seine GrÃ¶ÃŸe und Bewegung
 folgen dem vom Core Ã¼bertragenen tatsÃ¤chlichen Output.
 
-Das Reactorium verteilt diese Leistung mit drei Slidern: **Bruecke**, **Schilde**
+Das Voltarium verteilt diese Leistung mit drei Slidern: **Bruecke**, **Schilde**
 und **Armarium**. Die Werte sind Prozent des aktuellen Reaktor-Outputs und zeigen
 direkt daneben die daraus autoritativ abgeleiteten PU. Die Anfangsverteilung
 40/28/32 Prozent nutzt bei 125 PU die Stationsmaxima von 50/35/40 PU. Ein Slider
@@ -209,15 +209,15 @@ er Fuel abhÃ¤ngig vom tatsÃ¤chlichen Betriebslevel: bei minimaler aktiver Le
 0,2 U/min, bei 100 Prozent 7,0 U/min mit quadratischem Verlauf dazwischen. Bei
 0 U wird der Reaktor im Core abgeschaltet; Output und gelieferte Stationsleistung
 werden 0. Eine Betankung existiert derzeit noch nicht. Die drei Stationen
-fordern ihre Leistung innerhalb ihres Reactorium-Budgets selbst an: Bruecke maximal
+fordern ihre Leistung innerhalb ihres Voltarium-Budgets selbst an: Bruecke maximal
 50 PU, Armarium maximal 40 PU und Schilde maximal 35 PU. Der Core liefert keiner
 Station mehr Energie als ihr zugewiesenes Budget.
 
 Die Bruecke besitzt keine Power-Distribution-Buttons mehr. Ihre verfÃ¼gbare
-Stationsleistung wird ausschlieÃŸlich im Reactorium zugewiesen. W rampet beim
+Stationsleistung wird ausschlieÃŸlich im Voltarium zugewiesen. W rampet beim
 Gedrueckthalten als Gas bis zur maximalen Main-Thruster-Anforderung von 20 PU.
 Fuel, Ramp, Zuweisung und Abschaltung werden ausschlieÃŸlich vom Simulations-Core
-berechnet; das Reactorium zeigt nur dessen Snapshot und sendet Zuweisungsabsichten.
+berechnet; das Voltarium zeigt nur dessen Snapshot und sendet Zuweisungsabsichten.
 
 Innerhalb der Antriebsstation sind **30 PU** dauerhaft fÃ¼r RÃ¼ckwÃ¤rts- und
 Seitentriebwerke reserviert: S, A und D besitzen jeweils 10 PU PrioritÃ¤t, auch

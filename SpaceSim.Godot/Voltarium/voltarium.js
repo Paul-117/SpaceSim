@@ -115,8 +115,8 @@
   function connect() {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     socket = new WebSocket(`${scheme}://${location.host}/station`);
-    socket.onopen = () => socket.send(JSON.stringify({ type: 'hello', station: 'reactorium', protocolVersion }));
-    socket.onmessage = event => { const message = JSON.parse(event.data); if (message.type === 'reactorium_state') { state = message; renderTelemetry(); } if (message.type === 'error') setConnection(false); };
+    socket.onopen = () => socket.send(JSON.stringify({ type: 'hello', station: 'voltarium', protocolVersion }));
+    socket.onmessage = event => { const message = JSON.parse(event.data); if (message.type === 'voltarium_state') { state = message; renderTelemetry(); } if (message.type === 'error') setConnection(false); };
     socket.onclose = () => { setConnection(false); setTimeout(connect, 1500); };
     socket.onerror = () => socket.close();
   }

@@ -11,7 +11,7 @@ using SpaceSim.Core.Power;
 using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
 using SpaceSim.Stations.Debug;
-using SpaceSim.Stations.Reactorium;
+using SpaceSim.Stations.Voltarium;
 using SpaceSim.Stations.Sensorium;
 
 var tests = new (string Name, Action Run)[]
@@ -755,7 +755,7 @@ var tests = new (string Name, Action Run)[]
               fatal.Events.OfType<PlayerDestroyed>().Single().EnemyId == 2,
             "Fatal explosion events must preserve the source enemy and distance.");
     }),
-    ("Reactorium allocations create independent player station budgets", () =>
+    ("Voltarium allocations create independent player station budgets", () =>
     {
         var sim = new Simulation(new SimulationSettings
         {
@@ -776,7 +776,7 @@ var tests = new (string Name, Action Run)[]
         Near(power.CurrentDraw, 50f);
         Near(sim.World.Ship.Reactor.CurrentDraw, 50f);
     }),
-    ("Reactorium rejects allocations above one hundred percent and honors station PU limits", () =>
+    ("Voltarium rejects allocations above one hundred percent and honors station PU limits", () =>
     {
         var sim = new Simulation(new SimulationSettings { TargetCount = 0 }, spawnEnemy: false);
         sim.Step(default, default, new ReactorCommand(Allocation: new PowerAllocation(100f, 0f, 0f)));
@@ -1080,20 +1080,20 @@ static void Step(Simulation simulation, int count, ShipCommand command = default
 static async Task StationServerSmokeAsync()
 {
     var commands = new ArmariumCommandBuffer();
-    var reactorCommands = new ReactoriumCommandBuffer();
+    var reactorCommands = new VoltariumCommandBuffer();
     var sensoriumCommands = new SensoriumCommandBuffer();
     var assets = new Dictionary<string, string>
     {
         ["index.html"] = "<main>ARMARIUM</main>",
         ["armarium.css"] = "body{}",
         ["armarium.js"] = "",
-        ["reactorium/index.html"] = "<main>REACTORIUM</main>",
+        ["voltarium/index.html"] = "<main>VOLTARIUM</main>",
         ["sensorium/index.html"] = "<main>SENSORIUM</main>",
         ["debug/index.html"] = "<main>ENEMY AI DEBUG</main>"
     };
     using var server = new StationServer(new StationServerOptions { Port = 0, StateUpdatesPerSecond = 30 }, assets, commands, reactorCommands, sensoriumCommands);
     server.UpdateState(new ArmariumState(true, -12.4f, 640f, 0.72f, false, 2.5f, 3, -12.4f, 32f, 40f, 1f, 42));
-    server.UpdateReactoriumState(new ReactoriumState(75f, 70f, 87.5f, 125f, 50f, 100f, 100f, 3.5f,
+    server.UpdateVoltariumState(new VoltariumState(75f, 70f, 87.5f, 125f, 50f, 100f, 100f, 3.5f,
         40f, 28f, 32f, 35f, 24.5f, 28f, 50f, 35f, 40f, 42));
     server.UpdateSensoriumState(new SensoriumState(
         [new SensoriumContact(2, "Argus-02", "ARGUS", "FRIGATE", -12.4f, 640f, .7f, .3f, .5f, .8f, 3, 3)], 42));
@@ -1129,27 +1129,27 @@ static async Task StationServerSmokeAsync()
     bool turretReceived = SpinWait.SpinUntil(() => commands.ReadCommand().AimLanceLeft, TimeSpan.FromSeconds(1));
     Check(turretReceived, "Station turret input must reach the thread-safe command buffer.");
 
-    string reactorPage = await http.GetStringAsync(server.ReactoriumUrl);
-    Check(reactorPage.Contains("REACTORIUM"), "Station server must serve the Reactorium page.");
+    string reactorPage = await http.GetStringAsync(server.VoltariumUrl);
+    Check(reactorPage.Contains("VOLTARIUM"), "Station server must serve the Voltarium page.");
     using var reactorSocket = new ClientWebSocket();
     await reactorSocket.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/station"), CancellationToken.None);
-    await SendWebSocketJsonAsync(reactorSocket, new { type = "hello", station = "reactorium", protocolVersion = StationProtocol.Version });
+    await SendWebSocketJsonAsync(reactorSocket, new { type = "hello", station = "voltarium", protocolVersion = StationProtocol.Version });
     using JsonDocument reactorWelcome = JsonDocument.Parse(await ReceiveWebSocketTextAsync(reactorSocket));
-    Check(reactorWelcome.RootElement.GetProperty("station").GetString() == "reactorium" && server.IsReactoriumOnline,
-        "Station server must accept a Reactorium handshake.");
+    Check(reactorWelcome.RootElement.GetProperty("station").GetString() == "voltarium" && server.IsVoltariumOnline,
+        "Station server must accept a Voltarium handshake.");
     using JsonDocument reactorState = JsonDocument.Parse(await ReceiveWebSocketTextAsync(reactorSocket));
-    Check(reactorState.RootElement.GetProperty("type").GetString() == "reactorium_state" &&
+    Check(reactorState.RootElement.GetProperty("type").GetString() == "voltarium_state" &&
           MathF.Abs(reactorState.RootElement.GetProperty("outputPower").GetSingle() - 87.5f) < 0.001f &&
           MathF.Abs(reactorState.RootElement.GetProperty("targetOperatingLevelPercent").GetSingle() - 75f) < 0.001f,
-        "Reactorium must receive only its own reactor snapshot.");
+        "Voltarium must receive only its own reactor snapshot.");
     await SendWebSocketJsonAsync(reactorSocket, new { type = "reactor_level", levelPercent = 40f });
     Check(SpinWait.SpinUntil(() => reactorCommands.TryReadOperatingLevel(out float level) && MathF.Abs(level - 40f) < 0.001f,
-        TimeSpan.FromSeconds(1)), "Reactorium level commands must reach the simulation buffer.");
+        TimeSpan.FromSeconds(1)), "Voltarium level commands must reach the simulation buffer.");
     await SendWebSocketJsonAsync(reactorSocket, new { type = "power_allocation", bridgePercent = 40f, shieldsPercent = 28f, armariumPercent = 32f });
     Check(SpinWait.SpinUntil(() => reactorCommands.TryReadAllocation(out PowerAllocation allocation) &&
         MathF.Abs(allocation.BridgePercent - 40f) < 0.001f && MathF.Abs(allocation.ShieldsPercent - 28f) < 0.001f &&
         MathF.Abs(allocation.ArmariumPercent - 32f) < 0.001f, TimeSpan.FromSeconds(1)),
-        "Reactorium allocation commands must reach the simulation buffer atomically.");
+        "Voltarium allocation commands must reach the simulation buffer atomically.");
 
     string sensoriumPage = await http.GetStringAsync(server.SensoriumUrl);
     Check(sensoriumPage.Contains("SENSORIUM"), "Station server must serve the Sensorium page.");

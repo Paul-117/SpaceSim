@@ -4,6 +4,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <Deterministic>true</Deterministic>
-    <Version>1.7.1</Version>
+    <Version>2.1.2</Version>
   </PropertyGroup>
 </Project>

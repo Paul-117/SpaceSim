@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpaceSim Bridge Layout Editor</title>
+  <link rel="stylesheet" href="editor.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <strong>BRIDGE LAYOUT EDITOR</strong>
+      <span>1920 x 1080</span>
+    </div>
+    <div class="top-actions">
+      <button id="reference-toggle" type="button">Reference: On</button>
+      <button id="grid-toggle" type="button">Grid: On</button>
+      <button id="snap-toggle" type="button">Snap: 10 px</button>
+      <label class="zoom-control" for="zoom-control">Zoom <input id="zoom-control" type="range" min="25" max="200" value="100" step="5"><output id="zoom-value">100%</output></label>
+      <button id="zoom-fit" type="button">Fit</button>
+      <button id="add-text" type="button">+ Text</button>
+      <button id="add-game-widgets" type="button">+ Game UI</button>
+      <button id="import-layout" type="button">Import JSON</button>
+      <button id="save-layout" type="button">Save local</button>
+      <button id="export-layout" type="button">Export JSON</button>
+    </div>
+  </header>
+
+  <main class="editor">
+    <aside class="sidebar palette">
+      <h2>Assets</h2>
+      <p class="hint">Asset anklicken, dann im Preview ziehen. Der Punkt rechts unten skaliert.</p>
+      <h3 class="layer-heading">Stage layers</h3>
+      <div id="stage-layers" class="layer-list"></div>
+      <h3>Neue Assets</h3>
+      <div id="asset-list" class="asset-list"></div>
+      <div class="sidebar-actions">
+        <button id="bring-front" type="button">Nach vorne</button>
+        <button id="delete-selected" type="button" class="danger">Auswahl loeschen</button>
+        <button id="reset-layout" type="button">Standard laden</button>
+      </div>
+    </aside>
+
+    <section class="canvas-area">
+      <div id="canvas-viewport" class="canvas-viewport">
+        <div id="stage-wrap">
+          <div id="stage" class="show-grid" aria-label="Bridge UI Layout Preview">
+            <img id="reference" src="../Brücke/Bridge UI New.png" alt="Bridge UI reference">
+            <div id="objects"></div>
+          </div>
+        </div>
+      </div>
+      <p class="canvas-hint">WASD: Ansicht verschieben. Shift + WASD: schneller. Ziehen: Element verschieben. Griff rechts unten: skalieren. Snap richtet auf 10 px aus.</p>
+    </section>
+
+    <aside class="sidebar inspector">
+      <h2>Inspector</h2>
+      <div id="empty-inspector" class="empty">Ein Element im Preview auswaehlen.</div>
+      <form id="inspector-form" hidden>
+        <label>Name<input id="field-name" autocomplete="off"></label>
+        <div class="pair">
+          <label>Origin X<input id="field-x" type="number" step="1"></label>
+          <label>Origin Y<input id="field-y" type="number" step="1"></label>
+        </div>
+        <div class="pair">
+          <label>Breite<input id="field-width" type="number" min="1" step="1"></label>
+          <label>Hoehe<input id="field-height" type="number" min="1" step="1"></label>
+        </div>
+        <section id="text-fields" hidden>
+          <label>Text<input id="field-text" autocomplete="off"></label>
+          <div class="pair">
+            <label>Schriftgroesse<input id="field-font-size" type="number" min="8" step="1"></label>
+            <label>Farbe<input id="field-color" type="color"></label>
+          </div>
+        </section>
+        <section id="bar-fields" hidden>
+          <label>Fuellstand (%)<input id="field-fill" type="number" min="0" max="100" step="1"></label>
+          <div class="pair">
+            <label>Segmente<input id="field-segments" type="number" min="1" max="32" step="1"></label>
+            <label>Abstand<input id="field-gap" type="number" min="0" step="1"></label>
+          </div>
+          <div class="pair">
+            <label>Segmentbreite<input id="field-segment-width" type="number" min="1" step="1"></label>
+            <label>Segmenthoehe<input id="field-segment-height" type="number" min="1" step="1"></label>
+          </div>
+          <label>Segmentfarbe<input id="field-bar-color" type="color"></label>
+        </section>
+        <label class="check"><input id="field-lock" type="checkbox"> Position sperren</label>
+      </form>
+      <section class="info">
+        <h3>Workflow</h3>
+        <p>Reference einblenden, Asset oder Text platzieren und dann die Werte exportieren. Die exportierte JSON-Datei kann anschliessend als verbindliches Layout fuer Godot dienen.</p>
+      </section>
+    </aside>
+  </main>
+
+  <input id="layout-file" type="file" accept="application/json,.json" hidden>
+  <script src="editor.js"></script>
+</body>
+</html>

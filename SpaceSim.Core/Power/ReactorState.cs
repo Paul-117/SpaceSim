@@ -5,7 +5,7 @@ public sealed class ReactorState
 {
     public float MaximumOutputPower { get; }
     public float FuelCapacity { get; }
-    /// <summary>The requested reactor level from the Reactorium, in percent.</summary>
+    /// <summary>The requested reactor level from the Voltarium, in percent.</summary>
     public float TargetOperatingLevelPercent { get; internal set; }
     /// <summary>The physical reactor level after its ramp, in percent.</summary>
     public float OperatingLevelPercent { get; internal set; }

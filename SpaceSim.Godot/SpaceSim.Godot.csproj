@@ -10,7 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="Armarium/**" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="Reactorium/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Voltarium/**" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Sensorium/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,262 @@
+Okay das mit Godot alleine zu machen funktioniert nicht. 
+Mach das rückgängig. Ich habe dir Assets bereitgestellt im Ordner mit dem Referenz Bild. 
+
+Lies dir den folgenen text mit anweisungen erst durch. noch nichts umsetzten frag wenn du fragen hast 
+
+Baue die Bridge-UI so nach, dass sie die bereitgestellte Referenzansicht visuell so exakt wie möglich reproduziert.
+
+WICHTIG:
+- Nutze die bereitgestellten PNG-Assets direkt.
+- Die Assets wurden genau für diese UI erzeugt und sollen nicht durch generische StyleBoxen ersetzt werden.
+- Die Referenzansicht ist das Zielbild.
+- Keine kreative Neuinterpretation.
+- Keine zusätzlichen Buttons, Fenster oder Informationen.
+- Ziel ist pixelnah dieselbe Komposition.
+
+Findest du alle assets für die umsetztung un kannst zuordnen welches wo hin kommt und was durch echte werte zu ersetzten ist ? 
+
+Baue die Bridge-UI in meinem Godot-4-Projekt so nach, dass sie die bereitgestellte Referenzgrafik PIXELNAH reproduziert.
+
+WICHTIG:
+Die Referenzgrafik ist die absolute visuelle Wahrheit.
+Nicht neu interpretieren.
+Nicht verschönern.
+Keine zusätzlichen Elemente hinzufügen.
+Keine generischen Ersatzrahmen bauen, wenn ein passendes PNG-Asset vorhanden ist.
+
+Zielauflösung:
+1920x1080, 16:9.
+
+Arbeite zunächst ausschließlich für diese Referenzauflösung. Responsive Scaling kommt danach.
+
+--------------------------------------------------
+1. REFERENZ
+--------------------------------------------------
+
+Suche im Projekt nach der vollständigen Bridge-UI-Referenzgrafik.
+
+Erstelle temporär einen Debug-Modus:
+
+ReferenceOverlay
+- TextureRect
+- Full Rect
+- zeigt die Referenzgrafik
+- opacity ca. 0.5
+- mouse_filter = IGNORE
+
+Damit soll die implementierte UI direkt über die Referenz gelegt werden können.
+
+Nutze dieses Overlay aktiv beim Aufbau:
+- Positionen vergleichen
+- Panelgrößen vergleichen
+- Abstände vergleichen
+- Textpositionen vergleichen
+- Balkengrößen vergleichen
+- Icons vergleichen
+
+Die fertige UI soll bei 1920x1080 möglichst exakt unter der Referenz liegen.
+
+Am Ende ReferenceOverlay standardmäßig deaktivieren.
+
+--------------------------------------------------
+2. GROSSER AUSSENRAHMEN
+--------------------------------------------------
+
+Verwende den bereitgestellten kompletten Bridge-/Chassis-Rahmen als Fullscreen TextureRect.
+
+Der Rahmen liegt über dem taktischen Spielfeld.
+
+Er darf NICHT frei nachgebaut werden.
+
+Struktur:
+
+BridgeUI
+├── TacticalMapContainer
+├── TacticalOverlay
+├── MainChassisFrame
+├── Header
+├── WarpPanel
+├── ContactsPanel
+├── SystemsPanel
+├── EnergyPanel
+├── FlightStatusPanel
+└── ReferenceOverlay
+
+MainChassisFrame:
+- exakt 1920x1080 Referenzfläche
+- Full Rect
+- mouse_filter = IGNORE
+- enthält nur den äußeren Metallrahmen
+- Mitte bleibt transparent
+
+--------------------------------------------------
+4. PNG-ASSETS
+--------------------------------------------------
+
+Verwende die von mir bereitgestellten PNGs.
+
+Ordne bzw. benenne sie intern sinnvoll, z.B.:
+
+bridge_chassis_frame.png
+
+warp_bar_frame.png
+energy_bar_frame.png
+thrust_bar_frame.png
+contact_hull_bar_frame.png
+
+ship_hull_segment_full.png
+ship_hull_segment_empty.png
+
+bar_segment_orange.png
+bar_segment_yellow.png
+bar_segment_green.png
+bar_segment_cyan.png
+bar_segment_empty.png
+
+Nutze außerdem die bereits vorhandenen:
+- Panelrahmen
+- Headerrahmen
+- Icons
+- Thruster-Icons
+- Statuspunkte
+- Tactical Overlay / Corner Marker
+
+Wenn Dateinamen anders lauten:
+identifiziere die Assets anhand ihres Bildinhalts.
+
+--------------------------------------------------
+5. BALKEN
+--------------------------------------------------
+
+KEINE normalen Godot ProgressBars mit Standard-Theme benutzen.
+
+Die Balken müssen aus den gelieferten Grafiken zusammengesetzt werden.
+
+WARP:
+- eigener warp_bar_frame
+- orange Segmente
+- leere Segmente
+- Beispielwert 62%
+
+ENERGY:
+- eigener energy_bar_frame
+- gelbe Segmente
+- leere Segmente
+- Beispiel: 6 / 10
+
+THRUST:
+- eigener thrust_bar_frame
+- cyan Segmente
+- leere Segmente
+- Beispiel: 74%
+
+CONTACT HULL:
+- eigener kleiner contact_hull_bar_frame
+- grüne Segmente
+- leere Segmente
+
+SHIP HULL:
+- KEIN normaler ProgressBar
+- exakt 3 große Segmente
+- ship_hull_segment_full
+- ship_hull_segment_empty
+- Beispiel: Full, Full, Empty
+
+Segmentabstände und Größen exakt gegen die Referenz abstimmen.
+
+--------------------------------------------------
+11. TYPOGRAFIE UND FARBEN
+--------------------------------------------------
+
+Versuche die Schrift aus der Referenz möglichst genau nachzubilden.
+
+Keine Standard-Godot-Schrift verwenden, wenn im Projekt bereits eine passendere Tech-/Sci-Fi-Schrift existiert.
+
+Farben aus der Referenz übernehmen:
+
+Paneltitel:
+helles Cyan/Blau
+
+normale Feldnamen:
+helles Blau/Grau
+
+Werte:
+weiß/hellgrau
+
+Encounter 2:
+orange
+
+Online:
+grün
+
+Limited:
+gelb
+
+Charging:
+gelb/orange
+
+Offline:
+rot
+
+Der Text soll exakt positioniert sein und nicht nur ungefähr innerhalb von VBoxContainern liegen.
+
+Für die 1920x1080 Masteransicht dürfen feste Positionen und Größen verwendet werden, wenn das nötig ist, um die Referenz exakt zu treffen.
+
+--------------------------------------------------
+12. TACTICAL OVERLAY
+--------------------------------------------------
+
+Die eigentliche taktische Karte existiert unabhängig von dieser UI.
+
+Darüber nur:
+- dezentes Grid
+- Corner Marks
+- kleine Center-/Crosshair-Markierungen
+
+Diese Elemente:
+mouse_filter = IGNORE
+
+Keine zusätzliche große Hintergrundfläche einfügen.
+
+--------------------------------------------------
+13. IMPLEMENTATION
+--------------------------------------------------
+
+Baue separate Scenes:
+
+BridgeUI.tscn
+HeaderPanel.tscn
+WarpPanel.tscn
+ContactsPanel.tscn
+SystemsPanel.tscn
+EnergyPanel.tscn
+FlightStatusPanel.tscn
+
+Dynamische Werte müssen später per Script geändert werden können.
+
+Aber zuerst hat VISUELLE ÜBEREINSTIMMUNG Priorität.
+
+--------------------------------------------------
+14. ARBEITSABLAUF
+--------------------------------------------------
+
+Arbeite in dieser Reihenfolge:
+
+1. Referenzgrafik als halbtransparentes Overlay anzeigen.
+2. Großen Außenrahmen exakt ausrichten.
+3. Alle Panelrahmen exakt positionieren.
+4. Balkenrahmen exakt positionieren.
+5. Icons einsetzen.
+6. Texte einsetzen.
+7. Balkensegmente einsetzen.
+8. Statuspunkte einsetzen.
+9. Referenzoverlay mehrfach ein-/ausblenden und Abweichungen korrigieren.
+10. Erst fertig melden, wenn die 1920x1080 Ansicht visuell sehr nah an der Referenz liegt.
+
+Wenn eine Position in der Referenz nicht exakt aus Layout-Containern reproduzierbar ist:
+verwende feste Control-Offsets.
+
+Hier ist PIXELGENAUIGKEIT wichtiger als ein maximal generisches Layout.
+
+Keine Gameplay-Systeme verändern.
+Nur Bridge UI implementieren.

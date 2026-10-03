@@ -30,7 +30,7 @@ public sealed class PowerState
     public float CurrentDraw => PropulsionDraw + WeaponsDraw + ShieldsDraw;
     /// <summary>Legacy profile scaling for AI ships; player stations use explicit allocations.</summary>
     public float DemandScale { get; internal set; } = 1f;
-    /// <summary>Bridge power budget currently allocated by the Reactorium.</summary>
+    /// <summary>Bridge power budget currently allocated by the Voltarium.</summary>
     public float PropulsionAvailable { get; internal set; }
     public float WeaponsAvailable { get; internal set; }
     public float ShieldsAvailable { get; internal set; }
@@ -54,7 +54,7 @@ public sealed class PowerState
     }
 }
 
-/// <summary>One Reactorium operating-level intent, applied only by the authoritative simulation.</summary>
+/// <summary>One Voltarium operating-level intent, applied only by the authoritative simulation.</summary>
 public readonly record struct PowerAllocation(float BridgePercent, float ShieldsPercent, float ArmariumPercent)
 {
     public float TotalPercent => BridgePercent + ShieldsPercent + ArmariumPercent;
@@ -62,5 +62,5 @@ public readonly record struct PowerAllocation(float BridgePercent, float Shields
         BridgePercent >= 0f && ShieldsPercent >= 0f && ArmariumPercent >= 0f && TotalPercent <= 100.001f;
 }
 
-/// <summary>One Reactorium intent, applied only by the authoritative simulation.</summary>
+/// <summary>One Voltarium intent, applied only by the authoritative simulation.</summary>
 public readonly record struct ReactorCommand(float? OperatingLevelPercent = null, PowerAllocation? Allocation = null);

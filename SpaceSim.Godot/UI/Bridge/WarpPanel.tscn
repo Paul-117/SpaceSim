@@ -1,0 +1,24 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://Assets/Bridge/Warp-Rahmen.png" id="1_frame"]
+
+[node name="WarpPanel" type="Control"]
+mouse_filter = 2
+
+[node name="Frame" type="Sprite2D" parent="."]
+position = Vector2(0, 0)
+texture = ExtResource("1_frame")
+centered = false
+region_enabled = true
+region_rect = Rect2(30, 175, 2110, 330)
+scale = Vector2(0.318483, 0.387879)
+
+[node name="WarpIconButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 8.0
+offset_right = 108.0
+offset_bottom = 95.0
+mouse_default_cursor_shape = 2
+flat = true
+tooltip_text = "Warp Drive"

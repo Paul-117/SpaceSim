@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SpaceSim Bridge Layout Editor
+Comment=Bridge UI assets and text layout workspace
+Exec=/usr/bin/firefox --new-window file:///home/paul/Desktop/SpaceSim/StationPrototypes/BridgeLayoutEditor/index.html
+Terminal=false
+Categories=Development;Graphics;
