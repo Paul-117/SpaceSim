@@ -26,6 +26,8 @@ public sealed class PowerState
     public float MainThrusterDraw { get; internal set; }
     public float WeaponsDraw { get; internal set; }
     public float ShieldsDraw { get; internal set; }
+    /// <summary>Reactor output actually available after Voltarium condition is applied.</summary>
+    public float EffectiveReactorOutput { get; internal set; }
     public float RequestedPower => PropulsionRequested + WeaponsRequested + ShieldsRequested;
     public float CurrentDraw => PropulsionDraw + WeaponsDraw + ShieldsDraw;
     /// <summary>Legacy profile scaling for AI ships; player stations use explicit allocations.</summary>

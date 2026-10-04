@@ -20,16 +20,16 @@ internal static class PowerDistributionSystem
         float weapons = lance.IsReady ? 0f : ship.Power.MaximumWeaponsDraw;
         float shields = ship.Shield.IsRechargeDelayed || ship.Shield.CurrentShield >= ship.Shield.MaximumShield
             ? 0f : ship.Power.MaximumShieldsDraw;
-        ApplyAllocatedDemand(ship.Power, ship.Reactor, propulsion, weapons, shields);
+        ApplyAllocatedDemand(ship.Power, ship.Reactor, propulsion, weapons, shields, ship.Systems.ReactorCondition);
     }
 
     /// <summary>Enemies use every station at its normal maximum once combat is detected.</summary>
     public static void ApplyEnemyCombatDemand(ShipState ship) =>
         ApplyDemand(ship.Power, ship.Reactor, ship.Power.MaximumPropulsionDraw,
-            ship.Power.MaximumWeaponsDraw, ship.Power.MaximumShieldsDraw);
+            ship.Power.MaximumWeaponsDraw, ship.Power.MaximumShieldsDraw, ship.Systems.ReactorCondition);
 
     public static void ApplyEnemyPatrolDemand(ShipState ship, float propulsionDemand) =>
-        ApplyDemand(ship.Power, ship.Reactor, propulsionDemand, 0f, 0f);
+        ApplyDemand(ship.Power, ship.Reactor, propulsionDemand, 0f, 0f, ship.Systems.ReactorCondition);
 
     public static void SetReactorOperatingLevel(ReactorState reactor, float percent)
     {
@@ -78,15 +78,18 @@ internal static class PowerDistributionSystem
         }
     }
 
-    private static void ApplyDemand(PowerState state, ReactorState reactor, float propulsion, float weapons, float shields)
+    private static void ApplyDemand(PowerState state, ReactorState reactor, float propulsion, float weapons, float shields,
+        float reactorCondition)
     {
+        float availablePower = EffectiveOutput(reactor, reactorCondition);
+        state.EffectiveReactorOutput = availablePower;
         state.PropulsionRequested = Math.Clamp(propulsion, 0f, state.MaximumPropulsionDraw);
         state.WeaponsRequested = Math.Clamp(weapons, 0f, state.MaximumWeaponsDraw);
         state.ShieldsRequested = Math.Clamp(shields, 0f, state.MaximumShieldsDraw);
-        state.DemandScale = state.RequestedPower <= 0f ? 1f : Math.Min(1f, reactor.AvailablePower / state.RequestedPower);
+        state.DemandScale = state.RequestedPower <= 0f ? 1f : Math.Min(1f, availablePower / state.RequestedPower);
         float fullPropulsionDemand = state.MaximumPropulsionDraw + state.WeaponsRequested + state.ShieldsRequested;
         state.PropulsionAvailable = fullPropulsionDemand <= 0f ? state.MaximumPropulsionDraw :
-            state.MaximumPropulsionDraw * Math.Min(1f, reactor.AvailablePower / fullPropulsionDemand);
+            state.MaximumPropulsionDraw * Math.Min(1f, availablePower / fullPropulsionDemand);
         state.PropulsionDraw = state.PropulsionRequested * state.DemandScale;
         state.AuxiliaryThrusterDraw = Math.Min(state.PropulsionDraw, state.AuxiliaryThrusterReserveDraw);
         state.MainThrusterDraw = Math.Max(0f, state.PropulsionDraw - state.AuxiliaryThrusterReserveDraw);
@@ -97,16 +100,19 @@ internal static class PowerDistributionSystem
         reactor.CurrentDraw = state.CurrentDraw;
     }
 
-    private static void ApplyAllocatedDemand(PowerState state, ReactorState reactor, float propulsion, float weapons, float shields)
+    private static void ApplyAllocatedDemand(PowerState state, ReactorState reactor, float propulsion, float weapons, float shields,
+        float reactorCondition)
     {
-        ClampPlayerAllocationToStationLimits(state, reactor.AvailablePower);
+        float availablePower = EffectiveOutput(reactor, reactorCondition);
+        state.EffectiveReactorOutput = availablePower;
+        ClampPlayerAllocationToStationLimits(state, availablePower);
         state.PropulsionRequested = Math.Clamp(propulsion, 0f, state.MaximumPropulsionDraw);
         state.WeaponsRequested = Math.Clamp(weapons, 0f, state.MaximumWeaponsDraw);
         state.ShieldsRequested = Math.Clamp(shields, 0f, state.MaximumShieldsDraw);
         state.DemandScale = 1f;
-        state.PropulsionAvailable = Budget(reactor.AvailablePower, state.PropulsionAllocationPercent, state.MaximumPropulsionDraw);
-        state.WeaponsAvailable = Budget(reactor.AvailablePower, state.WeaponsAllocationPercent, state.MaximumWeaponsDraw);
-        state.ShieldsAvailable = Budget(reactor.AvailablePower, state.ShieldsAllocationPercent, state.MaximumShieldsDraw);
+        state.PropulsionAvailable = Budget(availablePower, state.PropulsionAllocationPercent, state.MaximumPropulsionDraw);
+        state.WeaponsAvailable = Budget(availablePower, state.WeaponsAllocationPercent, state.MaximumWeaponsDraw);
+        state.ShieldsAvailable = Budget(availablePower, state.ShieldsAllocationPercent, state.MaximumShieldsDraw);
         state.PropulsionDraw = Math.Min(state.PropulsionRequested, state.PropulsionAvailable);
         state.AuxiliaryThrusterDraw = Math.Min(state.PropulsionDraw, state.AuxiliaryThrusterReserveDraw);
         state.MainThrusterDraw = Math.Max(0f, state.PropulsionDraw - state.AuxiliaryThrusterReserveDraw);
@@ -117,6 +123,9 @@ internal static class PowerDistributionSystem
 
     private static float Budget(float output, float allocationPercent, float stationMaximum) =>
         Math.Min(stationMaximum, Math.Max(0f, output) * allocationPercent / 100f);
+
+    private static float EffectiveOutput(ReactorState reactor, float reactorCondition) =>
+        reactor.AvailablePower * Normalized(reactorCondition);
 
     private static void ClampPlayerAllocationToStationLimits(PowerState state, float output)
     {

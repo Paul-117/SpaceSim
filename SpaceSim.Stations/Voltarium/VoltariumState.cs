@@ -16,7 +16,7 @@ public static class VoltariumStateBuilder
         var reactor = world.Ship.Reactor;
         var power = world.Ship.Power;
         return new VoltariumState(reactor.TargetOperatingLevelPercent, reactor.OperatingLevelPercent,
-            reactor.AvailablePower, reactor.MaximumOutputPower, reactor.CurrentDraw, reactor.Fuel,
+            power.EffectiveReactorOutput, reactor.MaximumOutputPower, reactor.CurrentDraw, reactor.Fuel,
             reactor.FuelCapacity, reactor.FuelUsagePerMinute, power.PropulsionAllocationPercent,
             power.ShieldsAllocationPercent, power.WeaponsAllocationPercent, power.PropulsionAvailable,
             power.ShieldsAvailable, power.WeaponsAvailable, power.MaximumPropulsionDraw,

@@ -60,7 +60,8 @@ const additionalAssets = [
   ["Asset 15", "15.png", 760, 300, 260, 174],
   ["Asset 16", "16.png", 760, 300, 260, 174],
   ["Bridge UI current", "Bridge UI current.png", 0, 0, 1920, 1080],
-  ["Bridge UI New", "Bridge UI New.png", 0, 0, 1920, 1080]
+  ["Bridge UI New", "Bridge UI New.png", 0, 0, 1920, 1080],
+  ["Schilde Icon", "Schilde Icon.png", 760, 360, 180, 180]
 ];
 
 const spriteAssets = [
@@ -173,6 +174,8 @@ let zoomFactor = 1;
 const panKeys = new Set();
 let panAnimationFrame = null;
 const collapsedGroups = new Set();
+let copiedText = null;
+let textCopyIndex = 0;
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function layoutKey() { return "spacesim-bridge-layout-editor-v1"; }
@@ -551,6 +554,14 @@ window.addEventListener("blur", () => {
   panKeys.clear();
 });
 
+window.addEventListener("keydown", event => {
+  if (!(event.ctrlKey || event.metaKey)) return;
+  const focused = document.activeElement;
+  if (focused.matches("input, textarea, select")) return;
+  if (event.code === "KeyC" && copySelectedText()) event.preventDefault();
+  if (event.code === "KeyV" && pasteCopiedText()) event.preventDefault();
+});
+
 function addAsset([name, file, x, y, width, height, crop]) {
   const id = `asset-${Date.now()}`;
   objects.push({ id, type: crop ? "sprite" : "asset", name, file, x, y, width, height, ...(crop ? { crop } : {}) });
@@ -563,6 +574,35 @@ function addText() {
   objects.push({ id, type: "text", name: "New text", text: "NEW TEXT", x: 800, y: 500, width: 260, height: 44, fontSize: 30, color: "#8bdcff" });
   selectedId = id;
   render();
+}
+
+function copySelectedText() {
+  const item = selected();
+  if (!item || item.type !== "text") return false;
+  copiedText = clone(item);
+  return true;
+}
+
+function pasteCopiedText() {
+  if (!copiedText) return false;
+  const item = clone(copiedText);
+  item.id = `text-${Date.now()}-${++textCopyIndex}`;
+  item.name = `${item.name} copy`;
+  item.x += 20;
+  item.y += 20;
+  // A duplicate starts as a free, editable element rather than inheriting the
+  // original's frame binding.
+  delete item.parentId;
+  delete item.relativeX;
+  delete item.relativeY;
+  delete item.relativeWidth;
+  delete item.relativeHeight;
+  delete item.relativeFontSize;
+  delete item.locked;
+  objects.push(item);
+  selectedId = item.id;
+  render();
+  return true;
 }
 
 function openAddElementDialog() {

@@ -50,6 +50,7 @@ public partial class BridgeUi : Control
     private Label _amariumState = null!;
     private Label _sensoriumState = null!;
     private Label _voltariumState = null!;
+    private Label _shieldsState = null!;
     private Label _systemsHull = null!;
     private Label _energyValue = null!;
     private Label _starboardState = null!;
@@ -142,6 +143,7 @@ public partial class BridgeUi : Control
         _amariumState = Label("systems-amarium-value");
         _sensoriumState = Label("systems-sensorium-value");
         _voltariumState = Label("systems-voltarium-value");
+        _shieldsState = Label("systems-shields-value");
         _systemsHull = Label("systems-hull-value");
         _energyValue = Label("energy-value");
         _starboardState = Label("energy-thruster-value");
@@ -243,9 +245,16 @@ public partial class BridgeUi : Control
 
     private void UpdateSystems()
     {
-        SetSystemStatus(_amariumState, Ratio(World.Ship.Power.WeaponsAvailable, World.Ship.Power.MaximumWeaponsDraw));
-        SetSystemStatus(_voltariumState, Ratio(World.Ship.Reactor.AvailablePower, World.Ship.Reactor.MaximumOutputPower));
-        SetSystemStatus(_sensoriumState, 1f);
+        SetSystemStatus(_amariumState, World.Ship.Power.WeaponsAvailable, World.Ship.Power.MaximumWeaponsDraw,
+            World.Ship.Systems.WeaponsCondition);
+        SetSystemStatus(_shieldsState, World.Ship.Power.ShieldsAvailable, World.Ship.Power.MaximumShieldsDraw,
+            World.Ship.Systems.ShieldsCondition);
+        SetSystemStatus(_voltariumState, World.Ship.Power.EffectiveReactorOutput,
+            World.Ship.Reactor.MaximumOutputPower, World.Ship.Systems.ReactorCondition);
+        // The Sensorium currently has no additional gameplay penalty, but it uses
+        // the bridge power budget and reports physical damage like all stations.
+        SetSystemStatus(_sensoriumState, World.Ship.Power.PropulsionAvailable,
+            World.Ship.Power.MaximumPropulsionDraw, World.Ship.Systems.SensorsCondition);
         float hull = Ratio(World.Ship.Hull.CurrentHull, World.Ship.Hull.MaximumHull);
         _systemsHull.Text = $"Hull Integrity: {hull * 100f:0}%";
         SetSegments(_shipHullSegments, hull);
@@ -257,10 +266,10 @@ public partial class BridgeUi : Control
         float energyRatio = Ratio(energy, World.Ship.Power.MaximumPropulsionDraw);
         _energyValue.Text = $"{energy:0.0} PU";
         SetSegments(_energySegments, energyRatio);
-        SetThrusterStatus(_starboardState, energyRatio);
-        SetThrusterStatus(_portState, energyRatio);
-        SetThrusterStatus(_reverseState, energyRatio);
-        SetThrusterStatus(_mainState, energyRatio);
+        SetThrusterStatus(_starboardState, energyRatio, World.Ship.Systems.PropulsionCondition);
+        SetThrusterStatus(_portState, energyRatio, World.Ship.Systems.PropulsionCondition);
+        SetThrusterStatus(_reverseState, energyRatio, World.Ship.Systems.PropulsionCondition);
+        SetThrusterStatus(_mainState, energyRatio, World.Ship.Systems.PropulsionCondition);
     }
 
     private void UpdateFlight()
@@ -321,16 +330,38 @@ public partial class BridgeUi : Control
         if (_contactHull is not null) _contactHull.Text = hull;
     }
 
-    private static void SetSystemStatus(Label label, float fraction)
+    private static void SetSystemStatus(Label label, float availablePower, float maximumPower, float condition)
     {
-        label.Text = fraction >= .999f ? "ONLINE" : fraction > 0f ? "LIMITED" : "OFFLINE";
-        SetLabelColor(label, fraction >= .999f ? Green : fraction > 0f ? Yellow : Red);
+        SetStatus(label, Ratio(availablePower, maximumPower), condition);
     }
 
-    private static void SetThrusterStatus(Label label, float fraction)
+    private static void SetThrusterStatus(Label label, float powerFraction, float propulsionCondition)
     {
-        label.Text = fraction >= .999f ? "ONLINE" : fraction > 0f ? "LIMITED" : "OFFLINE";
-        SetLabelColor(label, fraction >= .999f ? Green : fraction > 0f ? Yellow : Red);
+        SetStatus(label, powerFraction, propulsionCondition);
+    }
+
+    private static void SetStatus(Label label, float powerFraction, float condition)
+    {
+        if (powerFraction <= .001f)
+        {
+            label.Text = "OFFLINE";
+            SetLabelColor(label, Red);
+        }
+        else if (condition < .999f)
+        {
+            label.Text = "DAMAGED";
+            SetLabelColor(label, DamagedOrange);
+        }
+        else if (powerFraction < .999f)
+        {
+            label.Text = "LIMITED";
+            SetLabelColor(label, Yellow);
+        }
+        else
+        {
+            label.Text = "ONLINE";
+            SetLabelColor(label, Green);
+        }
     }
 
     private static void SetLabelColor(Label label, Color color) => label.AddThemeColorOverride("font_color", color);

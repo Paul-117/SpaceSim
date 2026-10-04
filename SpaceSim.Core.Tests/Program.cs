@@ -746,7 +746,8 @@ var tests = new (string Name, Action Run)[]
         JumpToCombat(oneSubsystem);
         oneSubsystem.Step(new ShipCommand(FireLance: true));
         float[] oneConditions = [oneSubsystem.World.Ship.Systems.PropulsionCondition,
-            oneSubsystem.World.Ship.Systems.WeaponsCondition, oneSubsystem.World.Ship.Systems.ShieldsCondition];
+            oneSubsystem.World.Ship.Systems.WeaponsCondition, oneSubsystem.World.Ship.Systems.ShieldsCondition,
+            oneSubsystem.World.Ship.Systems.ReactorCondition, oneSubsystem.World.Ship.Systems.SensorsCondition];
         Check(oneSubsystem.World.GameState == GameState.Running && oneConditions.Count(value => value == 0f) == 1,
             "An enemy destroyed within 250 meters must disable exactly one player subsystem.");
 
@@ -754,7 +755,8 @@ var tests = new (string Name, Action Run)[]
         JumpToCombat(twoSubsystems);
         twoSubsystems.Step(new ShipCommand(FireLance: true));
         float[] twoConditions = [twoSubsystems.World.Ship.Systems.PropulsionCondition,
-            twoSubsystems.World.Ship.Systems.WeaponsCondition, twoSubsystems.World.Ship.Systems.ShieldsCondition];
+            twoSubsystems.World.Ship.Systems.WeaponsCondition, twoSubsystems.World.Ship.Systems.ShieldsCondition,
+            twoSubsystems.World.Ship.Systems.ReactorCondition, twoSubsystems.World.Ship.Systems.SensorsCondition];
         Check(twoSubsystems.World.GameState == GameState.Running && twoConditions.Count(value => value == 0f) == 2,
             "An enemy destroyed within 200 meters must disable two distinct player subsystems.");
 
@@ -973,8 +975,9 @@ var tests = new (string Name, Action Run)[]
         sim.Step(new ShipCommand(FireLance: true)); // enemy shield starts empty; first hit reaches hull
         var enemy = sim.World.CurrentEnemy!;
         Check(enemy.Ship.Hull.CurrentHull == 2, "Residual lance damage must remove one hull point.");
-        var conditions = new[] { enemy.Ship.Systems.PropulsionCondition, enemy.Ship.Systems.WeaponsCondition, enemy.Ship.Systems.ShieldsCondition };
-        Check(conditions.Count(value => value == 0.5f) == 1 && conditions.Count(value => value == 1f) == 2,
+        var conditions = new[] { enemy.Ship.Systems.PropulsionCondition, enemy.Ship.Systems.WeaponsCondition,
+            enemy.Ship.Systems.ShieldsCondition, enemy.Ship.Systems.ReactorCondition, enemy.Ship.Systems.SensorsCondition };
+        Check(conditions.Count(value => value == 0.5f) == 1 && conditions.Count(value => value == 1f) == 4,
             "Each hull hit must damage exactly one subsystem by fifty percent.");
         Check(sim.Events.OfType<HullDamaged>().Any() && sim.Events.OfType<SubsystemDamaged>().Any(), "Hull events are required.");
     }),
@@ -988,7 +991,8 @@ var tests = new (string Name, Action Run)[]
         Step(sim, 600);
         EnterEncounter(sim, 1);
         Check(sim.World.Ship.Systems.PropulsionCondition == 1f && sim.World.Ship.Systems.WeaponsCondition == 1f &&
-              sim.World.Ship.Systems.ShieldsCondition == 1f && sim.World.Ship.Shield.CurrentShield == sim.World.Ship.Shield.MaximumShield,
+              sim.World.Ship.Systems.ShieldsCondition == 1f && sim.World.Ship.Systems.ReactorCondition == 1f &&
+              sim.World.Ship.Systems.SensorsCondition == 1f && sim.World.Ship.Shield.CurrentShield == sim.World.Ship.Shield.MaximumShield,
             "Successful warp must repair player systems and refill the shield.");
         Check(sim.World.CurrentEncounter.Id == 1 && hull == 1, "Warp must not repair stored enemy hull or alter encounter progress.");
     }),
