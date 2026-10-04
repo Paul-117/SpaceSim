@@ -18,8 +18,7 @@
       <button id="snap-toggle" type="button">Snap: 10 px</button>
       <label class="zoom-control" for="zoom-control">Zoom <input id="zoom-control" type="range" min="25" max="200" value="100" step="5"><output id="zoom-value">100%</output></label>
       <button id="zoom-fit" type="button">Fit</button>
-      <button id="add-text" type="button">+ Text</button>
-      <button id="add-game-widgets" type="button">+ Game UI</button>
+      <button id="add-element" type="button">+ Element hinzufuegen</button>
       <button id="import-layout" type="button">Import JSON</button>
       <button id="save-layout" type="button">Save local</button>
       <button id="export-layout" type="button">Export JSON</button>
@@ -28,13 +27,11 @@
 
   <main class="editor">
     <aside class="sidebar palette">
-      <h2>Assets</h2>
-      <p class="hint">Asset anklicken, dann im Preview ziehen. Der Punkt rechts unten skaliert.</p>
-      <h3 class="layer-heading">Stage layers</h3>
+      <h2>Verbaute Elemente</h2>
+      <p class="hint">Rahmen lassen sich aufklappen. Gebundene Inhalte folgen ihrem Rahmen beim Verschieben und Skalieren.</p>
       <div id="stage-layers" class="layer-list"></div>
-      <h3>Neue Assets</h3>
-      <div id="asset-list" class="asset-list"></div>
       <div class="sidebar-actions">
+        <button id="add-element-side" type="button">+ Element hinzufuegen</button>
         <button id="bring-front" type="button">Nach vorne</button>
         <button id="delete-selected" type="button" class="danger">Auswahl loeschen</button>
         <button id="reset-layout" type="button">Standard laden</button>
@@ -45,7 +42,7 @@
       <div id="canvas-viewport" class="canvas-viewport">
         <div id="stage-wrap">
           <div id="stage" class="show-grid" aria-label="Bridge UI Layout Preview">
-            <img id="reference" src="../Brücke/Bridge UI New.png" alt="Bridge UI reference">
+            <img id="reference" src="../../UI/Bridge/Bridge UI New.png" alt="Bridge UI reference">
             <div id="objects"></div>
           </div>
         </div>
@@ -85,6 +82,13 @@
           </div>
           <label>Segmentfarbe<input id="field-bar-color" type="color"></label>
         </section>
+        <section id="binding-fields" class="binding-fields" hidden>
+          <h3>Fenstergruppierung</h3>
+          <p id="binding-status" class="hint"></p>
+          <button id="bind-content" type="button">Bind Content</button>
+          <button id="unbind-content" type="button">Inhalte loesen</button>
+          <p class="hint">Bindet alle Elemente, deren Mittelpunkt innerhalb dieses Rahmens liegt. Gebundene Inhalte skalieren und bewegen sich mit dem Rahmen.</p>
+        </section>
         <label class="check"><input id="field-lock" type="checkbox"> Position sperren</label>
       </form>
       <section class="info">
@@ -95,6 +99,19 @@
   </main>
 
   <input id="layout-file" type="file" accept="application/json,.json" hidden>
+  <dialog id="asset-dialog" class="asset-dialog">
+    <form method="dialog" class="asset-dialog-shell">
+      <div class="asset-dialog-heading">
+        <div><strong>ELEMENT HINZUFUEGEN</strong><span id="asset-dialog-status">Suche UI/Bridge ...</span></div>
+        <button value="cancel" aria-label="Schliessen">×</button>
+      </div>
+      <div id="asset-dialog-list" class="asset-dialog-list"></div>
+      <div class="asset-dialog-actions">
+        <button id="dialog-add-text" type="button">Text</button>
+        <button id="dialog-add-game-widgets" type="button">Game UI</button>
+      </div>
+    </form>
+  </dialog>
   <script src="editor.js"></script>
 </body>
 </html>

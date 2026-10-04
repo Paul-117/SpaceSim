@@ -1,0 +1,11 @@
+{
+    "AssetPath":  "res://Assets/Sprites/Nomad/BoosterFlames.png",
+    "Columns":  8,
+    "Rows":  1,
+    "FramesPerSecond":  12,
+    "Scale":  0.036,
+    "OffsetX":  0,
+    "OffsetY":  26,
+    "DrawInFront":  false,
+    "ShipPath":  "res://Assets/Sprites/Nomad/Nomad-transparent.png"
+}

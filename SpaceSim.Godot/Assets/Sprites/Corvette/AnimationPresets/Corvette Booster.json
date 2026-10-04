@@ -1,0 +1,13 @@
+{
+    "ShipPath":  "res://Assets/Sprites/Corvette/Corvette.png",
+    "AssetPath":  "res://Assets/Sprites/Corvette/Booster2.png",
+    "Columns":  8,
+    "Rows":  1,
+    "FramesPerSecond":  12,
+    "ScaleX":  0.05,
+    "ScaleY":  0.05,
+    "OffsetX":  0,
+    "OffsetY":  28,
+    "RotationDegrees":  0,
+    "DrawInFront":  false
+}

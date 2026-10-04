@@ -15,6 +15,7 @@ public partial class BridgeUi : Control
     private static readonly Color Green = new("65eca8");
     private static readonly Color Yellow = new("ffcf5c");
     private static readonly Color Red = new("ff7777");
+    private static readonly Color DamagedOrange = new("ff9c3d");
 
     public WorldState World { get; set; } = null!;
     public ShipCommand Command { get; set; }
@@ -25,6 +26,7 @@ public partial class BridgeUi : Control
 
     private readonly Dictionary<string, Label> _labels = new();
     private readonly Dictionary<string, ColorRect[]> _bars = new();
+    private readonly Dictionary<string, Sprite2D> _assets = new();
     private Font _font = ThemeDB.FallbackFont;
     private TextureRect _referenceOverlay = null!;
     private Button _warpButton = null!;
@@ -57,6 +59,9 @@ public partial class BridgeUi : Control
     private Label _velocity = null!;
     private Label _angularVelocity = null!;
     private Label _thrust = null!;
+    private Label _boardComputerStatus = null!;
+    private Label _boardComputerCommand = null!;
+    private Sprite2D _boardComputerLed = null!;
 
     public override void _Ready()
     {
@@ -81,6 +86,7 @@ public partial class BridgeUi : Control
         UpdateSystems();
         UpdateEnergy();
         UpdateFlight();
+        UpdateBoardComputer();
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -104,7 +110,7 @@ public partial class BridgeUi : Control
             switch (item.Type)
             {
                 case "asset" when item.Id != "chassis":
-                    AddFullAsset(root, item);
+                    _assets[item.Id] = AddFullAsset(root, item);
                     break;
                 case "sprite":
                     AddSpriteAsset(root, item);
@@ -145,6 +151,9 @@ public partial class BridgeUi : Control
         _velocity = Label("flight-velocity-value");
         _angularVelocity = Label("flight-angular-value");
         _thrust = Label("flight-thrust-value");
+        _boardComputerStatus = Label("board-computer-status");
+        _boardComputerCommand = Label("board-computer-command");
+        _boardComputerLed = _assets["board-computer-led"];
         _warpSegments = Bar("warp-bar");
         _energySegments = Bar("energy-bar");
         _thrustSegments = Bar("thrust-bar");
@@ -266,6 +275,40 @@ public partial class BridgeUi : Control
         _version.Text = $"FlightLab / Version {ProjectSettings.GetSetting("application/config/version", "2.1.2").AsString()}";
     }
 
+    private void UpdateBoardComputer()
+    {
+        // The Board Computer has no independent power or damage state yet.
+        // Keep this status resolver here so a future BoardComputer subsystem can
+        // provide those values without changing the Bridge layout or label API.
+        BoardComputerStatus status = AutopilotActive ? BoardComputerStatus.Active : BoardComputerStatus.Online;
+        _boardComputerStatus.Text = status switch
+        {
+            BoardComputerStatus.Active => "ACTIVE",
+            BoardComputerStatus.Limited => "LIMITED",
+            BoardComputerStatus.Damaged => "DAMAGED",
+            BoardComputerStatus.Offline => "OFFLINE",
+            _ => "ONLINE"
+        };
+        _boardComputerCommand.Text = AutopilotActive ? "Autopilot" : "-";
+
+        Color color = status switch
+        {
+            BoardComputerStatus.Limited => Yellow,
+            BoardComputerStatus.Damaged => DamagedOrange,
+            BoardComputerStatus.Offline => Red,
+            _ => Green
+        };
+        SetLabelColor(_boardComputerStatus, color);
+
+        _boardComputerLed.Texture = status switch
+        {
+            BoardComputerStatus.Limited or BoardComputerStatus.Damaged => Load("18..png"),
+            BoardComputerStatus.Offline => Load("19.png"),
+            _ => Load("17.png")
+        };
+        _boardComputerLed.Modulate = status == BoardComputerStatus.Damaged ? DamagedOrange : Colors.White;
+    }
+
     private void SetContactValues(string name, string shipClass, string distance, string velocity, string reactor, string shields, string weapons, string hull)
     {
         _contactName.Text = name;
@@ -310,7 +353,7 @@ public partial class BridgeUi : Control
         return label;
     }
 
-    private static void AddFullAsset(Control parent, LayoutItem item)
+    private static Sprite2D AddFullAsset(Control parent, LayoutItem item)
     {
         Texture2D texture = Load(item.File);
         var asset = new Sprite2D
@@ -322,6 +365,7 @@ public partial class BridgeUi : Control
             Scale = new Vector2(item.Width / (float)texture.GetWidth(), item.Height / (float)texture.GetHeight())
         };
         parent.AddChild(asset);
+        return asset;
     }
 
     private static void AddSpriteAsset(Control parent, LayoutItem item)
@@ -372,5 +416,14 @@ public partial class BridgeUi : Control
         public float Y { get; set; }
         public float Width { get; set; }
         public float Height { get; set; }
+    }
+
+    private enum BoardComputerStatus
+    {
+        Online,
+        Active,
+        Limited,
+        Damaged,
+        Offline
     }
 }

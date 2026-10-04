@@ -28,7 +28,7 @@ public sealed class EnemyShipState
 /// <summary>Presentation and contact classification; all current classes share the same physical model.</summary>
 public enum EnemyShipClass
 {
+    Transporter,
     Corvette,
-    Frigate,
-    Cruiser
+    Frigate
 }

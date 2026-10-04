@@ -1,0 +1,122 @@
+SpaceSim V2.1 – Implementierungsübersicht
+==========================================
+
+Stand
+-----
+Projektversion: 2.1.2
+Station-Protokoll: Version 9
+Simulation: SpaceSim.Core bleibt autoritativ; Godot visualisiert und verarbeitet
+lokale Eingaben. Browser-Stationen senden ausschließlich Bedienabsichten.
+
+V2.1-Schwerpunkte
+-----------------
+V2.1 fasst die aktuelle Brückenoberfläche, Hauptmenüs, Schnellstart, die
+Animations-Workbench sowie die gegnerischen Schiffsvisuals zusammen. Die vier
+Sternenkartenpunkte bleiben erhalten, aber Gegnerklassen und Darstellungen sind
+nun klar getrennt.
+
+Encounter und Gegner
+--------------------
+- Erster Sternenkartenpunkt / Encounter 1: Zieltest mit zehn statischen Zielen.
+- Encounter 2: Easy-Transporter, Kontaktname Cetus-01.
+- Encounter 3: Medium-Corvette, Kontaktname Argus-02.
+- Encounter 4: Hard-Frigatte, Kontaktname Atlas-03.
+- Die Schwierigkeit verändert weiterhin primär die Feuerpräzision der KI.
+- Alle Gegner verwenden dieselbe Core-Physik, Energieversorgung, Reaktor-,
+  Schild-, Hull- und Subsystemregeln wie der Spieler.
+
+Gegnerdarstellung
+-----------------
+Jede Gegnerklasse besitzt eine eigene ShipView mit ihrem Schiffssprite,
+Booster-Loop und Lanzen-Schussanimation:
+
+- Transporter: Frachter2.png (transparente Variante), Easy.
+- Corvette: Corvette.png, Medium.
+- Frigatte: Frigatte.png, Hard.
+
+Die Darstellung erhält nur Snapshotdaten und normale ShipCommands aus der
+existierenden KI. Sie setzt weder Position noch Geschwindigkeit oder Rotation
+im Core. Der generische Gegnerkörper und der generische Taktik-Laser werden
+für Klassen mit eigenem Asset nicht zusätzlich gezeichnet.
+
+Zentrale Asset-Struktur
+-----------------------
+Alle Spiel- und Workbench-Assets liegen nun exportierbar im Godot-Projekt:
+
+SpaceSim.Godot/Assets/Sprites/
+  Nomad/        Spielerschiff, Varianten, Effekte und AnimationPresets/
+  Transporter/  Frachter-Sprites, Effekte und AnimationPresets/
+  Corvette/     Corvette-Sprite, Effekte und AnimationPresets/
+  Frigatte/     Frigatten-Sprite, Effekte und AnimationPresets/
+  Shared/       gemeinsame Booster-/Lanzenquellen
+
+Die alten doppelten Ordner außerhalb des Godot-Projekts und Assets/Ships wurden
+entfernt. Alle Laufzeitpfade verwenden res://Assets/Sprites/..., deshalb werden
+die Assets mit Godot-Exports ausgeliefert und funktionieren auch auf anderen PCs.
+
+Animation-Workbench
+-------------------
+Die Workbench verwendet den zentralen Sprites-Ordner als Startordner.
+
+- Schiffe und Effekte werden aus Assets/Sprites ausgewählt.
+- Ein neues Preset wird direkt im AnimationPresets/-Ordner des ausgewählten
+  Schiffssprites gespeichert.
+- Gespeicherte Pfade verwenden res:// und keine benutzerspezifischen
+  Windows-Pfade.
+- Die Workbench unterstützt Spalten, Zeilen, FPS, getrennte X/Y-Skalierung,
+  Offset, Animationsrotation, View-Rotation, WASD-Panning und Mausrad-Zoom.
+
+Brücke und Spielablauf
+----------------------
+- Hauptmenü mit Start, Options und Quit.
+- Escape öffnet im Gefecht ein Pause-Menü mit Main Menu und Quit.
+- Quick Start kann in den Options dauerhaft aktiviert werden und startet direkt
+  im Gefecht, drei Kilometer vom Gegner entfernt.
+- Der Game-Over-Bildschirm führt zum Hauptmenü zurück.
+- Der Brücken-Layout-Editor unterstützt gruppierte Rahmen, gebundene Inhalte,
+  dynamisch aus dem UI-Ordner geladene Assets und die neue Board-Computer-Anzeige.
+- Der Board Computer zeigt vorbereitete Zustände ONLINE, ACTIVE, LIMITED,
+  DAMAGED und OFFLINE. Aktuell ist ACTIVE mit dem Brücken-Autopiloten verbunden.
+
+Sensorium und Klassenbibliothek
+-------------------------------
+Die Sensorium-Bibliothek und der State Builder verwenden die neue Reihenfolge:
+
+- CETUS / TRANSPORTER
+- ARGUS / CORVETTE
+- ATLAS / FRIGATE
+
+Passive Identifikation, Tracking, aktives Sonar und die Freigabe von
+Brückenkontakten funktionieren unverändert. Vor der Identifikation bleibt ein
+Gegner für Karte, Contacts und Brücken-Autopilot verborgen.
+
+Netzwerkstationen
+-----------------
+Der Station Server läuft auf Port 47870 und liefert Armarium, Voltarium,
+Sensorium und Enemy-AI-Debug aus. Die Browseroberflächen sind HTML/CSS/Vanilla
+JavaScript ohne Build-Schritt. Das Protokoll bleibt bei Version 9.
+
+Validierung
+-----------
+- .NET-Build von SpaceSim.Godot: erfolgreich, keine Warnungen oder Fehler.
+- Core-Testprogramm: 75/75 Tests bestanden.
+- Godot-Headless-Smoke-Test: bestanden.
+
+Bekannte Grenzen
+----------------
+- Gegnerklassen unterscheiden sich momentan in Schwierigkeitsgrad, Kontaktname
+  und Darstellung. Eigene Massen, Waffen, Reaktoren oder spezielle KI-Profile
+  sind noch nicht implementiert.
+- Die Animationen sind rein visuell; Treffer, Reichweite und Energie bleiben
+  vollständig durch den Core bestimmt.
+- Die Sensorium-Signaturen sind weiterhin Prototypdaten. Eine echte
+  Reichweiten-, Störungs- und Kontaktunsicherheitslogik ist noch offen.
+
+Nächste sinnvolle Schritte
+--------------------------
+1. Größen, Offsets und Boosterpositionen pro Schiff im Spiel abstimmen.
+2. Klassenabhängige Schiffsparameter und Gegnerrollen definieren.
+3. Sensorium-Kontakte als gemeinsame Quelle für Armarium und Brücken-Autopilot
+   verwenden.
+4. Die Animations-Workbench um eine explizite Zuordnung eines Presets zu
+   Laufzeit-Effekten erweitern.

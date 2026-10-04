@@ -1,0 +1,13 @@
+{
+    "ShipPath":  "res://Assets/Sprites/Frigatte/Frigatte.png",
+    "AssetPath":  "res://Assets/Sprites/Frigatte/Booster2.png",
+    "Columns":  8,
+    "Rows":  1,
+    "FramesPerSecond":  12,
+    "ScaleX":  0.1,
+    "ScaleY":  0.1,
+    "OffsetX":  0,
+    "OffsetY":  35,
+    "RotationDegrees":  0,
+    "DrawInFront":  false
+}

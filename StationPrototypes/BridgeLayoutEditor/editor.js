@@ -3,13 +3,18 @@ const stageWrap = document.querySelector("#stage-wrap");
 const viewport = document.querySelector("#canvas-viewport");
 const objectsRoot = document.querySelector("#objects");
 const reference = document.querySelector("#reference");
-const assetList = document.querySelector("#asset-list");
 const stageLayers = document.querySelector("#stage-layers");
 const form = document.querySelector("#inspector-form");
 const emptyInspector = document.querySelector("#empty-inspector");
 const textFields = document.querySelector("#text-fields");
 const barFields = document.querySelector("#bar-fields");
 const layoutFile = document.querySelector("#layout-file");
+const assetDialog = document.querySelector("#asset-dialog");
+const assetDialogList = document.querySelector("#asset-dialog-list");
+const assetDialogStatus = document.querySelector("#asset-dialog-status");
+const bindingFields = document.querySelector("#binding-fields");
+const bindingStatus = document.querySelector("#binding-status");
+const bridgeAssetsPath = "../../UI/Bridge/";
 
 const fields = {
   name: document.querySelector("#field-name"), x: document.querySelector("#field-x"), y: document.querySelector("#field-y"),
@@ -32,7 +37,30 @@ const assets = [
   ["4 segment frame", "10.png", 800, 260, 180, 38],
   ["Green status point", "17.png", 800, 320, 50, 50],
   ["Yellow status point", "18..png", 870, 320, 50, 50],
-  ["Red status point", "19.png", 940, 320, 50, 50]
+  ["Red status point", "19.png", 940, 320, 50, 50],
+  ["Wide blue frame", "37.png", 640, 210, 640, 214]
+];
+
+// The complete UI/Bridge asset folder is available from the add dialog. Named
+// entries above are the common assets; the remaining source files stay usable
+// without having to add them to the stage layer list first.
+const additionalAssets = [
+  ["Asset 2", "2.png", 640, 210, 640, 214],
+  ["Asset 3", "3.png", 640, 210, 640, 214],
+  ["Asset 4", "4.png", 640, 210, 640, 214],
+  ["Asset 5", "5.png", 680, 260, 480, 240],
+  ["Asset 6", "6.png", 680, 260, 480, 240],
+  ["Asset 7", "7.png", 800, 360, 120, 120],
+  ["Asset 8", "8.png", 800, 360, 120, 120],
+  ["Asset 9", "9.png", 800, 360, 120, 120],
+  ["Asset 11", "11.png", 760, 300, 260, 174],
+  ["Asset 12", "12.png", 640, 210, 640, 214],
+  ["Asset 13", "13.png", 760, 300, 260, 174],
+  ["Asset 14", "14.png", 640, 210, 640, 214],
+  ["Asset 15", "15.png", 760, 300, 260, 174],
+  ["Asset 16", "16.png", 760, 300, 260, 174],
+  ["Bridge UI current", "Bridge UI current.png", 0, 0, 1920, 1080],
+  ["Bridge UI New", "Bridge UI New.png", 0, 0, 1920, 1080]
 ];
 
 const spriteAssets = [
@@ -53,7 +81,7 @@ const spriteAssets = [
   ["Thruster - main", "Thruster-Icons.png", 760, 540, 140, 200, { x: 700, y: 680, width: 210, height: 300 }]
 ];
 
-assets.push(...spriteAssets);
+assets.push(...additionalAssets, ...spriteAssets);
 
 const gameWidgets = [
   { id: "warp-title", type: "text", name: "Warp label", text: "WARP", x: 755, y: 18, width: 135, height: 30, fontSize: 28, color: "#8eb7d2" },
@@ -144,11 +172,16 @@ const snapSize = 10;
 let zoomFactor = 1;
 const panKeys = new Set();
 let panAnimationFrame = null;
+const collapsedGroups = new Set();
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function layoutKey() { return "spacesim-bridge-layout-editor-v1"; }
 function loadLayout() {
-  try { return JSON.parse(localStorage.getItem(layoutKey())) || clone(defaultObjects); }
+  try {
+    const layout = JSON.parse(localStorage.getItem(layoutKey())) || clone(defaultObjects);
+    reconcileBindings(layout);
+    return layout;
+  }
   catch { return clone(defaultObjects); }
 }
 
@@ -167,14 +200,14 @@ function render() {
     node.style.zIndex = index + 1;
     if (item.type === "asset") {
       const image = document.createElement("img");
-      image.src = `../Brücke/${item.file}`;
+      image.src = `${bridgeAssetsPath}${item.file}`;
       image.alt = item.name;
       node.append(image);
     } else if (item.type === "sprite") {
       const image = document.createElement("img");
       const scaleX = item.width / item.crop.width;
       const scaleY = item.height / item.crop.height;
-      image.src = `../Brücke/${item.file}`;
+      image.src = `${bridgeAssetsPath}${item.file}`;
       image.alt = item.name;
       image.style.position = "absolute";
       image.style.width = `${1254 * scaleX}px`;
@@ -213,22 +246,152 @@ function render() {
 
 function renderLayerList() {
   stageLayers.innerHTML = "";
-  [...objects].reverse().forEach(item => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `layer-button${item.id === selectedId ? " selected" : ""}`;
-    const label = document.createElement("span");
-    label.textContent = item.name;
-    button.append(label);
-    if (item.locked) {
-      const state = document.createElement("span");
-      state.className = "locked-state";
-      state.textContent = "LOCK";
-      button.append(state);
+  const knownIds = new Set(objects.map(item => item.id));
+  [...objects].reverse().filter(item => !item.parentId || !knownIds.has(item.parentId)).forEach(item => renderLayerItem(item, stageLayers));
+}
+
+function renderLayerItem(item, target) {
+  const children = objects.filter(entry => entry.parentId === item.id).reverse();
+  const entry = document.createElement("div");
+  entry.className = "layer-entry";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `layer-button${item.id === selectedId ? " selected" : ""}`;
+  const label = document.createElement("span");
+  label.className = "layer-label";
+  if (children.length > 0) {
+    const toggle = document.createElement("span");
+    toggle.className = "group-toggle";
+    toggle.textContent = collapsedGroups.has(item.id) ? "▸" : "▾";
+    toggle.addEventListener("click", event => {
+      event.stopPropagation();
+      if (collapsedGroups.has(item.id)) collapsedGroups.delete(item.id);
+      else collapsedGroups.add(item.id);
+      renderLayerList();
+    });
+    button.append(toggle);
+  }
+  label.textContent = item.name;
+  button.append(label);
+  if (item.locked) {
+    const state = document.createElement("span");
+    state.className = "locked-state";
+    state.textContent = "LOCK";
+    button.append(state);
+  } else if (children.length > 0) {
+    const state = document.createElement("span");
+    state.className = "locked-state";
+    state.textContent = `${children.length}`;
+    button.append(state);
+  }
+  button.addEventListener("click", () => { selectedId = item.id; render(); });
+  entry.append(button);
+  if (children.length > 0 && !collapsedGroups.has(item.id)) {
+    const list = document.createElement("div");
+    list.className = "layer-children";
+    children.forEach(child => renderLayerItem(child, list));
+    entry.append(list);
+  }
+  if (target) target.append(entry);
+  return entry;
+}
+
+function isContainer(item) {
+  return item?.type === "asset" && !item.locked;
+}
+
+function childrenOf(item) {
+  return objects.filter(entry => entry.parentId === item.id);
+}
+
+function centerIsInside(child, parent) {
+  const centerX = child.x + child.width / 2;
+  const centerY = child.y + child.height / 2;
+  return centerX >= parent.x && centerX <= parent.x + parent.width && centerY >= parent.y && centerY <= parent.y + parent.height;
+}
+
+function isAncestor(candidate, item) {
+  let current = item;
+  while (current?.parentId) {
+    if (current.parentId === candidate.id) return true;
+    current = objects.find(entry => entry.id === current.parentId);
+  }
+  return false;
+}
+
+function captureRelative(child, parent) {
+  child.relativeX = (child.x - parent.x) / parent.width;
+  child.relativeY = (child.y - parent.y) / parent.height;
+  child.relativeWidth = child.width / parent.width;
+  child.relativeHeight = child.height / parent.height;
+  if (child.type === "text") child.relativeFontSize = child.fontSize / parent.height;
+}
+
+function applyRelative(child, parent) {
+  child.x = Math.round(parent.x + child.relativeX * parent.width);
+  child.y = Math.round(parent.y + child.relativeY * parent.height);
+  child.width = Math.max(10, Math.round(child.relativeWidth * parent.width));
+  child.height = Math.max(10, Math.round(child.relativeHeight * parent.height));
+  if (child.type === "text" && Number.isFinite(child.relativeFontSize)) {
+    child.fontSize = Math.max(8, Math.round(child.relativeFontSize * parent.height));
+  }
+  if (child.type === "bar") {
+    child.segmentWidth = (child.width - child.gap * (child.segments - 1)) / child.segments;
+    child.segmentHeight = child.height;
+    normalizeBar(child);
+  }
+  syncBoundChildren(child);
+}
+
+function syncBoundChildren(parent) {
+  childrenOf(parent).forEach(child => applyRelative(child, parent));
+}
+
+function geometryChanged(item) {
+  const parent = objects.find(entry => entry.id === item.parentId);
+  if (parent) captureRelative(item, parent);
+  syncBoundChildren(item);
+}
+
+function reconcileBindings(layout = objects) {
+  const byId = new Map(layout.map(item => [item.id, item]));
+  layout.forEach(item => {
+    const parent = byId.get(item.parentId);
+    if (!parent) {
+      delete item.parentId;
+      return;
     }
-    button.addEventListener("click", () => { selectedId = item.id; render(); });
-    stageLayers.append(button);
+    if (![item.relativeX, item.relativeY, item.relativeWidth, item.relativeHeight].every(Number.isFinite)) {
+      item.relativeX = (item.x - parent.x) / parent.width;
+      item.relativeY = (item.y - parent.y) / parent.height;
+      item.relativeWidth = item.width / parent.width;
+      item.relativeHeight = item.height / parent.height;
+      if (item.type === "text") item.relativeFontSize = item.fontSize / parent.height;
+    }
   });
+}
+
+function bindContent(parent) {
+  const candidates = objects.filter(child =>
+    child !== parent && !child.locked && !isAncestor(child, parent) && centerIsInside(child, parent));
+  candidates.forEach(child => {
+    child.parentId = parent.id;
+    captureRelative(child, parent);
+  });
+  collapsedGroups.delete(parent.id);
+  render();
+}
+
+function unbindContent(parent) {
+  childrenOf(parent).forEach(child => {
+    delete child.parentId;
+    delete child.relativeX;
+    delete child.relativeY;
+    delete child.relativeWidth;
+    delete child.relativeHeight;
+    delete child.relativeFontSize;
+  });
+  render();
 }
 
 function selected() { return objects.find(item => item.id === selectedId); }
@@ -273,6 +436,7 @@ window.addEventListener("pointermove", event => {
       item.height = height;
     }
   }
+  geometryChanged(item);
   render();
 });
 window.addEventListener("pointerup", () => { action = null; });
@@ -290,6 +454,12 @@ function updateInspector() {
   fields.lock.checked = !!item.locked;
   textFields.hidden = item.type !== "text";
   barFields.hidden = item.type !== "bar";
+  bindingFields.hidden = !isContainer(item);
+  if (isContainer(item)) {
+    const count = childrenOf(item).length;
+    bindingStatus.textContent = count === 0 ? "Noch keine Inhalte gebunden." : `${count} Inhalt${count === 1 ? "" : "e"} gebunden.`;
+    document.querySelector("#unbind-content").disabled = count === 0;
+  }
   if (item.type === "text") {
     fields.text.value = item.text;
     fields.fontSize.value = item.fontSize;
@@ -325,6 +495,7 @@ form.addEventListener("input", event => {
     if (item.type === "bar" && property === "height") item.segmentHeight = item.height;
   }
   if (item.type === "bar") normalizeBar(item);
+  geometryChanged(item);
   render();
 });
 
@@ -343,8 +514,13 @@ window.addEventListener("keydown", event => {
   if (!item || item.locked || document.activeElement.tagName === "INPUT") return;
   const delta = event.shiftKey ? (snapEnabled ? 50 : 10) : (snapEnabled ? snapSize : 1);
   const movement = { ArrowLeft: [-delta, 0], ArrowRight: [delta, 0], ArrowUp: [0, -delta], ArrowDown: [0, delta] }[event.key];
-  if (movement) { item.x += movement[0]; item.y += movement[1]; event.preventDefault(); render(); }
-  if (event.key === "Delete") { objects = objects.filter(entry => entry.id !== item.id); selectedId = null; render(); }
+  if (movement) { item.x += movement[0]; item.y += movement[1]; geometryChanged(item); event.preventDefault(); render(); }
+  if (event.key === "Delete") {
+    unbindContent(item);
+    objects = objects.filter(entry => entry.id !== item.id);
+    selectedId = null;
+    render();
+  }
 });
 
 function panViewport() {
@@ -382,31 +558,80 @@ function addAsset([name, file, x, y, width, height, crop]) {
   render();
 }
 
-assets.forEach(asset => {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "asset-button";
-  button.innerHTML = `<span>${asset[0]}</span><b>+</b>`;
-  button.addEventListener("click", () => addAsset(asset));
-  assetList.append(button);
-});
-
-document.querySelector("#add-text").addEventListener("click", () => {
+function addText() {
   const id = `text-${Date.now()}`;
   objects.push({ id, type: "text", name: "New text", text: "NEW TEXT", x: 800, y: 500, width: 260, height: 44, fontSize: 30, color: "#8bdcff" });
   selectedId = id;
   render();
-});
+}
+
+function openAddElementDialog() {
+  assetDialog.showModal();
+  refreshAssetCatalog();
+}
+
+function defaultAssetForFile(file) {
+  const known = assets.find(asset => asset[1] === file);
+  return known ?? [`Neue Datei: ${file}`, file, 760, 360, 280, 140];
+}
+
+function renderAssetCatalog(files) {
+  assetDialogList.innerHTML = "";
+  [...new Set(files)].sort((left, right) => left.localeCompare(right, "de")).forEach(file => {
+    const asset = defaultAssetForFile(file);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "asset-button";
+    button.innerHTML = `<span>${asset[0]}</span><b>+</b>`;
+    button.title = file;
+    button.addEventListener("click", () => {
+      addAsset(asset);
+      assetDialog.close();
+    });
+    assetDialogList.append(button);
+  });
+}
+
+async function refreshAssetCatalog() {
+  assetDialogStatus.textContent = "Durchsuche UI/Bridge ...";
+  try {
+    const response = await fetch(new URL("../../api/bridge-assets", window.location.href), { cache: "no-store" });
+    if (!response.ok) throw new Error("Asset API unavailable");
+    const files = await response.json();
+    if (!Array.isArray(files)) throw new Error("Invalid asset response");
+    renderAssetCatalog(files);
+    assetDialogStatus.textContent = `${files.length} Dateien aus UI/Bridge - automatisch aktualisiert`;
+  } catch {
+    renderAssetCatalog(assets.map(asset => asset[1]));
+    assetDialogStatus.textContent = "Lokaler Server nicht aktiv - zeige bekannten Asset-Katalog.";
+  }
+}
+
 function addMissingGameWidgets() {
   const existingIds = new Set(objects.map(item => item.id));
   const additions = gameWidgets.filter(item => !existingIds.has(item.id)).map(clone);
   objects.push(...additions);
   return additions;
 }
-document.querySelector("#add-game-widgets").addEventListener("click", () => {
+document.querySelector("#dialog-add-game-widgets").addEventListener("click", () => {
   const additions = addMissingGameWidgets();
   selectedId = additions.at(-1)?.id ?? selectedId;
+  assetDialog.close();
   render();
+});
+document.querySelector("#dialog-add-text").addEventListener("click", () => {
+  addText();
+  assetDialog.close();
+});
+document.querySelector("#add-element").addEventListener("click", openAddElementDialog);
+document.querySelector("#add-element-side").addEventListener("click", openAddElementDialog);
+document.querySelector("#bind-content").addEventListener("click", () => {
+  const item = selected();
+  if (isContainer(item)) bindContent(item);
+});
+document.querySelector("#unbind-content").addEventListener("click", () => {
+  const item = selected();
+  if (isContainer(item)) unbindContent(item);
 });
 document.querySelector("#import-layout").addEventListener("click", () => layoutFile.click());
 layoutFile.addEventListener("change", async event => {
@@ -416,6 +641,7 @@ layoutFile.addEventListener("change", async event => {
     const imported = JSON.parse(await file.text());
     if (!Array.isArray(imported)) throw new Error("Layout is not an array.");
     objects = imported;
+    reconcileBindings();
     const additions = addMissingGameWidgets();
     selectedId = additions.at(-1)?.id ?? null;
     render();
@@ -457,6 +683,7 @@ document.querySelector("#bring-front").addEventListener("click", () => {
 document.querySelector("#delete-selected").addEventListener("click", () => {
   const item = selected();
   if (!item || item.locked) return;
+  unbindContent(item);
   objects = objects.filter(entry => entry !== item);
   selectedId = null;
   render();

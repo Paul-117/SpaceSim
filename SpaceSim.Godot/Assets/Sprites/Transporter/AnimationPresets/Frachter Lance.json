@@ -1,0 +1,13 @@
+{
+    "ShipPath":  "res://Assets/Sprites/Transporter/Frachter2.png",
+    "AssetPath":  "res://Assets/Sprites/Transporter/Lance.png",
+    "Columns":  1,
+    "Rows":  8,
+    "FramesPerSecond":  12,
+    "ScaleX":  0.5,
+    "ScaleY":  0.5,
+    "OffsetX":  0,
+    "OffsetY":  -512,
+    "RotationDegrees":  0,
+    "DrawInFront":  false
+}

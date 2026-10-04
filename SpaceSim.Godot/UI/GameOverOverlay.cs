@@ -5,22 +5,22 @@ namespace SpaceSim.GodotClient.UI;
 
 public partial class GameOverOverlay : Control
 {
-    public Button RestartButton { get; } = CockpitButton.Create("Neustart");
-    public event Action? RestartRequested;
+    public Button MainMenuButton { get; } = CockpitButton.Create("Main Menu");
+    public event Action? MainMenuRequested;
 
     public override void _Ready()
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Stop;
-        RestartButton.Size = new Vector2(220, 52);
-        RestartButton.Pressed += () => RestartRequested?.Invoke();
-        AddChild(RestartButton);
+        MainMenuButton.Size = new Vector2(220, 52);
+        MainMenuButton.Pressed += () => MainMenuRequested?.Invoke();
+        AddChild(MainMenuButton);
         Hide();
     }
 
     public override void _Process(double delta)
     {
-        RestartButton.Position = GetViewportRect().Size / 2f + new Vector2(-110, 78);
+        MainMenuButton.Position = GetViewportRect().Size / 2f + new Vector2(-110, 78);
         if (Visible) QueueRedraw();
     }
 

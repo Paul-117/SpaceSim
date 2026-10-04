@@ -27,12 +27,14 @@ public partial class Flight : Node
     private readonly KeyboardShipControl _keyboard = new();
     private readonly ArenaView _arena = new();
     private readonly ShipView _ship = new();
+    private readonly Dictionary<int, EnemyShipView> _enemyShips = new();
     private readonly Camera2D _camera = new();
     private readonly Starfield _stars = new();
     private readonly FlightHud _hud = new();
     private readonly ThrusterStatusPanel _thrusterPanel = new();
     private BridgeUi _bridgeUi = null!;
     private readonly StarMap _starMap = new();
+    private readonly MainMenuOverlay _mainMenu = new();
     private readonly GameOverOverlay _gameOver = new();
     private readonly SoundEffects _sounds = new();
     private readonly ArmariumCommandBuffer _armariumCommands = new();
@@ -66,6 +68,7 @@ public partial class Flight : Node
     private Vector2? _hyperspaceEntryPoint;
     private HyperspacePhase _lastHyperspacePhase;
     private bool _sensoriumEnabled = true;
+    private bool _quickStartEnabled;
 
     public override void _Ready()
     {
@@ -74,7 +77,10 @@ public partial class Flight : Node
         _warpSmokeTest = OS.GetCmdlineUserArgs().Contains("--warp-smoke-test");
         _enemySmokeTest = OS.GetCmdlineUserArgs().Contains("--enemy-smoke-test");
         _capturePath = OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith("--capture="))?[10..];
-        _simulation = CreateSimulation();
+        _quickStartEnabled = LoadQuickStartEnabled();
+        _simulation = !_smokeTest && !_warpSmokeTest && !_enemySmokeTest && _quickStartEnabled
+            ? CreateQuickStartSimulation()
+            : CreateSimulation();
         _bridgeUi = GD.Load<PackedScene>("res://UI/Bridge/BridgeUI.tscn").Instantiate<BridgeUi>();
         _sensoriumEnabled = LoadSensoriumEnabled();
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
@@ -86,9 +92,14 @@ public partial class Flight : Node
         _hud.HyperspaceJumpRequested += ConfirmHyperspaceEntry;
         _bridgeUi.WarpMapRequested += () => _pendingNavigation = new NavigationCommand(EnterHyperspace: true);
         _starMap.JumpRequested += id => _pendingNavigation = new NavigationCommand(id);
-        _starMap.SensoriumEnabled = _sensoriumEnabled;
-        _starMap.SensoriumEnabledChanged += SetSensoriumEnabled;
-        _gameOver.RestartRequested += RestartGame;
+        _mainMenu.SensoriumEnabled = _sensoriumEnabled;
+        _mainMenu.SensoriumEnabledChanged += SetSensoriumEnabled;
+        _mainMenu.QuickStartEnabled = _quickStartEnabled;
+        _mainMenu.QuickStartEnabledChanged += SetQuickStartEnabled;
+        _mainMenu.StartRequested += StartFromMainMenu;
+        _mainMenu.MainMenuRequested += ReturnToMainMenu;
+        _mainMenu.QuitRequested += () => GetTree().Quit();
+        _gameOver.MainMenuRequested += ReturnToMainMenu;
         var backdrop = new CanvasLayer { Layer = -10 };
         AddChild(backdrop);
         backdrop.AddChild(_stars);
@@ -105,11 +116,11 @@ public partial class Flight : Node
         cockpit.AddChild(_bridgeUi);
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
+        cockpit.AddChild(_mainMenu);
         StartStationServer();
         _lastHyperspacePhase = _simulation.World.HyperspacePhase;
-        if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest &&
-            _simulation.World.HyperspacePhase == HyperspacePhase.SelectingDestination)
-            _starMap.Open();
+        if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest && !_quickStartEnabled)
+            _mainMenu.ShowMain();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
         GD.Print("SpaceSim " + ProjectSettings.GetSetting("application/config/version", "2.1.2").AsString() +
             " | Core 60 Hz | Armarium, Voltarium and Sensorium station server enabled");
@@ -126,6 +137,13 @@ public partial class Flight : Node
                 initialTargets: Enumerable.Range(0, testTargetCount).Select(i =>
                     i == 0 ? new NVector3(0, 0, -300) : new NVector3(200 + 40 * i, 0, 200)), spawnEnemy: false)
             : new Simulation(new SimulationSettings { StartInHyperspace = true });
+    }
+
+    private static Simulation CreateQuickStartSimulation()
+    {
+        var simulation = new Simulation(new SimulationSettings { StartInHyperspace = true });
+        simulation.Step(default, new NavigationCommand(QuickStartEncounterId: 2, QuickStartDistanceMeters: 3_000f));
+        return simulation;
     }
 
     private void BindWorld()
@@ -185,6 +203,15 @@ public partial class Flight : Node
     public override void _Input(InputEvent input)
     {
         if (_gameOver.Visible) return;
+        if (_mainMenu.IsOpen) return;
+        if (_simulation.World.IsPlayerInRealSpace && !_starMap.Visible &&
+            input is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
+        {
+            _keyboard.Clear();
+            _mainMenu.ShowPause();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (_simulation.World.HyperspacePhase == HyperspacePhase.PlanningEntry &&
             input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } entryClick &&
             IsTacticalMapPoint(entryClick.Position))
@@ -262,6 +289,7 @@ public partial class Flight : Node
             GetTree().Quit(passed ? 0 : 1);
             return;
         }
+        if (_mainMenu.IsOpen) return;
         if (_warpScenario is not null)
         {
             try { _lastCommand = _warpScenario.BeforeTick(); }
@@ -326,6 +354,10 @@ public partial class Flight : Node
             _ship.StartReentry(_visualTime);
         }
         _arena.ShowEvents(_simulation.Events);
+        foreach (WeaponFired shot in _simulation.Events.OfType<WeaponFired>().Where(shot => shot.Owner == WeaponOwner.Player))
+            _ship.PlayLanceShot(_simulation.World.LanceAim.YawOffsetDegrees);
+        foreach (WeaponFired shot in _simulation.Events.OfType<WeaponFired>().Where(shot => shot.Owner == WeaponOwner.Enemy))
+            PlayEnemyLanceShot(shot);
         _sounds.Update(_simulation.World, _simulation.Settings, _lastCommand, _simulation.Events);
         if (_simulation.Events.OfType<PlayerDestroyed>().Any())
         {
@@ -343,7 +375,7 @@ public partial class Flight : Node
                     GetTree().Quit(1);
                     return;
                 }
-                _gameOver.RestartButton.EmitSignal(Button.SignalName.Pressed);
+                _gameOver.MainMenuButton.EmitSignal(Button.SignalName.Pressed);
             }
         }
         if (_warpSmokeTest && _simulation.World.Tick >= 610)
@@ -394,25 +426,62 @@ public partial class Flight : Node
 
     private static bool LoadSensoriumEnabled()
     {
-        var preferences = new ConfigFile();
-        return preferences.Load(BridgePreferencesPath) == Error.Ok
-            ? preferences.GetValue("bridge", "sensorium_enabled", true).AsBool()
-            : true;
+        return LoadBridgePreferences().GetValue("bridge", "sensorium_enabled", true).AsBool();
+    }
+
+    private static bool LoadQuickStartEnabled()
+    {
+        return LoadBridgePreferences().GetValue("bridge", "quick_start_enabled", false).AsBool();
     }
 
     private void SetSensoriumEnabled(bool enabled)
     {
         _sensoriumEnabled = enabled;
         _simulation.World.RequireSensoriumConfirmationForBridgeContacts = enabled;
-        var preferences = new ConfigFile();
+        var preferences = LoadBridgePreferences();
         preferences.SetValue("bridge", "sensorium_enabled", enabled);
         if (preferences.Save(BridgePreferencesPath) != Error.Ok)
             GD.PushWarning("Could not save bridge preferences.");
     }
 
-    private void RestartGame()
+    private void SetQuickStartEnabled(bool enabled)
     {
-        _simulation = CreateSimulation();
+        _quickStartEnabled = enabled;
+        var preferences = LoadBridgePreferences();
+        preferences.SetValue("bridge", "quick_start_enabled", enabled);
+        if (preferences.Save(BridgePreferencesPath) != Error.Ok)
+            GD.PushWarning("Could not save bridge preferences.");
+    }
+
+    private static ConfigFile LoadBridgePreferences()
+    {
+        var preferences = new ConfigFile();
+        preferences.Load(BridgePreferencesPath);
+        return preferences;
+    }
+
+    private void StartFromMainMenu()
+    {
+        if (_quickStartEnabled)
+        {
+            RestartGame(quickStart: true);
+            _mainMenu.Hide();
+            return;
+        }
+
+        _mainMenu.Hide();
+        _starMap.Open();
+    }
+
+    private void ReturnToMainMenu()
+    {
+        RestartGame();
+        _mainMenu.ShowMain();
+    }
+
+    private void RestartGame(bool quickStart = false)
+    {
+        _simulation = quickStart ? CreateQuickStartSimulation() : CreateSimulation();
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
         _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
         BindWorld();
@@ -447,9 +516,13 @@ public partial class Flight : Node
         NVector3 forward = NVector3.Transform(-NVector3.UnitZ, rotation);
         _ship.Position = ViewSettings.Project(position);
         _ship.Rotation = MathF.Atan2(forward.X, -forward.Z);
-        _ship.Refresh(_lastCommand, _simulation.World.Lance.IsReady, _visualTime,
-            _simulation.World.LanceAim.YawOffsetDegrees);
+        float effectiveMainThrust = _lastCommand.MainThrust
+            ? Math.Clamp(_lastCommand.MainThrustIntensity, 0f, 1f) * state.Power.MainThrusterPowerFactor *
+              state.Systems.PropulsionCondition
+            : 0f;
+        _ship.Refresh(_lastCommand, _visualTime, effectiveMainThrust);
         _ship.Visible = _simulation.World.IsPlayerInRealSpace;
+        RefreshEnemyShips();
         UpdateCamera((float)delta);
         _arena.ShipPosition = _ship.Position;
         _arena.ShipForward = new Vector2(forward.X, forward.Z).Normalized();
@@ -485,6 +558,51 @@ public partial class Flight : Node
             _capturing = true;
             CaptureFrame();
         }
+    }
+
+    private void RefreshEnemyShips()
+    {
+        HashSet<int> activeVisualEnemies = _simulation.World.VisibleEnemies
+            .Where(enemy => EnemyShipView.HasVisual(enemy.ShipClass) && !enemy.IsDestroyed)
+            .Select(enemy => enemy.EnemyId)
+            .ToHashSet();
+
+        foreach (int staleId in _enemyShips.Keys.Where(id => !activeVisualEnemies.Contains(id)).ToArray())
+        {
+            _enemyShips[staleId].QueueFree();
+            _enemyShips.Remove(staleId);
+        }
+
+        foreach (EnemyShipState enemy in _simulation.World.VisibleEnemies.Where(enemy => activeVisualEnemies.Contains(enemy.EnemyId)))
+        {
+            if (!_enemyShips.TryGetValue(enemy.EnemyId, out EnemyShipView? view))
+            {
+                view = new EnemyShipView { ShipClass = enemy.ShipClass, ZIndex = 1 };
+                _enemyShips.Add(enemy.EnemyId, view);
+                AddChild(view);
+            }
+
+            NVector3 forward = enemy.Ship.Forward;
+            view.Position = ViewSettings.Project(enemy.Ship.Position);
+            view.Rotation = MathF.Atan2(forward.X, -forward.Z);
+            ShipCommand command = _simulation.World.CurrentEncounter.GetEnemyAi(enemy.EnemyId)?.LastCommand ?? default;
+            float mainThrust = command.MainThrust
+                ? Math.Clamp(command.MainThrustIntensity, 0f, 1f) * enemy.Ship.Power.MainThrusterPowerFactor *
+                  enemy.Ship.Systems.PropulsionCondition
+                : 0f;
+            view.Refresh(command, mainThrust);
+            view.Visible = _simulation.World.IsPlayerInRealSpace;
+        }
+    }
+
+    private void PlayEnemyLanceShot(WeaponFired shot)
+    {
+        EnemyShipState? firingEnemy = _simulation.World.VisibleEnemies
+            .Where(enemy => EnemyShipView.HasVisual(enemy.ShipClass) && !enemy.IsDestroyed)
+            .OrderBy(enemy => NVector3.DistanceSquared(enemy.Ship.Position, shot.Origin))
+            .FirstOrDefault();
+        if (firingEnemy is not null && _enemyShips.TryGetValue(firingEnemy.EnemyId, out EnemyShipView? view))
+            view.PlayLanceShot();
     }
 
     private void ToggleFreeCamera()

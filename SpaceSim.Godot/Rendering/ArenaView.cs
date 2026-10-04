@@ -34,7 +34,9 @@ public partial class ArenaView : Node2D
                 _beams.Clear();
                 _impacts.Clear();
             }
-            if (item is WeaponFired shot)
+            // Ship-attached Lance presets own the player and all configured enemy shot visuals.
+            // The tactical beam remains a fallback for enemy classes without art.
+            if (item is WeaponFired shot && shot.Owner != WeaponOwner.Player && !IsShipPresetShot(shot))
                 _beams.Add(new Beam(ViewSettings.Project(shot.Origin),
                     ViewSettings.Project(shot.VisualFadeStart ?? shot.End),
                     ViewSettings.Project(shot.VisualEnd ?? shot.End), shot.Owner));
@@ -48,6 +50,10 @@ public partial class ArenaView : Node2D
                 _impacts.Add(new Impact(ViewSettings.Project(shield.Position)));
         }
     }
+
+    private bool IsShipPresetShot(WeaponFired shot) => World.VisibleEnemies
+        .Where(enemy => EnemyShipView.HasVisual(enemy.ShipClass) && !enemy.IsDestroyed)
+        .Any(enemy => NVector3.DistanceSquared(enemy.Ship.Position, shot.Origin) <= 4f);
 
     public override void _Process(double delta)
     {
@@ -180,25 +186,30 @@ public partial class ArenaView : Node2D
         Vector2 center = ViewSettings.Project(enemy.Ship.Position);
         Vector2 forward = new(enemy.Ship.Forward.X, enemy.Ship.Forward.Z);
         Vector2 right = new(-forward.Y, forward.X);
-        Vector2[] hull =
-        {
-            center + forward * 23,
-            center - forward * 14 + right * 14,
-            center - forward * 8,
-            center - forward * 14 - right * 14,
-            center + forward * 23
-        };
         Color enemyColor = new("ff6577");
-        DrawColoredPolygon(hull[..^1], new Color("3c1722"));
-        DrawPolyline(hull, enemyColor, 1.8f, true);
-        DrawLine(center, center + forward * 18, enemyColor, 2, true);
+        // Configured enemy classes have their own ship-attached sprites and effects. The simple
+        // tactical hull remains the fallback for classes without visual assets.
+        if (!EnemyShipView.HasVisual(enemy.ShipClass))
+        {
+            Vector2[] hull =
+            {
+                center + forward * 23,
+                center - forward * 14 + right * 14,
+                center - forward * 8,
+                center - forward * 14 - right * 14,
+                center + forward * 23
+            };
+            DrawColoredPolygon(hull[..^1], new Color("3c1722"));
+            DrawPolyline(hull, enemyColor, 1.8f, true);
+            DrawLine(center, center + forward * 18, enemyColor, 2, true);
+        }
         if (SelectedEnemyId == enemy.EnemyId)
             DrawArc(center, 30, 0, MathF.Tau, 32, ViewSettings.Alpha(ViewSettings.Cyan, .8f), 1.5f, true);
         Vector2 nameSize = ThemeDB.FallbackFont.GetStringSize(enemy.Name, fontSize: 12);
         DrawString(ThemeDB.FallbackFont, center + new Vector2(-nameSize.X / 2f, -30), enemy.Name,
             fontSize: 12, modulate: enemyColor);
         var ai = World.CurrentEncounter.GetEnemyAi(enemy.EnemyId);
-        if (ai?.LastCommand.MainThrust == true)
+        if (!EnemyShipView.HasVisual(enemy.ShipClass) && ai?.LastCommand.MainThrust == true)
             DrawLine(center - forward * 15, center - forward * 32, new Color("ffb15c"), 4, true);
         DrawString(ThemeDB.FallbackFont, center + right * 25 + new Vector2(4, 4),
             $"{enemy.ShipClass.ToString().ToUpperInvariant()}  {ai?.CurrentState.ToString().ToUpperInvariant()}  LANCE {enemy.Lance.ChargeFraction * 100:0}%",

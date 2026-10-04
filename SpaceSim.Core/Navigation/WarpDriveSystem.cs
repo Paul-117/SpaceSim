@@ -1,6 +1,7 @@
 using System.Numerics;
 using SpaceSim.Core.Simulation;
 using SpaceSim.Core.Power;
+using SpaceSim.Core.Combat;
 
 namespace SpaceSim.Core.Navigation;
 
@@ -9,6 +10,21 @@ internal static class WarpDriveSystem
     public static void Step(WorldState world, NavigationCommand command, SimulationSettings settings,
         List<SimulationEvent> events, Random navigationRandom)
     {
+        if (command.QuickStartEncounterId is int quickStartEncounterId)
+        {
+            EncounterState? destination = world.Encounters.FirstOrDefault(encounter => encounter.Id == quickStartEncounterId);
+            EnemyShipState? enemy = destination?.Enemies.FirstOrDefault(candidate => !candidate.IsDestroyed);
+            if (destination is not null && enemy is not null && float.IsFinite(command.QuickStartDistanceMeters) &&
+                command.QuickStartDistanceMeters > settings.ShipCollisionDistanceMeters)
+            {
+                int quickStartOriginId = world.CurrentEncounter.Id;
+                world.CurrentEncounter = destination;
+                EnterRealSpace(world, enemy.Ship.Position + Vector3.UnitZ * command.QuickStartDistanceMeters);
+                events.Add(new EncounterChanged(quickStartOriginId, destination.Id));
+            }
+            return;
+        }
+
         var drive = world.WarpDrive;
         drive.ChargedSeconds = Math.Min(settings.WarpChargeSeconds,
             drive.ChargedSeconds + 1.0 / SimulationSettings.TickRate);
@@ -42,6 +58,15 @@ internal static class WarpDriveSystem
 
         if (world.HyperspacePhase != HyperspacePhase.PlanningEntry || command.EntryPosition is not { } entry) return;
         int originId = world.HyperspaceOriginEncounterId ?? world.CurrentEncounter.Id;
+        EnterRealSpace(world, entry);
+        // Re-entry is the completed warp. The next charge cycle begins on the following simulation tick.
+        Drain(drive, settings);
+        events.Add(new SystemsRepaired(WeaponOwner.Player, null, world.Ship.Position));
+        events.Add(new EncounterChanged(originId, world.CurrentEncounter.Id));
+    }
+
+    private static void EnterRealSpace(WorldState world, Vector3 entry)
+    {
         world.Ship.Position = new Vector3(entry.X, 0f, entry.Z);
         world.Ship.Velocity = Vector3.Zero;
         world.Ship.Rotation = Quaternion.Identity;
@@ -51,10 +76,6 @@ internal static class WarpDriveSystem
         world.Ship.Shield.RechargeDelayRemaining = 0f;
         world.HyperspaceOriginEncounterId = null;
         world.HyperspacePhase = HyperspacePhase.RealSpace;
-        // Re-entry is the completed warp. The next charge cycle begins on the following simulation tick.
-        Drain(drive, settings);
-        events.Add(new SystemsRepaired(WeaponOwner.Player, null, world.Ship.Position));
-        events.Add(new EncounterChanged(originId, world.CurrentEncounter.Id));
     }
 
     private static void Drain(WarpDriveState drive, SimulationSettings settings)

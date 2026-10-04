@@ -1,11 +1,12 @@
-# SpaceSim 2.0.0
+# SpaceSim 2.1.2
 
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
 Sternenkarte verbundene Encounter. Encounter 1 startet mit 10 Zielen, Encounter 2
-mit einem Easy-Gegner, Encounter 3 mit einem Medium-Gegner und Encounter 4 mit
-einem Hard-Gegner. Es gibt keinen Respawn. Grafik und HUD entstehen aus
-geometrischen Formen; externe Assets sind nicht erforderlich.
+ mit einem Easy-Transporter, Encounter 3 mit einer Medium-Korvette und Encounter 4 mit
+ einer Hard-Frigatte. Es gibt keinen Respawn. Grafik und HUD entstehen aus
+geometrischen Formen und eigenen Schiffs-Assets. Die Laufzeit-Assets liegen unter
+`SpaceSim.Godot/Assets/Sprites` und werden mit Godot exportiert.
 ## Energieverteilung und Schilde
 
 Jedes Schiff besitzt einen vereinfachten Reaktor mit konstanten **100 Power Units**.

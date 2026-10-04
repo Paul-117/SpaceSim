@@ -254,7 +254,7 @@ var tests = new (string Name, Action Run)[]
         JumpToCombat(sim);
         SensoriumState state = SensoriumStateBuilder.Build(sim.World);
         SensoriumContact contact = state.Contacts.Single();
-        Check(contact.SignatureCode == "ARGUS" && contact.ShipClass == "FRIGATE" && contact.Name.StartsWith("Argus", StringComparison.Ordinal) &&
+        Check(contact.SignatureCode == "ARGUS" && contact.ShipClass == "CORVETTE" && contact.Name.StartsWith("Argus", StringComparison.Ordinal) &&
               MathF.Abs(contact.BearingDegrees) < .01f && MathF.Abs(contact.DistanceMeters - 900f) < .1f &&
               contact.ReactorOutputFraction is >= 0f and <= 1f && contact.ShieldFraction is >= 0f and <= 1f,
             "Sensorium must receive compact class, bearing, range and system telemetry for its own contact view.");
@@ -354,8 +354,8 @@ var tests = new (string Name, Action Run)[]
         Check(enemies.Select(enemy => enemy.ShipClass).Distinct().Count() == enemies.Length,
             "Each configured enemy must expose its contact class.");
         Check(enemies.Select(enemy => enemy.ShipClass).SequenceEqual(
-                [EnemyShipClass.Corvette, EnemyShipClass.Frigate, EnemyShipClass.Cruiser]),
-            "Easy, Medium and Hard encounters must use the CETUS, ARGUS and ATLAS contact classes.");
+                [EnemyShipClass.Transporter, EnemyShipClass.Corvette, EnemyShipClass.Frigate]),
+            "Easy, Medium and Hard encounters must use Transporter, Corvette and Frigate contact classes.");
         Check(sim.World.Encounters.SelectMany(e => e.Targets).Select(t => t.Id).Distinct().Count() == 10,
             "Target IDs must be unique across encounters.");
     }),
@@ -469,6 +469,18 @@ var tests = new (string Name, Action Run)[]
         Check(sim.World.HyperspacePhase == HyperspacePhase.RealSpace && sim.World.CurrentEncounter.Id == 1,
             "Confirming the first entry point must begin the encounter in real space.");
         NearVector(sim.World.Ship.Position, new Vector3(125, 0, -75));
+    }),
+    ("Quick Start enters the first combat encounter three kilometres from its enemy", () =>
+    {
+        var sim = new Simulation(new SimulationSettings { StartInHyperspace = true });
+        sim.Step(default, new NavigationCommand(QuickStartEncounterId: 2, QuickStartDistanceMeters: 3_000f));
+        EnemyShipState enemy = sim.World.CurrentEnemy ?? throw new Exception("Quick Start needs an active combat enemy.");
+        Check(sim.World.HyperspacePhase == HyperspacePhase.RealSpace && sim.World.CurrentEncounter.Id == 2,
+            "Quick Start must bypass hyperspace planning and begin in Encounter 2.");
+        Near(Vector3.Distance(sim.World.Ship.Position, enemy.Ship.Position), 3_000f, .01f);
+        NearVector(sim.World.Ship.Velocity, Vector3.Zero);
+        Check(sim.Events.OfType<EncounterChanged>().Single() == new EncounterChanged(1, 2),
+            "Quick Start must publish the usual encounter-change event for presentation.");
     }),
     ("Hyperspace entry planning uses a bounded last known enemy position", () =>
     {
@@ -1006,6 +1018,12 @@ var tests = new (string Name, Action Run)[]
         Near(easy.FireAimToleranceRadians * 180f / MathF.PI, 2f);
         Near(medium.FireAimToleranceRadians * 180f / MathF.PI, 3f);
         Near(hard.FireAimToleranceRadians * 180f / MathF.PI, 5f);
+        Check(sim.World.Encounters[1].Enemy!.ShipClass == EnemyShipClass.Transporter,
+            "Encounter 2 must contain the easy Transporter.");
+        Check(sim.World.Encounters[2].Enemy!.ShipClass == EnemyShipClass.Corvette,
+            "Encounter 3 must contain the medium Corvette.");
+        Check(sim.World.Encounters[3].Enemy!.ShipClass == EnemyShipClass.Frigate,
+            "Encounter 4 must contain the hard Frigate.");
     }),
     ("Invalid AI settings are rejected", () =>
     {

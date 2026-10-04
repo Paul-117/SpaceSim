@@ -4,9 +4,9 @@
   const bearing = document.querySelector('#bearing-canvas'), bearingCtx = bearing.getContext('2d');
   const sonar = document.querySelector('#sonar-canvas'), sonarCtx = sonar.getContext('2d');
   const library = [
-    { code: 'CETUS', type: 'CORVETTE', color: '#d6b66a', peaks: { reactor: 432, shields: 514, propulsion: 656, weapons: 730 } },
-    { code: 'ARGUS', type: 'FRIGATE', color: '#86d5b0', peaks: { reactor: 486, shields: 619, propulsion: 684, weapons: 548 } },
-    { code: 'ATLAS', type: 'CRUISER', color: '#a89bdb', peaks: { reactor: 454, shields: 572, propulsion: 702, weapons: 644 } }
+    { code: 'CETUS', type: 'TRANSPORTER', color: '#d6b66a', peaks: { reactor: 432, shields: 514, propulsion: 656, weapons: 730 } },
+    { code: 'ARGUS', type: 'CORVETTE', color: '#86d5b0', peaks: { reactor: 486, shields: 619, propulsion: 684, weapons: 548 } },
+    { code: 'ATLAS', type: 'FRIGATE', color: '#a89bdb', peaks: { reactor: 454, shields: 572, propulsion: 702, weapons: 644 } }
   ];
   const labels = { reactor: 'REACTOR', shields: 'SHIELDS', propulsion: 'DRIVE', weapons: 'WEAPONS' };
   let socket, contacts = [], selectedLibrary = 0, scanBearing = 0, activeSonar = false, trackingEnabled = false, sweep = 0;

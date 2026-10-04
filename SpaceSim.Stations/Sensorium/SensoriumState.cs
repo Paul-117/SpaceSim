@@ -47,9 +47,9 @@ public static class SensoriumStateBuilder
 
     private static string SignatureCode(EnemyShipClass shipClass) => shipClass switch
     {
-        EnemyShipClass.Corvette => "CETUS",
-        EnemyShipClass.Frigate => "ARGUS",
-        EnemyShipClass.Cruiser => "ATLAS",
+        EnemyShipClass.Transporter => "CETUS",
+        EnemyShipClass.Corvette => "ARGUS",
+        EnemyShipClass.Frigate => "ATLAS",
         _ => "UNKNOWN"
     };
 
