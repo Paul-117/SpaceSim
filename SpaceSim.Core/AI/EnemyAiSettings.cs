@@ -22,8 +22,12 @@ public sealed record EnemyAiSettings
     public float MaximumApproachClosingSpeed { get; init; } = 55f;
     /// <summary>Largest accepted relative speed when entering or holding weapon range.</summary>
     public float MaximumAttackRelativeSpeed { get; init; } = 35f;
-    /// <summary>Separation targeted by a high-speed fly-by; must exceed the 100 metre collision distance.</summary>
-    public float FlybySafetyDistanceMeters { get; init; } = 180f;
+    /// <summary>Preferred separation when a manoeuvre is required; the AI aims to pass at least this far away.</summary>
+    public float FlybySafetyDistanceMeters { get; init; } = 250f;
+    /// <summary>AI accepts no planned trajectory closer than this, while the physical collision threshold is 50 m.</summary>
+    public float CollisionAvoidanceMinimumDistanceMeters { get; init; } = 100f;
+    /// <summary>A direct collision course is only actively deflected once ships are this close.</summary>
+    public float CollisionAvoidanceTriggerDistanceMeters { get; init; } = 350f;
     /// <summary>Inside this distance braking must not turn the ship around for main-engine thrust.</summary>
     public float NoMainEngineTurnDistanceMeters { get; init; } = 2_000f;
     /// <summary>Minimum lead time used to estimate the player's near-future course.</summary>
@@ -34,6 +38,19 @@ public sealed record EnemyAiSettings
     public float TurnCommandThreshold { get; init; } = 0.03f;
     public float ThrustAlignmentAngle { get; init; } = Degrees(18f);
     public float ShipHitRadiusMeters { get; init; } = 16f;
+
+    /// <summary>Vanguard only enters ATTACK once this much of a firing solution already exists.</summary>
+    public float VanguardAttackEntryAimAngle { get; init; } = Degrees(28f);
+    /// <summary>Vanguard keeps this separation from the target before it resumes a combat pass.</summary>
+    public float VanguardSafetyDistanceMeters { get; init; } = 220f;
+    /// <summary>Vanguard commits to a recovery arc long enough to prevent state flutter.</summary>
+    public float VanguardMinimumRepositionDuration { get; init; } = 1.2f;
+    /// <summary>Vanguard's planned lateral velocity component during an entry or safety arc.</summary>
+    public float VanguardLateralSpeedMetersPerSecond { get; init; } = 28f;
+    /// <summary>Kestrel only enters ATTACK after this target alignment has already been established.</summary>
+    public float KestrelAttackEntryAimAngle { get; init; } = Degrees(24f);
+    /// <summary>Kestrel performs a short deflection, then deliberately returns to pursuit.</summary>
+    public float KestrelMinimumRepositionDuration { get; init; } = .75f;
 
     internal void Validate()
     {
@@ -50,6 +67,8 @@ public sealed record EnemyAiSettings
         Positive(MaximumApproachClosingSpeed, nameof(MaximumApproachClosingSpeed));
         Positive(MaximumAttackRelativeSpeed, nameof(MaximumAttackRelativeSpeed));
         Positive(FlybySafetyDistanceMeters, nameof(FlybySafetyDistanceMeters));
+        Positive(CollisionAvoidanceMinimumDistanceMeters, nameof(CollisionAvoidanceMinimumDistanceMeters));
+        Positive(CollisionAvoidanceTriggerDistanceMeters, nameof(CollisionAvoidanceTriggerDistanceMeters));
         Positive(NoMainEngineTurnDistanceMeters, nameof(NoMainEngineTurnDistanceMeters));
         Positive(MinimumInterceptLeadSeconds, nameof(MinimumInterceptLeadSeconds));
         Positive(RotationKp, nameof(RotationKp));
@@ -57,10 +76,21 @@ public sealed record EnemyAiSettings
         Positive(TurnCommandThreshold, nameof(TurnCommandThreshold));
         Positive(ThrustAlignmentAngle, nameof(ThrustAlignmentAngle));
         Positive(ShipHitRadiusMeters, nameof(ShipHitRadiusMeters));
+        Positive(VanguardAttackEntryAimAngle, nameof(VanguardAttackEntryAimAngle));
+        Positive(VanguardSafetyDistanceMeters, nameof(VanguardSafetyDistanceMeters));
+        Positive(VanguardMinimumRepositionDuration, nameof(VanguardMinimumRepositionDuration));
+        Positive(VanguardLateralSpeedMetersPerSecond, nameof(VanguardLateralSpeedMetersPerSecond));
+        Positive(KestrelAttackEntryAimAngle, nameof(KestrelAttackEntryAimAngle));
+        Positive(KestrelMinimumRepositionDuration, nameof(KestrelMinimumRepositionDuration));
         if (MinimumCombatDistance >= PreferredCombatDistance || PreferredCombatDistance >= MaximumCombatDistance)
             throw new ArgumentException("Combat distances must increase from minimum through preferred to maximum.");
-        if (FlybySafetyDistanceMeters <= 100f)
-            throw new ArgumentOutOfRangeException(nameof(FlybySafetyDistanceMeters), "Must exceed collision distance.");
+        if (CollisionAvoidanceMinimumDistanceMeters <= 50f)
+            throw new ArgumentOutOfRangeException(nameof(CollisionAvoidanceMinimumDistanceMeters), "Must exceed the physical collision threshold.");
+        if (FlybySafetyDistanceMeters < CollisionAvoidanceMinimumDistanceMeters ||
+            CollisionAvoidanceTriggerDistanceMeters <= FlybySafetyDistanceMeters)
+            throw new ArgumentException("Collision avoidance distances must increase from minimum through manoeuvre to trigger.");
+        if (VanguardSafetyDistanceMeters <= CollisionAvoidanceMinimumDistanceMeters)
+            throw new ArgumentOutOfRangeException(nameof(VanguardSafetyDistanceMeters), "Must exceed the AI minimum distance.");
         if (PatrolSpawnMaximumDistanceMeters <= PatrolSpawnMinimumDistanceMeters ||
             DetectionRangeAtFullReactorMeters > PatrolSpawnMinimumDistanceMeters)
             throw new ArgumentException("Patrol spawn distances must stay outside the detection range.");

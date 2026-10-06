@@ -12,7 +12,9 @@ internal static class HullSystem
         int before = hull.CurrentHull;
         hull.CurrentHull = Math.Max(0, before - 1);
         events.Add(new HullDamaged(owner, enemyId, before, hull.CurrentHull, position));
-        var choices = Enum.GetValues<ShipSubsystem>().Where(system => systems.Get(system) > 0f).ToArray();
+        var choices = settings.EnableSubsystemDamage
+            ? Enum.GetValues<ShipSubsystem>().Where(system => systems.Get(system) > 0f).ToArray()
+            : Array.Empty<ShipSubsystem>();
         if (choices.Length > 0)
         {
             var system = choices[random.Next(choices.Length)];

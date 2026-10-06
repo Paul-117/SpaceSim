@@ -109,8 +109,10 @@ public sealed class AutopilotController
     }
 
     private bool IsOverspeedCollisionRisk() =>
-        _context.ClosingSpeed > _settings.MaximumAttackRelativeSpeed &&
-        ClosestApproachDistance() < _settings.FlybySafetyDistanceMeters;
+        _context.Distance < _settings.CollisionAvoidanceMinimumDistanceMeters ||
+        (_context.Distance <= _settings.CollisionAvoidanceTriggerDistanceMeters &&
+         _context.ClosingSpeed > 0f &&
+         ClosestApproachDistance() < _settings.CollisionAvoidanceMinimumDistanceMeters);
 
     private bool HasSafeFlybyTrajectory() =>
         _context.RelativeVelocity.Length() > _settings.MaximumAttackRelativeSpeed &&

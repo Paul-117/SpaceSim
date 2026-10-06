@@ -1,0 +1,105 @@
+{
+  "Id": "kestrel_vs_kestrel_2026-10-06_12-35-59-632",
+  "CreatedAt": "2026-10-06T12:35:59.6321149+02:00",
+  "Nomad": {
+    "MainBoosterKilonewtons": 144,
+    "ReverseBoosterKilonewtons": 72,
+    "SideBoosterKilonewtons": 4.68,
+    "ShieldRechargeSeconds": 3,
+    "LanceRangeMeters": 1000,
+    "LanceChargeSeconds": 3
+  },
+  "Enemy": {
+    "MainBoosterKilonewtons": 144,
+    "ReverseBoosterKilonewtons": 72,
+    "SideBoosterKilonewtons": 4.68,
+    "ShieldRechargeSeconds": 5,
+    "LanceRangeMeters": 1000,
+    "LanceChargeSeconds": 2
+  },
+  "Battles": [
+    {
+      "Number": 1,
+      "Seed": 739649699,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 28.166666666666668,
+      "MinimumDistanceMeters": 716.95764,
+      "LogFile": "gefecht_01.txt"
+    },
+    {
+      "Number": 2,
+      "Seed": 739657618,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 33.75,
+      "MinimumDistanceMeters": 717.204,
+      "LogFile": "gefecht_02.txt"
+    },
+    {
+      "Number": 3,
+      "Seed": 739665537,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 40.9,
+      "MinimumDistanceMeters": 642.14276,
+      "LogFile": "gefecht_03.txt"
+    },
+    {
+      "Number": 4,
+      "Seed": 739673456,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 69.25,
+      "MinimumDistanceMeters": 655.25806,
+      "LogFile": "gefecht_04.txt"
+    },
+    {
+      "Number": 5,
+      "Seed": 739681375,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 46.016666666666666,
+      "MinimumDistanceMeters": 630.6172,
+      "LogFile": "gefecht_05.txt"
+    },
+    {
+      "Number": 6,
+      "Seed": 739689294,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 38.71666666666667,
+      "MinimumDistanceMeters": 606.94977,
+      "LogFile": "gefecht_06.txt"
+    },
+    {
+      "Number": 7,
+      "Seed": 739697213,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 36.95,
+      "MinimumDistanceMeters": 633.5851,
+      "LogFile": "gefecht_07.txt"
+    },
+    {
+      "Number": 8,
+      "Seed": 739705132,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 58.6,
+      "MinimumDistanceMeters": 625.88586,
+      "LogFile": "gefecht_08.txt"
+    },
+    {
+      "Number": 9,
+      "Seed": 739713051,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 41.18333333333333,
+      "MinimumDistanceMeters": 636.04785,
+      "LogFile": "gefecht_09.txt"
+    },
+    {
+      "Number": 10,
+      "Seed": 739720970,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 48,
+      "MinimumDistanceMeters": 646.436,
+      "LogFile": "gefecht_10.txt"
+    }
+  ],
+  "NomadWins": 0,
+  "EnemyWins": 10,
+  "Timeouts": 0
+}

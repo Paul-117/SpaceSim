@@ -1,0 +1,14 @@
+SpaceSim Gefechts-Simulation
+Erstellt: 2026-10-06T12:36:57.8323263+02:00
+Nomad: Main 144 kN, Reverse 72 kN, Side 4,68 kN, Schild 5 s, Lanze 1500 m / 3 s
+Gegner: Main 144 kN, Reverse 72 kN, Side 4,68 kN, Schild 5 s, Lanze 1000 m / 3 s
+
+Gefechtslauf 01: nomad_sieg; Seed 207039749; Dauer 45,12 s; minimaler Abstand 615,1 m; gefecht_01.txt
+Gefechtslauf 02: gegner_sieg; Seed 207047668; Dauer 45,17 s; minimaler Abstand 604,9 m; gefecht_02.txt
+Gefechtslauf 03: nomad_sieg; Seed 207055587; Dauer 42,03 s; minimaler Abstand 609,1 m; gefecht_03.txt
+Gefechtslauf 04: nomad_sieg; Seed 207063506; Dauer 51,35 s; minimaler Abstand 613,5 m; gefecht_04.txt
+Gefechtslauf 05: nomad_sieg; Seed 207071425; Dauer 49,68 s; minimaler Abstand 611,7 m; gefecht_05.txt
+
+Nomad-Siege: 4
+Gegner-Siege: 1
+Timeouts: 0

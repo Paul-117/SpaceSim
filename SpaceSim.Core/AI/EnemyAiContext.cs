@@ -18,21 +18,26 @@ public readonly record struct EnemyAiContext(
     float EnemyLanceCharge,
     float PlayerLanceCharge)
 {
-    internal static EnemyAiContext Create(ShipState player, LanceState playerLance, EnemyShipState enemy)
+    internal static EnemyAiContext Create(ShipState target, LanceState targetLance, EnemyShipState enemy) =>
+        Create(target, targetLance, enemy.Ship, enemy.Lance);
+
+    /// <summary>Builds the same relative combat context for any two ships.
+    /// It is used by the symmetric 1VS1 simulator as well as enemy AI.</summary>
+    internal static EnemyAiContext Create(ShipState target, LanceState targetLance, ShipState controlledShip, LanceState controlledLance)
     {
-        Vector3 relativePosition = player.Position - enemy.Ship.Position;
+        Vector3 relativePosition = target.Position - controlledShip.Position;
         float distance = relativePosition.Length();
-        Vector3 direction = distance > 0.0001f ? relativePosition / distance : enemy.Ship.Forward;
-        Vector3 relativeVelocity = player.Velocity - enemy.Ship.Velocity;
+        Vector3 direction = distance > 0.0001f ? relativePosition / distance : controlledShip.Forward;
+        Vector3 relativeVelocity = target.Velocity - controlledShip.Velocity;
         float closingSpeed = -Vector3.Dot(relativeVelocity, direction);
         float lineOfSightAngularVelocity = distance > 0.0001f
             ? Vector3.Cross(relativePosition, relativeVelocity).Y / (distance * distance)
             : 0f;
         return new EnemyAiContext(relativePosition, direction, relativeVelocity, distance, closingSpeed,
             lineOfSightAngularVelocity,
-            SignedPlanarAngle(enemy.Ship.Forward, direction),
-            SignedPlanarAngle(player.Forward, -direction),
-            enemy.Lance.ChargeFraction, playerLance.ChargeFraction);
+            SignedPlanarAngle(controlledShip.Forward, direction),
+            SignedPlanarAngle(target.Forward, -direction),
+            controlledLance.ChargeFraction, targetLance.ChargeFraction);
     }
 
     internal static float SignedPlanarAngle(Vector3 from, Vector3 to)

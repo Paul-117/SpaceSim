@@ -10,6 +10,7 @@ using SpaceSim.GodotClient.Rendering;
 using SpaceSim.GodotClient.UI;
 using SpaceSim.GodotClient.Testing;
 using SpaceSim.GodotClient.Audio;
+using SpaceSim.GodotClient.Logging;
 using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
 using SpaceSim.Stations.Debug;
@@ -23,6 +24,7 @@ namespace SpaceSim.GodotClient;
 public partial class Flight : Node
 {
     private const string BridgePreferencesPath = "user://bridge_preferences.cfg";
+    private const float NomadSideThrusterLeverArmMeters = 11.53f;
     private Simulation _simulation = null!;
     private readonly KeyboardShipControl _keyboard = new();
     private readonly ArenaView _arena = new();
@@ -69,6 +71,11 @@ public partial class Flight : Node
     private HyperspacePhase _lastHyperspacePhase;
     private bool _sensoriumEnabled = true;
     private bool _quickStartEnabled;
+    private bool _startDuelDirect;
+    private bool _duelMode;
+    private bool _duelFinished;
+    private DuelAiLogger? _duelLogger;
+    private BoosterConfiguration _boosterConfiguration = BoosterConfiguration.Default;
 
     public override void _Ready()
     {
@@ -76,11 +83,16 @@ public partial class Flight : Node
         _smokeTest = OS.GetCmdlineUserArgs().Contains("--smoke-test");
         _warpSmokeTest = OS.GetCmdlineUserArgs().Contains("--warp-smoke-test");
         _enemySmokeTest = OS.GetCmdlineUserArgs().Contains("--enemy-smoke-test");
+        _startDuelDirect = OS.GetCmdlineUserArgs().Contains("--duel");
         _capturePath = OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith("--capture="))?[10..];
         _quickStartEnabled = LoadQuickStartEnabled();
-        _simulation = !_smokeTest && !_warpSmokeTest && !_enemySmokeTest && _quickStartEnabled
-            ? CreateQuickStartSimulation()
-            : CreateSimulation();
+        _boosterConfiguration = LoadBoosterConfiguration();
+        _duelMode = _startDuelDirect;
+        _simulation = !_smokeTest && !_warpSmokeTest && !_enemySmokeTest && _startDuelDirect
+            ? CreateDuelSimulation()
+            : !_smokeTest && !_warpSmokeTest && !_enemySmokeTest && _quickStartEnabled
+                ? CreateQuickStartSimulation()
+                : CreateSimulation();
         _bridgeUi = GD.Load<PackedScene>("res://UI/Bridge/BridgeUI.tscn").Instantiate<BridgeUi>();
         _sensoriumEnabled = LoadSensoriumEnabled();
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
@@ -88,18 +100,30 @@ public partial class Flight : Node
         BindWorld();
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
-        _hud.WarpMapRequested += () => _pendingNavigation = new NavigationCommand(EnterHyperspace: true);
+        _hud.WarpMapRequested += () =>
+        {
+            if (!_duelMode) _pendingNavigation = new NavigationCommand(EnterHyperspace: true);
+        };
         _hud.HyperspaceJumpRequested += ConfirmHyperspaceEntry;
-        _bridgeUi.WarpMapRequested += () => _pendingNavigation = new NavigationCommand(EnterHyperspace: true);
+        _bridgeUi.WarpMapRequested += () =>
+        {
+            if (!_duelMode) _pendingNavigation = new NavigationCommand(EnterHyperspace: true);
+        };
         _starMap.JumpRequested += id => _pendingNavigation = new NavigationCommand(id);
         _mainMenu.SensoriumEnabled = _sensoriumEnabled;
         _mainMenu.SensoriumEnabledChanged += SetSensoriumEnabled;
         _mainMenu.QuickStartEnabled = _quickStartEnabled;
         _mainMenu.QuickStartEnabledChanged += SetQuickStartEnabled;
+        _mainMenu.BoosterConfiguration = _boosterConfiguration;
+        _mainMenu.BoosterConfigurationChanged += SetBoosterConfiguration;
         _mainMenu.StartRequested += StartFromMainMenu;
+        _mainMenu.DuelRequested += StartDuel;
+        _mainMenu.ResumeRequested += ResumeGame;
         _mainMenu.MainMenuRequested += ReturnToMainMenu;
         _mainMenu.QuitRequested += () => GetTree().Quit();
         _gameOver.MainMenuRequested += ReturnToMainMenu;
+        _gameOver.RestartRequested += RestartCurrentMode;
+        _gameOver.QuitRequested += () => GetTree().Quit();
         var backdrop = new CanvasLayer { Layer = -10 };
         AddChild(backdrop);
         backdrop.AddChild(_stars);
@@ -119,7 +143,8 @@ public partial class Flight : Node
         cockpit.AddChild(_mainMenu);
         StartStationServer();
         _lastHyperspacePhase = _simulation.World.HyperspacePhase;
-        if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest && !_quickStartEnabled)
+        StartDuelLogIfNeeded();
+        if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest && !_quickStartEnabled && !_startDuelDirect)
             _mainMenu.ShowMain();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
         GD.Print("SpaceSim " + ProjectSettings.GetSetting("application/config/version", "2.1.2").AsString() +
@@ -136,19 +161,67 @@ public partial class Flight : Node
             ? new Simulation(new SimulationSettings { TargetCount = testTargetCount },
                 initialTargets: Enumerable.Range(0, testTargetCount).Select(i =>
                     i == 0 ? new NVector3(0, 0, -300) : new NVector3(200 + 40 * i, 0, 200)), spawnEnemy: false)
-            : new Simulation(new SimulationSettings { StartInHyperspace = true });
+            : new Simulation(CreateGameplaySettings(startInHyperspace: true));
     }
 
-    private static Simulation CreateQuickStartSimulation()
+    private Simulation CreateQuickStartSimulation()
     {
-        var simulation = new Simulation(new SimulationSettings { StartInHyperspace = true });
+        var simulation = new Simulation(CreateGameplaySettings(startInHyperspace: true));
         simulation.Step(default, new NavigationCommand(QuickStartEncounterId: 2, QuickStartDistanceMeters: 3_000f));
         return simulation;
     }
 
+    private Simulation CreateDuelSimulation()
+    {
+        var random = new Random(unchecked((int)Time.GetTicksMsec()));
+        float separationBearing = (float)(random.NextDouble() * MathF.Tau);
+        float playerCourse = (float)(random.NextDouble() * MathF.Tau);
+        float enemyCourse = (float)(random.NextDouble() * MathF.Tau);
+        ShipInitialState player = new(NVector3.Zero, CourseVector(playerCourse) * (float)(random.NextDouble() * 100d), -playerCourse);
+        ShipInitialState enemy = new(CourseVector(separationBearing) * 2_000f,
+            CourseVector(enemyCourse) * (float)(random.NextDouble() * 100d), -enemyCourse);
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            Hull = new HullSettings { EnableSubsystemDamage = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        ApplyBoosterConfiguration(settings, _boosterConfiguration);
+        return new Simulation(settings, player, random.Next(), enemyInitial: enemy, duelMode: true,
+            duelAiModel: EnemyAiModel.Kestrel);
+    }
+
+    private static NVector3 CourseVector(float course) => new(MathF.Sin(course), 0f, -MathF.Cos(course));
+
+    private SimulationSettings CreateGameplaySettings(bool startInHyperspace) =>
+        CreateGameplaySettings(_boosterConfiguration, startInHyperspace);
+
+    private static SimulationSettings CreateGameplaySettings(BoosterConfiguration configuration, bool startInHyperspace)
+    {
+        var settings = new SimulationSettings { StartInHyperspace = startInHyperspace };
+        ApplyBoosterConfiguration(settings, configuration);
+        return settings;
+    }
+
+    private static void ApplyBoosterConfiguration(SimulationSettings settings, BoosterConfiguration configuration)
+    {
+        BoosterConfiguration value = configuration.Clamp();
+        settings.MainThrustNewtons = value.MainBoosterKilonewtons * 1_000f;
+        settings.ReverseThrustNewtons = value.ReverseBoosterKilonewtons * 1_000f;
+        settings.YawTorqueNewtonMeters = value.SideBoosterKilonewtons * 1_000f * NomadSideThrusterLeverArmMeters;
+        settings.MaximumYawAngularVelocityRadiansPerSecond = value.MaximumRotationDegreesPerSecond * MathF.PI / 180f;
+        settings.MaximumNominalSpeedMetersPerSecond = value.MaximumForwardSpeedMetersPerSecond;
+        settings.MaximumReverseSpeedMetersPerSecond = value.MaximumReverseSpeedMetersPerSecond;
+        settings.Power.BridgeMainThrottleRiseSeconds = value.MainRampUpSeconds;
+    }
+
     private void BindWorld()
     {
-        _simulation.World.RequireSensoriumConfirmationForBridgeContacts = _sensoriumEnabled;
+        _simulation.World.RequireSensoriumConfirmationForBridgeContacts = !_duelMode && _sensoriumEnabled;
         _arena.World = _simulation.World;
         _hud.World = _simulation.World;
         _hud.Settings = _simulation.Settings;
@@ -196,6 +269,7 @@ public partial class Flight : Node
 
     public override void _ExitTree()
     {
+        CompleteDuelLog("aborted");
         _stationServer?.Dispose();
         _stationServer = null;
     }
@@ -203,7 +277,15 @@ public partial class Flight : Node
     public override void _Input(InputEvent input)
     {
         if (_gameOver.Visible) return;
-        if (_mainMenu.IsOpen) return;
+        if (_mainMenu.IsOpen)
+        {
+            if (input is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
+            {
+                _mainMenu.HandleEscape();
+                GetViewport().SetInputAsHandled();
+            }
+            return;
+        }
         if (_simulation.World.IsPlayerInRealSpace && !_starMap.Visible &&
             input is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
         {
@@ -279,6 +361,7 @@ public partial class Flight : Node
 
     public override void _PhysicsProcess(double delta)
     {
+        if (_duelFinished) return;
         if (_enemySmokeRestarted)
         {
             bool passed = _simulation.World.GameState == SpaceSim.Core.Combat.GameState.Running &&
@@ -325,6 +408,8 @@ public partial class Flight : Node
         _simulation.Step(_lastCommand, _pendingNavigation, reactorCommand,
             new SensorCommand(sensoriumCommand.ActiveSonarPing, sensoriumCommand.ConfirmedEnemyId));
         _pendingNavigation = default;
+        if (_duelMode && _duelLogger is not null)
+            _duelLogger.WriteSnapshot(_simulation.World, _simulation.Settings, _lastCommand, _simulation.Events);
         RecordArmariumTargetHit();
         PublishArmariumState();
         _stationServer?.UpdateVoltariumState(VoltariumStateBuilder.Build(_simulation.World));
@@ -359,7 +444,18 @@ public partial class Flight : Node
         foreach (WeaponFired shot in _simulation.Events.OfType<WeaponFired>().Where(shot => shot.Owner == WeaponOwner.Enemy))
             PlayEnemyLanceShot(shot);
         _sounds.Update(_simulation.World, _simulation.Settings, _lastCommand, _simulation.Events);
-        if (_simulation.Events.OfType<PlayerDestroyed>().Any())
+        bool playerDestroyed = _simulation.Events.OfType<PlayerDestroyed>().Any();
+        bool enemyDestroyed = _simulation.Events.OfType<EnemyDestroyed>().Any();
+        if (_duelMode && (playerDestroyed || enemyDestroyed))
+        {
+            _starMap.Close();
+            bool playerWon = enemyDestroyed && !playerDestroyed;
+            _duelLogger?.WriteSnapshot(_simulation.World, _simulation.Settings, _lastCommand, _simulation.Events);
+            CompleteDuelLog(playerWon ? "player_victory" : "player_destroyed");
+            _duelFinished = true;
+            _gameOver.ShowResult(playerWon);
+        }
+        else if (playerDestroyed)
         {
             _starMap.Close();
             _gameOver.Show();
@@ -434,6 +530,20 @@ public partial class Flight : Node
         return LoadBridgePreferences().GetValue("bridge", "quick_start_enabled", false).AsBool();
     }
 
+    private static BoosterConfiguration LoadBoosterConfiguration()
+    {
+        ConfigFile preferences = LoadBridgePreferences();
+        BoosterConfiguration defaults = BoosterConfiguration.Default;
+        return new BoosterConfiguration(
+            preferences.GetValue("boosters", "main_power_kn", defaults.MainBoosterKilonewtons).AsSingle(),
+            preferences.GetValue("boosters", "main_ramp_seconds", defaults.MainRampUpSeconds).AsSingle(),
+            preferences.GetValue("boosters", "main_max_speed", defaults.MaximumForwardSpeedMetersPerSecond).AsSingle(),
+            preferences.GetValue("boosters", "reverse_power_kn", defaults.ReverseBoosterKilonewtons).AsSingle(),
+            preferences.GetValue("boosters", "reverse_max_speed", defaults.MaximumReverseSpeedMetersPerSecond).AsSingle(),
+            preferences.GetValue("boosters", "side_power_kn", defaults.SideBoosterKilonewtons).AsSingle(),
+            preferences.GetValue("boosters", "max_rotation_degrees_per_second", defaults.MaximumRotationDegreesPerSecond).AsSingle()).Clamp();
+    }
+
     private void SetSensoriumEnabled(bool enabled)
     {
         _sensoriumEnabled = enabled;
@@ -453,6 +563,23 @@ public partial class Flight : Node
             GD.PushWarning("Could not save bridge preferences.");
     }
 
+    private void SetBoosterConfiguration(BoosterConfiguration configuration)
+    {
+        _boosterConfiguration = configuration.Clamp();
+        ApplyBoosterConfiguration(_simulation.Settings, _boosterConfiguration);
+        _keyboard.MainThrottleRiseSeconds = _boosterConfiguration.MainRampUpSeconds;
+        var preferences = LoadBridgePreferences();
+        preferences.SetValue("boosters", "main_power_kn", _boosterConfiguration.MainBoosterKilonewtons);
+        preferences.SetValue("boosters", "main_ramp_seconds", _boosterConfiguration.MainRampUpSeconds);
+        preferences.SetValue("boosters", "main_max_speed", _boosterConfiguration.MaximumForwardSpeedMetersPerSecond);
+        preferences.SetValue("boosters", "reverse_power_kn", _boosterConfiguration.ReverseBoosterKilonewtons);
+        preferences.SetValue("boosters", "reverse_max_speed", _boosterConfiguration.MaximumReverseSpeedMetersPerSecond);
+        preferences.SetValue("boosters", "side_power_kn", _boosterConfiguration.SideBoosterKilonewtons);
+        preferences.SetValue("boosters", "max_rotation_degrees_per_second", _boosterConfiguration.MaximumRotationDegreesPerSecond);
+        if (preferences.Save(BridgePreferencesPath) != Error.Ok)
+            GD.PushWarning("Could not save booster configuration.");
+    }
+
     private static ConfigFile LoadBridgePreferences()
     {
         var preferences = new ConfigFile();
@@ -462,6 +589,7 @@ public partial class Flight : Node
 
     private void StartFromMainMenu()
     {
+        _duelMode = false;
         if (_quickStartEnabled)
         {
             RestartGame(quickStart: true);
@@ -473,15 +601,35 @@ public partial class Flight : Node
         _starMap.Open();
     }
 
+    private void StartDuel()
+    {
+        RestartGame(duel: true);
+        _mainMenu.Hide();
+    }
+
+    private void ResumeGame()
+    {
+        _keyboard.Clear();
+        _mainMenu.Hide();
+    }
+
     private void ReturnToMainMenu()
     {
         RestartGame();
         _mainMenu.ShowMain();
     }
 
-    private void RestartGame(bool quickStart = false)
+    private void RestartCurrentMode()
     {
-        _simulation = quickStart ? CreateQuickStartSimulation() : CreateSimulation();
+        RestartGame(duel: _duelMode);
+    }
+
+    private void RestartGame(bool quickStart = false, bool duel = false)
+    {
+        CompleteDuelLog("aborted");
+        _duelMode = duel;
+        _duelFinished = false;
+        _simulation = duel ? CreateDuelSimulation() : quickStart ? CreateQuickStartSimulation() : CreateSimulation();
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
         _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
         BindWorld();
@@ -489,6 +637,7 @@ public partial class Flight : Node
         _previousRotation = _simulation.World.Ship.Rotation;
         _lastCommand = default;
         _pendingNavigation = default;
+        StartDuelLogIfNeeded();
         _freeCameraMode = false;
         _freeCameraPosition = _ship.Position;
         _selectedEnemyId = null;
@@ -503,6 +652,22 @@ public partial class Flight : Node
         _hyperspaceEntryPoint = null;
         _lastHyperspacePhase = _simulation.World.HyperspacePhase;
         if (_enemySmokeTest) _enemySmokeRestarted = true;
+    }
+
+    private void CompleteDuelLog(string outcome)
+    {
+        if (_duelLogger is null) return;
+        _duelLogger.Complete(_simulation.World, outcome);
+        _duelLogger = null;
+    }
+
+    private void StartDuelLogIfNeeded()
+    {
+        if (!_duelMode || _duelLogger is not null) return;
+        EnemyAiModel model = _simulation.World.CurrentEncounter.EnemyAi?.Model ?? EnemyAiModel.Basic;
+        _duelLogger = new DuelAiLogger(model);
+        _duelLogger.WriteSnapshot(_simulation.World, _simulation.Settings, _lastCommand, Array.Empty<SimulationEvent>());
+        GD.Print($"1VS1 AI log: {_duelLogger.Path}");
     }
 
     public override void _Process(double delta)

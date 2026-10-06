@@ -6,7 +6,7 @@ internal static class ShieldSystem
 {
     public static ShieldState Create(ShieldSettings settings) => new(settings.MaximumShield);
 
-    public static void Recharge(ShieldState shield, float powerFactor, ShieldSettings settings)
+    public static void Recharge(ShieldState shield, float powerFactor, ShieldSettings settings, float? rechargePerSecond = null)
     {
         if (shield.RechargeDelayRemaining > 0f)
         {
@@ -16,7 +16,7 @@ internal static class ShieldSystem
         }
         if (powerFactor <= 0f || shield.CurrentShield >= shield.MaximumShield) return;
         shield.CurrentShield = Math.Min(shield.MaximumShield,
-            shield.CurrentShield + settings.RechargePerSecond * powerFactor * SimulationSettings.FixedDeltaSeconds);
+            shield.CurrentShield + (rechargePerSecond ?? settings.RechargePerSecond) * powerFactor * SimulationSettings.FixedDeltaSeconds);
     }
 
     public static bool ApplyLanceDamage(ShieldState shield, WeaponOwner targetOwner, int? targetEnemyId,

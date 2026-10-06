@@ -7,14 +7,14 @@ namespace SpaceSim.Core.Weapons;
 
 internal static class LanceSystem
 {
-    public static void Charge(LanceState lance, SimulationSettings settings, float weaponsPowerFactor)
+    public static void Charge(LanceState lance, float chargeSeconds, float weaponsPowerFactor)
     {
-        lance.ChargedSeconds = Math.Min(settings.LanceChargeSeconds,
+        lance.ChargedSeconds = Math.Min(chargeSeconds,
             lance.ChargedSeconds + weaponsPowerFactor / SimulationSettings.TickRate);
         // Eliminate rounding residue at exact tick-aligned charge durations.
-        if (lance.ChargedSeconds + 1e-10 >= settings.LanceChargeSeconds)
-            lance.ChargedSeconds = settings.LanceChargeSeconds;
-        lance.ChargeFraction = (float)(lance.ChargedSeconds / settings.LanceChargeSeconds);
+        if (lance.ChargedSeconds + 1e-10 >= chargeSeconds)
+            lance.ChargedSeconds = chargeSeconds;
+        lance.ChargeFraction = (float)(lance.ChargedSeconds / chargeSeconds);
     }
 
     public static void FirePlayer(WorldState world, bool fire, SimulationSettings settings, Random random,
@@ -26,7 +26,8 @@ internal static class LanceSystem
         Discharge(lance);
         Vector3 origin = world.Ship.Position;
         Vector3 direction = world.LanceDirection;
-        float nearestDistance = settings.LanceRangeMeters;
+        float lanceRange = world.Ship.Tuning.LanceRangeMeters;
+        float nearestDistance = lanceRange;
         TargetState? hit = null;
         foreach (var target in world.Targets)
         {
@@ -48,7 +49,7 @@ internal static class LanceSystem
             hit is not null ? WeaponHitKind.Target : WeaponHitKind.None;
         int? hitId = enemyHit?.EnemyId ?? hit?.Id;
         events.Add(new WeaponFired(origin, origin + direction * nearestDistance, hitId, WeaponOwner.Player, kind,
-            origin + direction * settings.LanceRangeMeters, origin + direction * settings.LanceVisualRangeMeters));
+            origin + direction * lanceRange, origin + direction * world.Ship.Tuning.LanceVisualRangeMeters));
         if (enemyHit is not null)
         {
             if (ShieldSystem.ApplyLanceDamage(enemyHit.Ship.Shield, WeaponOwner.Enemy, enemyHit.EnemyId,
@@ -77,11 +78,12 @@ internal static class LanceSystem
         Vector3 origin = enemy.Ship.Position;
         Vector3 direction = Vector3.Normalize(enemy.Ship.Forward);
         float? hitDistance = RaySphere(origin, direction, world.Ship.Position, settings.EnemyAi.ShipHitRadiusMeters);
-        bool hit = hitDistance is { } value && value <= settings.LanceRangeMeters;
-        float distance = hit ? hitDistance!.Value : settings.LanceRangeMeters;
+        float lanceRange = enemy.Ship.Tuning.LanceRangeMeters;
+        bool hit = hitDistance is { } value && value <= lanceRange;
+        float distance = hit ? hitDistance!.Value : lanceRange;
         events.Add(new WeaponFired(origin, origin + direction * distance, null,
             WeaponOwner.Enemy, hit ? WeaponHitKind.Player : WeaponHitKind.None,
-            origin + direction * settings.LanceRangeMeters, origin + direction * settings.LanceVisualRangeMeters));
+            origin + direction * lanceRange, origin + direction * world.Ship.Tuning.LanceVisualRangeMeters));
         if (!hit) return;
         if (!ShieldSystem.ApplyLanceDamage(world.Ship.Shield, WeaponOwner.Player, null,
             world.Ship.Position, settings.Shield, events) || !HullSystem.ApplyHit(world.Ship.Hull,

@@ -1,0 +1,37 @@
+﻿<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpaceSim 1VS1 Gefechtsauswertung</title>
+  <link rel="stylesheet" href="duel-log-viewer.css">
+</head>
+<body>
+  <header>
+    <div><span class="eyebrow">SPACESIM / ANALYSIS</span><h1>1VS1 Gefechtsauswertung</h1></div>
+    <label class="file-button">LOGS AUSWÄHLEN<input id="fileInput" type="file" accept=".txt,.jsonl,.log" multiple></label>
+  </header>
+  <main>
+    <aside class="sidebar">
+      <section>
+        <label for="encounterSelect">GEFECHT</label>
+        <select id="encounterSelect" disabled><option>Keine Logs geladen</option></select>
+      </section>
+      <section class="metrics" id="metrics"><p>Wähle eine oder mehrere Dateien aus <code>Logs/</code>.</p></section>
+      <section class="details"><h2>AKTUELLER SNAPSHOT</h2><dl id="snapshotDetails"></dl></section>
+      <section class="legend"><h2>LEGENDE</h2><p><i class="line player"></i> Nomad</p><p><i class="line enemy"></i> Gegner</p><p><i class="dot hit"></i> Treffer</p><p><i class="line shot"></i> Lanzenschuss</p></section>
+    </aside>
+    <section class="analysis">
+      <div class="map-header"><strong>TAKTISCHE KARTE</strong><span id="mapHint">Mausrad: Zoom · Ziehen: Verschieben · A: Alles einpassen</span></div>
+      <canvas id="mapCanvas"></canvas>
+      <div class="timeline">
+        <button id="playButton" disabled>▶</button><button id="fitButton" disabled>ALLES</button>
+        <input id="timeline" type="range" min="0" max="0" value="0" disabled>
+        <output id="timeLabel">--:--</output>
+      </div>
+      <section class="events"><h2>EREIGNISSE</h2><div id="eventList"><p>Keine Daten geladen.</p></div></section>
+    </section>
+  </main>
+  <script src="duel-log-viewer.js"></script>
+</body>
+</html>

@@ -7,6 +7,45 @@ Sternenkarte verbundene Encounter. Encounter 1 startet mit 10 Zielen, Encounter 
  einer Hard-Frigatte. Es gibt keinen Respawn. Grafik und HUD entstehen aus
 geometrischen Formen und eigenen Schiffs-Assets. Die Laufzeit-Assets liegen unter
 `SpaceSim.Godot/Assets/Sprites` und werden mit Godot exportiert.
+
+## 1 VS 1
+
+Im Hauptmenue startet **1 VS 1** ein direktes Duell im Realraum. Nomad und die
+Hard-Frigatte beginnen exakt 2.000 m voneinander entfernt; Kurs und
+Anfangsgeschwindigkeit jedes Schiffs werden bei jedem Start zufaellig gewaehlt
+(0 bis 100 m/s). Beide Seiten kennen den Gegner ohne Sensorium-Bestaetigung.
+
+Das Duell verwendet keine Voltarium-/Fuel-Logik: Reaktor und Stationsbudgets
+sind dauerhaft auf Nennleistung. Die Schiffe behalten ihre Schilde, aber
+Subsystemschaeden sowie Nahexplosionsfolgeschaeden sind abgeschaltet. Hull
+Integrity bleibt bei 3; drei nicht vom Schild absorbierte Treffer zerstoeren ein
+Schiff. Nach der Zerstoerung des Spielers bietet der Bildschirm **Main Menu**,
+**Restart** und **Quit**.
+
+Jeder 1VS1-Durchlauf schreibt ausserdem bei jedem autoritativen Simulationstick (60 Hz) einen
+maschinell lesbaren JSONL-Textlog nach `SpaceSim.Godot/Logs/ai_1vs1_<Zeitstempel>.txt`. Der Log
+enthaelt KI-State und Command, Intercept-/Aim-Werte, Positionen,
+Geschwindigkeiten, Power, Lanze, Schilde, Hull und wichtige Kampfereignisse. Der
+letzte Eintrag kennzeichnet player_victory, player_destroyed oder borted.
+### Gegner-Modelle
+
+Die regulären Encounter verwenden weiterhin **Basic AI**. Ihre bisherigen
+Duellaufzeichnungen liegen unter SpaceSim.Godot/Logs/Basic AI/. Das 1VS1-Duell
+verwendet **Kestrel**. Es hält die Nase in der Kampfgeometrie, nutzt REPOSITION
+nur für einen kurzen direkten Kollisionsausweichbogen und kehrt danach aktiv zu
+APPROACH zurück. Die reale Schiffskollision liegt bei unter 50 m; die KI plant
+250 m Manöverabstand und weicht bei weiterhin direktem Kollisionskurs erst
+innerhalb von 350 m aus. **Aegis** und **Vanguard** bleiben als Vergleichsmodelle
+erhalten. Neue Kestrel-Duelle werden automatisch unter `SpaceSim.Godot/Logs/Kestrel/` abgelegt.
+## 1VS1 Gefechtsauswertung
+
+`Tools/DuelLogViewer/Start-DuelLogViewer_Windows.cmd` oeffnet den lokalen
+Gefechtsauswerter im Standardbrowser. Dort eine oder mehrere Dateien aus
+`SpaceSim.Godot/Logs/` auswaehlen. Die bisherigen Basic-AI-Logs liegen unter
+`SpaceSim.Godot/Logs/Basic AI/`. Der Auswerter stellt die gesamten Trajektorien beider Schiffe,
+Lanzenschuesse, Schild-/Hull-Treffer und Zerstorungen dar. Mit der Timeline kann
+jeder gespeicherte 0,1-Sekunden-Snapshot einzeln untersucht werden; Mausrad und
+Ziehen steuern die taktische Karte.
 ## Energieverteilung und Schilde
 
 Jedes Schiff besitzt einen vereinfachten Reaktor mit konstanten **100 Power Units**.

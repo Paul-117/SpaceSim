@@ -13,22 +13,28 @@ public sealed class EnemyAiController
 {
     private readonly EnemyAiSettings _settings;
     private readonly float _nominalReverseAcceleration;
+    private readonly EnemyAiModel _model;
+    private readonly float _aegisOrbitSign;
 
     public EnemyAiState CurrentState { get; private set; } = EnemyAiState.Acquire;
     public float TimeInState { get; private set; }
     public EnemyAiContext LastContext { get; private set; }
     public ShipCommand LastCommand { get; private set; }
     public EnemyDifficulty Difficulty { get; }
+    public EnemyAiModel Model => _model;
     /// <summary>False while the enemy follows its seeded forward patrol course.</summary>
     public bool IsPlayerDetected { get; private set; }
     public float DesiredReactorOperatingLevelPercent => IsPlayerDetected ? 100f : _settings.PatrolReactorOperatingLevelPercent;
     public float FireAimToleranceRadians => _settings.FireAimTolerance;
 
-    internal EnemyAiController(EnemyAiSettings settings, EnemyDifficulty difficulty, float nominalReverseAcceleration)
+    internal EnemyAiController(EnemyAiSettings settings, EnemyDifficulty difficulty, float nominalReverseAcceleration,
+        EnemyAiModel model = EnemyAiModel.Basic, int seed = 0)
     {
         _settings = settings;
         Difficulty = difficulty;
         _nominalReverseAcceleration = nominalReverseAcceleration;
+        _model = model;
+        _aegisOrbitSign = (seed & 1) == 0 ? 1f : -1f;
     }
 
     internal ShipCommand Tick(EnemyShipState enemy, ShipState player, LanceState playerLance,
@@ -39,29 +45,49 @@ public sealed class EnemyAiController
             if (CurrentState != EnemyAiState.Destroyed) ChangeState(EnemyAiState.Destroyed);
             return LastCommand = default;
         }
+        return TickCore(enemy.Ship, enemy.Lance, player, playerLance, lanceRange, gameState, detectTarget: true);
+    }
+
+    /// <summary>Runs this controller as a symmetric duel pilot. The owner supplies the normal
+    /// ShipCommand; it does not receive any privileged simulation access.</summary>
+    internal ShipCommand TickDuelPilot(ShipState controlledShip, LanceState controlledLance,
+        ShipState targetShip, LanceState targetLance, float lanceRange, GameState gameState) =>
+        TickCore(controlledShip, controlledLance, targetShip, targetLance, lanceRange, gameState, detectTarget: false);
+
+    private ShipCommand TickCore(ShipState controlledShip, LanceState controlledLance,
+        ShipState targetShip, LanceState targetLance, float lanceRange, GameState gameState, bool detectTarget)
+    {
         if (gameState == GameState.GameOver) return LastCommand = default;
 
-        LastContext = EnemyAiContext.Create(player, playerLance, enemy);
+        LastContext = EnemyAiContext.Create(targetShip, targetLance, controlledShip, controlledLance);
         if (!IsPlayerDetected)
         {
-            if (LastContext.DistanceToPlayer > DetectionRangeFor(player))
-                return LastCommand = Patrol(enemy.Ship);
+            if (detectTarget && LastContext.DistanceToPlayer > DetectionRangeFor(targetShip))
+                return LastCommand = Patrol(controlledShip);
             IsPlayerDetected = true;
         }
 
         TimeInState += 1f / SpaceSim.Core.Simulation.SimulationSettings.TickRate;
         if (CurrentState == EnemyAiState.Acquire) ChangeState(EnemyAiState.Approach);
+        else if (_model == EnemyAiModel.Kestrel) EvaluateKestrelTransitions();
+        else if (_model == EnemyAiModel.Vanguard) EvaluateVanguardTransitions();
+        else if (_model == EnemyAiModel.Aegis) EvaluateAegisTransitions();
         else EvaluateTransitions();
 
         return LastCommand = CurrentState switch
         {
-            EnemyAiState.Approach => Approach(enemy.Ship, player),
-            EnemyAiState.Attack => Attack(enemy, player, lanceRange),
-            EnemyAiState.Reposition => Reposition(enemy.Ship, player),
+            EnemyAiState.Approach => _model == EnemyAiModel.Kestrel ? KestrelApproach(controlledShip, targetShip) :
+                _model == EnemyAiModel.Vanguard ? VanguardApproach(controlledShip, targetShip) :
+                _model == EnemyAiModel.Aegis ? AegisApproach(controlledShip, targetShip) : Approach(controlledShip, targetShip),
+            EnemyAiState.Attack => _model == EnemyAiModel.Kestrel ? KestrelAttack(controlledShip, controlledLance, targetShip, lanceRange) :
+                _model == EnemyAiModel.Vanguard ? VanguardAttack(controlledShip, controlledLance, targetShip, lanceRange) :
+                _model == EnemyAiModel.Aegis ? AegisAttack(controlledShip, controlledLance, targetShip, lanceRange) : Attack(controlledShip, controlledLance, targetShip, lanceRange),
+            EnemyAiState.Reposition => _model == EnemyAiModel.Kestrel ? KestrelReposition(controlledShip, targetShip) :
+                _model == EnemyAiModel.Vanguard ? VanguardReposition(controlledShip, targetShip) :
+                _model == EnemyAiModel.Aegis ? AegisReposition(controlledShip, targetShip) : Reposition(controlledShip, targetShip),
             _ => default
         };
     }
-
     internal void MarkDestroyed()
     {
         ChangeState(EnemyAiState.Destroyed);
@@ -100,6 +126,109 @@ public sealed class EnemyAiController
             ChangeState(EnemyAiState.Reposition);
     }
 
+    /// <summary>
+    /// Aegis accepts an attack as soon as it has a safe firing-range entry and then
+    /// keeps the nose on the player. It does not abandon ATTACK merely because an
+    /// inertial fly-by has high relative speed.
+    /// </summary>
+    private void EvaluateAegisTransitions()
+    {
+        if (TimeInState < _settings.MinimumStateDuration) return;
+        bool inAttackRange = LastContext.DistanceToPlayer >= _settings.MinimumCombatDistance &&
+                             LastContext.DistanceToPlayer <= _settings.MaximumCombatDistance;
+        if (CurrentState is EnemyAiState.Approach or EnemyAiState.Reposition)
+        {
+            if (inAttackRange && MathF.Abs(LastContext.EnemyAimError) < MathF.PI * .65f)
+                ChangeState(EnemyAiState.Attack);
+            return;
+        }
+
+        if (CurrentState == EnemyAiState.Attack &&
+            (LastContext.DistanceToPlayer < _settings.MinimumCombatDistance ||
+             LastContext.DistanceToPlayer > _settings.MaximumCombatDistance * 1.2f ||
+             IsOverspeedCollisionRisk()))
+            ChangeState(EnemyAiState.Reposition);
+    }
+
+    /// <summary>
+    /// Vanguard separates navigation from firing geometry. Its ATTACK state means that a useful
+    /// firing solution is already forming; recovery is deliberately held long enough to finish
+    /// a safe lateral arc instead of oscillating between states every few simulation ticks.
+    /// </summary>
+    private void EvaluateVanguardTransitions()
+    {
+        if (TimeInState < _settings.MinimumStateDuration) return;
+
+        float aimError = MathF.Abs(LastContext.EnemyAimError);
+        bool inCombatRange = LastContext.DistanceToPlayer >= _settings.MinimumCombatDistance &&
+                             LastContext.DistanceToPlayer <= _settings.MaximumCombatDistance;
+        bool firingGeometryReady = inCombatRange &&
+                                   aimError <= _settings.VanguardAttackEntryAimAngle &&
+                                   !HasVanguardSafetyRisk();
+
+        if (CurrentState == EnemyAiState.Approach)
+        {
+            if (HasVanguardSafetyRisk())
+                ChangeState(EnemyAiState.Reposition);
+            else if (firingGeometryReady)
+                ChangeState(EnemyAiState.Attack);
+            return;
+        }
+
+        if (CurrentState == EnemyAiState.Reposition)
+        {
+            if (TimeInState < _settings.VanguardMinimumRepositionDuration) return;
+            if (firingGeometryReady)
+                ChangeState(EnemyAiState.Attack);
+            else if (!HasVanguardSafetyRisk() && LastContext.DistanceToPlayer > _settings.MaximumCombatDistance)
+                ChangeState(EnemyAiState.Approach);
+            return;
+        }
+
+        if (CurrentState == EnemyAiState.Attack &&
+            (HasVanguardSafetyRisk() ||
+             LastContext.DistanceToPlayer < _settings.MinimumCombatDistance ||
+             LastContext.DistanceToPlayer > _settings.MaximumCombatDistance * 1.2f))
+            ChangeState(EnemyAiState.Reposition);
+    }
+
+    /// <summary>
+    /// Kestrel keeps a combat posture by default. REPOSITION is only a short deflection when
+    /// a genuine close collision is still predicted; it always returns to APPROACH afterwards
+    /// so its nose can reacquire the target instead of orbiting indefinitely.
+    /// </summary>
+    private void EvaluateKestrelTransitions()
+    {
+        if (TimeInState < _settings.MinimumStateDuration) return;
+
+        float aimError = MathF.Abs(LastContext.EnemyAimError);
+        bool inCombatRange = LastContext.DistanceToPlayer >= _settings.MinimumCombatDistance &&
+                             LastContext.DistanceToPlayer <= _settings.MaximumCombatDistance;
+        bool firingGeometryReady = inCombatRange && aimError <= _settings.KestrelAttackEntryAimAngle;
+
+        if (CurrentState == EnemyAiState.Approach)
+        {
+            if (HasImmediateCollisionRisk())
+                ChangeState(EnemyAiState.Reposition);
+            else if (firingGeometryReady)
+                ChangeState(EnemyAiState.Attack);
+            return;
+        }
+
+        if (CurrentState == EnemyAiState.Reposition)
+        {
+            if (TimeInState >= _settings.KestrelMinimumRepositionDuration && !HasImmediateCollisionRisk())
+                ChangeState(EnemyAiState.Approach);
+            return;
+        }
+
+        if (CurrentState == EnemyAiState.Attack &&
+            (HasImmediateCollisionRisk() ||
+             LastContext.DistanceToPlayer < _settings.MinimumCombatDistance ||
+             LastContext.DistanceToPlayer > _settings.MaximumCombatDistance * 1.2f))
+            ChangeState(EnemyAiState.Reposition);
+    }
+
     private ShipCommand Patrol(ShipState enemy)
     {
         // Spawn velocity and nose are aligned. The patrol only restores its intended forward cruise speed.
@@ -124,6 +253,203 @@ public sealed class EnemyAiController
     {
         if (IsOverspeedCollisionRisk()) return Flyby(enemy, player);
         return VelocityControl(enemy, PlannedInterceptVelocity(enemy, player));
+    }
+
+    private ShipCommand AegisApproach(ShipState enemy, ShipState player)
+    {
+        if (IsOverspeedCollisionRisk()) return AegisFlyby(enemy, player);
+        return VelocityControl(enemy, AegisEntryVelocity(enemy, player));
+    }
+
+    private ShipCommand AegisReposition(ShipState enemy, ShipState player)
+    {
+        if (IsOverspeedCollisionRisk()) return AegisFlyby(enemy, player);
+        return VelocityControl(enemy, AegisEntryVelocity(enemy, player));
+    }
+
+    private ShipCommand VanguardApproach(ShipState enemy, ShipState player)
+    {
+        if (HasVanguardSafetyRisk()) return VelocityControl(enemy, VanguardEscapeVelocity(enemy, player));
+        return VelocityControl(enemy, VanguardEntryVelocity(enemy, player));
+    }
+
+    private ShipCommand VanguardReposition(ShipState enemy, ShipState player)
+    {
+        if (LastContext.DistanceToPlayer < _settings.PreferredCombatDistance || HasVanguardSafetyRisk())
+            return VelocityControl(enemy, VanguardEscapeVelocity(enemy, player));
+        return VelocityControl(enemy, VanguardEntryVelocity(enemy, player));
+    }
+
+    private ShipCommand KestrelApproach(ShipState enemy, ShipState player)
+    {
+        if (HasImmediateCollisionRisk()) return KestrelDeflect(enemy);
+        // Pure nose pursuit can create a stable, high-lateral-speed orbit when both Kestrels
+        // fly the same controller. Outside weapons range, first match the target's velocity
+        // and enter on a controlled closing vector; once in range, preserve the firing posture.
+        return LastContext.DistanceToPlayer > _settings.MaximumCombatDistance
+            ? VelocityControl(enemy, KestrelEntryVelocity(enemy, player))
+            : KestrelCombatPosture(enemy);
+    }
+
+    private ShipCommand KestrelReposition(ShipState enemy, ShipState player)
+    {
+        if (HasImmediateCollisionRisk()) return KestrelDeflect(enemy);
+        return LastContext.DistanceToPlayer > _settings.MaximumCombatDistance
+            ? VelocityControl(enemy, KestrelEntryVelocity(enemy, player))
+            : KestrelCombatPosture(enemy);
+    }
+
+    /// <summary>
+    /// Velocity matching removes lateral relative motion before firing range. This is deliberately
+    /// radial rather than an orbit target: two Kestrels must close the gap instead of perpetually
+    /// following the other ship around a wide circle.
+    /// </summary>
+    private Vector3 KestrelEntryVelocity(ShipState enemy, ShipState player)
+    {
+        float radialError = LastContext.DistanceToPlayer - _settings.PreferredCombatDistance;
+        float desiredClosing = Math.Clamp(radialError * .12f, 10f, BrakingLimitedClosingSpeed(enemy));
+        float leadSeconds = Math.Clamp(radialError / MathF.Max(desiredClosing, 10f), 1f, 5f);
+        Vector3 predictedPosition = player.Position + player.Velocity * leadSeconds;
+        Vector3 toPredicted = predictedPosition - enemy.Position;
+        Vector3 direction = toPredicted.LengthSquared() > .001f
+            ? Vector3.Normalize(toPredicted)
+            : LastContext.DirectionToPlayer;
+        return player.Velocity + direction * desiredClosing;
+    }
+
+    /// <summary>
+    /// Plans a finite lateral component before combat range. That creates a safe arc
+    /// for a fly-by instead of a nose-to-tail overshoot and a late main-engine turn.
+    /// </summary>
+    private Vector3 AegisEntryVelocity(ShipState enemy, ShipState player)
+    {
+        float closingLimit = BrakingLimitedClosingSpeed(enemy);
+        float radialError = LastContext.DistanceToPlayer - _settings.PreferredCombatDistance;
+        float desiredClosing = Math.Clamp(radialError * .09f, 8f, closingLimit);
+        Vector3 tangent = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, LastContext.DirectionToPlayer)) * _aegisOrbitSign;
+        float lateralSpeed = LastContext.DistanceToPlayer > _settings.MaximumCombatDistance ? 18f : 10f;
+        return player.Velocity + LastContext.DirectionToPlayer * desiredClosing + tangent * lateralSpeed;
+    }
+
+    /// <summary>
+    /// A lead pursuit target prevents a slow tail chase when the player keeps moving away. The
+    /// tangential component is chosen once per enemy and remains deterministic for a supplied seed.
+    /// </summary>
+    private Vector3 VanguardEntryVelocity(ShipState enemy, ShipState player)
+    {
+        float closingLimit = BrakingLimitedClosingSpeed(enemy);
+        float radialError = LastContext.DistanceToPlayer - _settings.PreferredCombatDistance;
+        float desiredClosing = Math.Clamp(radialError * .12f, 12f, closingLimit);
+        float leadSeconds = Math.Clamp(radialError / MathF.Max(desiredClosing, 15f), 1.5f, 7f);
+        Vector3 predictedPlayerPosition = player.Position + player.Velocity * leadSeconds;
+        Vector3 toPredictedPlayer = predictedPlayerPosition - enemy.Position;
+        Vector3 direction = toPredictedPlayer.LengthSquared() > .001f
+            ? Vector3.Normalize(toPredictedPlayer)
+            : LastContext.DirectionToPlayer;
+        Vector3 tangent = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, direction)) * _aegisOrbitSign;
+        float lateralSpeed = LastContext.DistanceToPlayer > _settings.MaximumCombatDistance
+            ? _settings.VanguardLateralSpeedMetersPerSecond
+            : _settings.VanguardLateralSpeedMetersPerSecond * .5f;
+        return player.Velocity + direction * desiredClosing + tangent * lateralSpeed;
+    }
+
+    private Vector3 VanguardEscapeVelocity(ShipState enemy, ShipState player)
+    {
+        Vector3 tangent = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, LastContext.DirectionToPlayer)) * _aegisOrbitSign;
+        float separationSpeed = LastContext.DistanceToPlayer < _settings.PreferredCombatDistance ? 24f : 0f;
+        return player.Velocity + tangent * _settings.VanguardLateralSpeedMetersPerSecond -
+               LastContext.DirectionToPlayer * separationSpeed;
+    }
+
+    /// <summary>
+    /// Combat steering keeps the nose dedicated to the instantaneous firing solution.
+    /// Translation only corrects range along that already-aimed nose; it never turns
+    /// away from the player just to chase a velocity vector.
+    /// </summary>
+    private ShipCommand AegisAttack(ShipState enemy, LanceState enemyLance, ShipState player, float lanceRange)
+    {
+        if (IsOverspeedCollisionRisk()) return AegisFlyby(enemy, player);
+
+        var turn = AegisTurnToward(enemy, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
+        float aimError = MathF.Abs(LastContext.EnemyAimError);
+        bool thrustAligned = aimError <= _settings.ThrustAlignmentAngle;
+        float desiredClosing = Math.Clamp((LastContext.DistanceToPlayer - _settings.PreferredCombatDistance) * .11f, -22f, 26f);
+        float closingError = desiredClosing - LastContext.ClosingSpeed;
+        bool main = thrustAligned && closingError > 3f;
+        bool reverse = thrustAligned && closingError < -3f;
+        bool fire = enemyLance.IsReady && LastContext.DistanceToPlayer <= lanceRange &&
+                    Vector3.Dot(enemy.Forward, LastContext.DirectionToPlayer) > 0f &&
+                    aimError <= _settings.FireAimTolerance;
+        return new ShipCommand(main, reverse, turn.Left, turn.Right, fire);
+    }
+
+    private ShipCommand VanguardAttack(ShipState enemy, LanceState enemyLance, ShipState player, float lanceRange)
+    {
+        if (HasVanguardSafetyRisk()) return VelocityControl(enemy, VanguardEscapeVelocity(enemy, player));
+
+        var turn = AegisTurnToward(enemy, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
+        float aimError = MathF.Abs(LastContext.EnemyAimError);
+        bool thrustAligned = aimError <= _settings.ThrustAlignmentAngle;
+        float desiredClosing = Math.Clamp((LastContext.DistanceToPlayer - _settings.PreferredCombatDistance) * .10f, -18f, 22f);
+        float closingError = desiredClosing - LastContext.ClosingSpeed;
+        bool main = thrustAligned && closingError > 3f;
+        bool reverse = thrustAligned && closingError < -3f;
+        bool fire = enemyLance.IsReady && LastContext.DistanceToPlayer <= lanceRange &&
+                    Vector3.Dot(enemy.Forward, LastContext.DirectionToPlayer) > 0f &&
+                    aimError <= _settings.FireAimTolerance;
+        return new ShipCommand(main, reverse, turn.Left, turn.Right, fire);
+    }
+
+    private ShipCommand KestrelAttack(ShipState enemy, LanceState enemyLance, ShipState player, float lanceRange)
+    {
+        if (HasImmediateCollisionRisk()) return KestrelDeflect(enemy);
+
+        ShipCommand posture = KestrelCombatPosture(enemy);
+        bool fire = enemyLance.IsReady && LastContext.DistanceToPlayer <= lanceRange &&
+                    Vector3.Dot(enemy.Forward, LastContext.DirectionToPlayer) > 0f &&
+                    MathF.Abs(LastContext.EnemyAimError) <= _settings.FireAimTolerance;
+        return posture with { FireLance = fire };
+    }
+
+    /// <summary>
+    /// Keep the nose on the moving target while regulating closing speed with the normal forward
+    /// and reverse thrusters. Reverse braking avoids the old turn-away/main-engine brake behaviour.
+    /// </summary>
+    private ShipCommand KestrelCombatPosture(ShipState enemy)
+    {
+        var turn = AegisTurnToward(enemy, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
+        float aimError = MathF.Abs(LastContext.EnemyAimError);
+        bool thrustAligned = aimError <= _settings.ThrustAlignmentAngle;
+        float desiredClosing = Math.Clamp((LastContext.DistanceToPlayer - _settings.PreferredCombatDistance) * .10f, -20f, 28f);
+        float closingError = desiredClosing - LastContext.ClosingSpeed;
+        bool main = thrustAligned && closingError > 3f;
+        bool reverse = thrustAligned && closingError < -3f;
+        return new ShipCommand(main, reverse, turn.Left, turn.Right);
+    }
+
+    /// <summary>
+    /// Minimal emergency manoeuvre: preserve or build lateral motion until the predicted closest
+    /// pass clears the hard AI minimum. The next state returns to target-facing pursuit.
+    /// </summary>
+    private ShipCommand KestrelDeflect(ShipState enemy)
+    {
+        Vector3 tangent = Vector3.Cross(Vector3.UnitY, LastContext.DirectionToPlayer);
+        // LastContext.RelativeVelocity is player minus enemy, so negate it for enemy-relative motion.
+        Vector3 relativeVelocity = -LastContext.RelativeVelocity;
+        if (Vector3.Dot(relativeVelocity, tangent) < 0f) tangent = -tangent;
+        if (tangent.LengthSquared() < .001f) tangent = Vector3.Cross(Vector3.UnitY, enemy.Forward) * _aegisOrbitSign;
+        tangent = Vector3.Normalize(tangent);
+        var turn = AegisTurnToward(enemy, tangent);
+        bool main = MathF.Abs(EnemyAiContext.SignedPlanarAngle(enemy.Forward, tangent)) <= _settings.ThrustAlignmentAngle;
+        return new ShipCommand(MainThrust: main, YawLeft: turn.Left, YawRight: turn.Right);
+    }
+
+    private ShipCommand AegisFlyby(ShipState enemy, ShipState player)
+    {
+        Vector3 tangent = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, LastContext.DirectionToPlayer)) * _aegisOrbitSign;
+        var turn = AegisTurnToward(enemy, tangent);
+        bool main = MathF.Abs(EnemyAiContext.SignedPlanarAngle(enemy.Forward, tangent)) <= _settings.ThrustAlignmentAngle;
+        return new ShipCommand(MainThrust: main, YawLeft: turn.Left, YawRight: turn.Right);
     }
 
     private Vector3 PlannedInterceptVelocity(ShipState enemy, ShipState player)
@@ -151,8 +477,30 @@ public sealed class EnemyAiController
 
     private bool IsOverspeedCollisionRisk()
     {
-        if (LastContext.ClosingSpeed <= _settings.MaximumAttackRelativeSpeed) return false;
-        return ClosestApproachDistance() < _settings.FlybySafetyDistanceMeters;
+        return HasImmediateCollisionRisk();
+    }
+
+    /// <summary>
+    /// Shared base-game avoidance rule: 50 m is the actual collision; AI accepts no direct
+    /// course below 100 m, but begins the correction only inside the 350 m trigger range.
+    /// </summary>
+    private bool HasImmediateCollisionRisk()
+    {
+        if (LastContext.DistanceToPlayer < _settings.CollisionAvoidanceMinimumDistanceMeters) return true;
+        return LastContext.DistanceToPlayer <= _settings.CollisionAvoidanceTriggerDistanceMeters &&
+               LastContext.ClosingSpeed > 0f &&
+               ClosestApproachDistance() < _settings.CollisionAvoidanceMinimumDistanceMeters;
+    }
+
+    /// <summary>
+    /// Vanguard starts a safety arc before either the collision threshold or the nominal 250 m
+    /// combat minimum is threatened. Unlike the legacy check this also catches a slow but certain
+    /// close pass, which was the source of 112 m near-collisions in the Aegis logs.
+    /// </summary>
+    private bool HasVanguardSafetyRisk()
+    {
+        if (LastContext.DistanceToPlayer < _settings.VanguardSafetyDistanceMeters) return true;
+        return LastContext.ClosingSpeed > 0f && ClosestApproachDistance() < _settings.VanguardSafetyDistanceMeters;
     }
 
     private bool HasSafeFlybyTrajectory() =>
@@ -181,17 +529,17 @@ public sealed class EnemyAiController
         return new ShipCommand(MainThrust: main, YawLeft: turn.Left, YawRight: turn.Right);
     }
 
-    private ShipCommand Attack(EnemyShipState enemy, ShipState player, float lanceRange)
+    private ShipCommand Attack(ShipState enemy, LanceState enemyLance, ShipState player, float lanceRange)
     {
-        var turn = TurnToward(enemy.Ship, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
+        var turn = TurnToward(enemy, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
         bool aligned = MathF.Abs(LastContext.EnemyAimError) < _settings.ThrustAlignmentAngle;
         bool flyby = HasSafeFlybyTrajectory();
         bool main = !flyby && LastContext.DistanceToPlayer > _settings.PreferredCombatDistance + 40f &&
                     LastContext.ClosingSpeed < _settings.MaximumAttackRelativeSpeed && aligned;
         bool reverse = !flyby && (LastContext.DistanceToPlayer < _settings.MinimumCombatDistance + 50f ||
                                   LastContext.ClosingSpeed > _settings.MaximumAttackRelativeSpeed) && aligned;
-        bool fire = enemy.Lance.IsReady && LastContext.DistanceToPlayer <= lanceRange &&
-                    Vector3.Dot(enemy.Ship.Forward, LastContext.DirectionToPlayer) > 0f &&
+        bool fire = enemyLance.IsReady && LastContext.DistanceToPlayer <= lanceRange &&
+                    Vector3.Dot(enemy.Forward, LastContext.DirectionToPlayer) > 0f &&
                     MathF.Abs(LastContext.EnemyAimError) <= _settings.FireAimTolerance;
         return new ShipCommand(main, reverse, turn.Left, turn.Right, fire);
     }
@@ -233,6 +581,18 @@ public sealed class EnemyAiController
                        _settings.RotationKd * (targetAngularVelocity - ship.AngularVelocity.Y);
         return (signal > _settings.TurnCommandThreshold, signal < -_settings.TurnCommandThreshold);
     }
+
+    /// <summary>Rate-targeting controller used by Aegis to remove the persistent lateral aim offset.</summary>
+    private (bool Left, bool Right) AegisTurnToward(ShipState ship, Vector3 direction, float targetAngularVelocity = 0f)
+    {
+        float error = EnemyAiContext.SignedPlanarAngle(ship.Forward, direction);
+        float desiredRate = Math.Clamp(targetAngularVelocity + error * 3.6f, -1.15f, 1.15f);
+        float rateError = desiredRate - ship.AngularVelocity.Y;
+        if (MathF.Abs(error) < Degrees(.3f) && MathF.Abs(rateError) < .015f) return default;
+        return (rateError > .012f, rateError < -.012f);
+    }
+
+    private static float Degrees(float value) => value * MathF.PI / 180f;
 
     private void ChangeState(EnemyAiState state)
     {

@@ -12,9 +12,11 @@ public sealed record SimulationSettings
 
     public float ShipMassKg { get; init; } = 12_000f;
     public float YawMomentOfInertia { get; init; } = 90_000f;
-    public float MainThrustNewtons { get; init; } = 144_000f;
-    public float ReverseThrustNewtons { get; init; } = 72_000f;
-    public float YawTorqueNewtonMeters { get; init; } = 54_000f;
+    public float MainThrustNewtons { get; set; } = 144_000f;
+    public float ReverseThrustNewtons { get; set; } = 72_000f;
+    public float YawTorqueNewtonMeters { get; set; } = 54_000f;
+    /// <summary>Maximum active yaw rate. Existing angular inertia above this value is not clamped.</summary>
+    public float MaximumYawAngularVelocityRadiansPerSecond { get; set; } = 2.0943951f;
     public float LanceChargeSeconds { get; init; } = 3f;
     /// <summary>Maximum range at which a lance can affect gameplay targets.</summary>
     public float LanceRangeMeters { get; init; } = 1_000f;
@@ -24,7 +26,7 @@ public sealed record SimulationSettings
     public float LanceTurretMaximumAngleDegrees { get; init; } = 5f;
     public float LanceTurretDegreesPerSecond { get; init; } = 10f;
     /// <summary>Centre-to-centre distance below which a player and enemy ship are both destroyed.</summary>
-    public float ShipCollisionDistanceMeters { get; init; } = 100f;
+    public float ShipCollisionDistanceMeters { get; init; } = 50f;
     public float WarpChargeSeconds { get; init; } = 10f;
     /// <summary>Gameplay start option used by the bridge: begins with a ready warp drive.</summary>
     public bool StartWarpReady { get; init; }
@@ -42,7 +44,9 @@ public sealed record SimulationSettings
     public ShieldSettings Shield { get; init; } = new();
     public HullSettings Hull { get; init; } = new();
     public EnemyExplosionSettings EnemyExplosion { get; init; } = new();
-    public float MaximumNominalSpeedMetersPerSecond { get; init; } = 500f;
+    public float MaximumNominalSpeedMetersPerSecond { get; set; } = 500f;
+    /// <summary>Maximum speed a reverse-thrust acceleration may add to. Existing inertia is never clamped.</summary>
+    public float MaximumReverseSpeedMetersPerSecond { get; set; } = 250f;
 
     internal void Validate()
     {
@@ -51,6 +55,7 @@ public sealed record SimulationSettings
         Positive(MainThrustNewtons, nameof(MainThrustNewtons));
         Positive(ReverseThrustNewtons, nameof(ReverseThrustNewtons));
         Positive(YawTorqueNewtonMeters, nameof(YawTorqueNewtonMeters));
+        Positive(MaximumYawAngularVelocityRadiansPerSecond, nameof(MaximumYawAngularVelocityRadiansPerSecond));
         Positive(LanceChargeSeconds, nameof(LanceChargeSeconds));
         Positive(LanceRangeMeters, nameof(LanceRangeMeters));
         Positive(LanceVisualRangeMeters, nameof(LanceVisualRangeMeters));
@@ -76,6 +81,7 @@ public sealed record SimulationSettings
         Hull.Validate();
         EnemyExplosion.Validate();
         Positive(MaximumNominalSpeedMetersPerSecond, nameof(MaximumNominalSpeedMetersPerSecond));
+        Positive(MaximumReverseSpeedMetersPerSecond, nameof(MaximumReverseSpeedMetersPerSecond));
         if (TargetCount < 0 || TargetCount > 256)
             throw new ArgumentOutOfRangeException(nameof(TargetCount));
         if (EncounterTwoTargetCount < 0 || EncounterTwoTargetCount > 256)

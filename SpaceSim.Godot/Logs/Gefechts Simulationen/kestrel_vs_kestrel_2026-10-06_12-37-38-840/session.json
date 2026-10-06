@@ -1,0 +1,65 @@
+{
+  "Id": "kestrel_vs_kestrel_2026-10-06_12-37-38-840",
+  "CreatedAt": "2026-10-06T12:37:38.8401294+02:00",
+  "Nomad": {
+    "MainBoosterKilonewtons": 144,
+    "ReverseBoosterKilonewtons": 72,
+    "SideBoosterKilonewtons": 4.68,
+    "ShieldRechargeSeconds": 5,
+    "LanceRangeMeters": 3000,
+    "LanceChargeSeconds": 3
+  },
+  "Enemy": {
+    "MainBoosterKilonewtons": 144,
+    "ReverseBoosterKilonewtons": 72,
+    "SideBoosterKilonewtons": 4.68,
+    "ShieldRechargeSeconds": 5,
+    "LanceRangeMeters": 1000,
+    "LanceChargeSeconds": 1
+  },
+  "Battles": [
+    {
+      "Number": 1,
+      "Seed": 1624158677,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 46.333333333333336,
+      "MinimumDistanceMeters": 678.4196,
+      "LogFile": "gefecht_01.txt"
+    },
+    {
+      "Number": 2,
+      "Seed": 1624166596,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 43.516666666666666,
+      "MinimumDistanceMeters": 667.2884,
+      "LogFile": "gefecht_02.txt"
+    },
+    {
+      "Number": 3,
+      "Seed": 1624174515,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 52.833333333333336,
+      "MinimumDistanceMeters": 667.87915,
+      "LogFile": "gefecht_03.txt"
+    },
+    {
+      "Number": 4,
+      "Seed": 1624182434,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 34.36666666666667,
+      "MinimumDistanceMeters": 674.3746,
+      "LogFile": "gefecht_04.txt"
+    },
+    {
+      "Number": 5,
+      "Seed": 1624190353,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 37.03333333333333,
+      "MinimumDistanceMeters": 663.52716,
+      "LogFile": "gefecht_05.txt"
+    }
+  ],
+  "NomadWins": 0,
+  "EnemyWins": 5,
+  "Timeouts": 0
+}

@@ -3,6 +3,8 @@ namespace SpaceSim.Core.Combat;
 /// <summary>Distance thresholds for the damage caused by a newly destroyed enemy ship.</summary>
 public sealed record EnemyExplosionSettings
 {
+    /// <summary>False for modes where victory is determined only by direct lance damage.</summary>
+    public bool Enabled { get; init; } = true;
     public float ShieldDepletionDistanceMeters { get; init; } = 350f;
     public float OneSubsystemDisabledDistanceMeters { get; init; } = 250f;
     public float TwoSubsystemsDisabledDistanceMeters { get; init; } = 200f;

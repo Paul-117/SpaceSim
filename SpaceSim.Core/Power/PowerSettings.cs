@@ -4,6 +4,8 @@ namespace SpaceSim.Core.Power;
 public sealed record PowerSettings
 {
     public float MaximumReactorOutputPower { get; init; } = 125f;
+    /// <summary>False for a self-contained duel: all stations receive nominal power without ramp-up or fuel use.</summary>
+    public bool ReactorSimulationEnabled { get; init; } = true;
     public float DefaultReactorOperatingLevelPercent { get; init; } = 100f;
     /// <summary>Seconds needed for the physical reactor output to move from 0 to 100 percent.</summary>
     public float ReactorRampSeconds { get; init; } = 60f;
@@ -18,7 +20,7 @@ public sealed record PowerSettings
     public float MaximumWeaponsDraw { get; init; } = 40f;
     public float MaximumShieldsDraw { get; init; } = 35f;
     /// <summary>Seconds for the bridge main thruster (W) to ramp from zero to full thrust.</summary>
-    public float BridgeMainThrottleRiseSeconds { get; init; } = 5f;
+    public float BridgeMainThrottleRiseSeconds { get; set; } = 5f;
     /// <summary>Seconds for the bridge main thruster (W) to decay from full thrust after release.</summary>
     public float BridgeMainThrottleFallSeconds { get; init; } = 3f;
 

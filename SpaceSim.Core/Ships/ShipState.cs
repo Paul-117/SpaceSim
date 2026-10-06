@@ -18,10 +18,12 @@ public sealed class ShipState
     public ShieldState Shield { get; }
     public HullState Hull { get; }
     public SubsystemState Systems { get; }
+    /// <summary>Individual propulsion, lance and shield recharge values for this ship.</summary>
+    public ShipTuning Tuning { get; }
     public Vector3 Forward => Vector3.Transform(-Vector3.UnitZ, Rotation);
 
     internal ShipState(float massKg, float yawMomentOfInertia, ReactorState reactor, PowerState power, ShieldState shield,
-        HullState hull, SubsystemState systems)
+        HullState hull, SubsystemState systems, ShipTuning tuning)
     {
         MassKg = massKg;
         YawMomentOfInertia = yawMomentOfInertia;
@@ -30,6 +32,7 @@ public sealed class ShipState
         Shield = shield;
         Hull = hull;
         Systems = systems;
+        Tuning = tuning;
     }
 }
 

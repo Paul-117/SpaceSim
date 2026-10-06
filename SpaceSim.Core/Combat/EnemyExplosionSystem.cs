@@ -11,6 +11,7 @@ internal static class EnemyExplosionSystem
     {
         float distance = Vector3.Distance(world.Ship.Position, enemy.Ship.Position);
         events.Add(new EnemyExplosion(enemy.EnemyId, enemy.Ship.Position, distance));
+        if (!settings.EnemyExplosion.Enabled) return;
         EnemyExplosionSettings thresholds = settings.EnemyExplosion;
 
         if (Within(distance, thresholds.PlayerDestructionDistanceMeters))

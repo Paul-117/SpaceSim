@@ -47,6 +47,15 @@ internal static class PowerDistributionSystem
 
     public static void StepReactor(ReactorState reactor, PowerSettings settings)
     {
+        if (!settings.ReactorSimulationEnabled)
+        {
+            reactor.TargetOperatingLevelPercent = 100f;
+            reactor.OperatingLevelPercent = 100f;
+            reactor.Fuel = reactor.FuelCapacity;
+            reactor.FuelUsagePerMinute = 0f;
+            return;
+        }
+
         if (reactor.IsFuelDepleted)
         {
             reactor.Fuel = 0f;

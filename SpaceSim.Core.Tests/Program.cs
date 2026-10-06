@@ -57,6 +57,20 @@ var tests = new (string Name, Action Run)[]
         Step(sim, 60, new ShipCommand(YawRight: true));
         Near(sim.World.Ship.AngularVelocity.Y, -0.3f);
     }),
+    ("Yaw thrust respects the configured rotational speed limit without erasing inertia", () =>
+    {
+        var sim = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            MaximumYawAngularVelocityRadiansPerSecond = .5f
+        }, spawnEnemy: false);
+        Step(sim, 120, new ShipCommand(YawLeft: true));
+        Near(sim.World.Ship.AngularVelocity.Y, .5f, .001f);
+        Step(sim, 60);
+        Near(sim.World.Ship.AngularVelocity.Y, .5f, .001f);
+        Step(sim, 60, new ShipCommand(YawRight: true));
+        Check(sim.World.Ship.AngularVelocity.Y < .5f, "Opposing yaw thrust must still brake at the rotation limit.");
+    }),
     ("Reduced yaw intensity applies proportional normal thruster torque", () =>
     {
         var bridge = New();
@@ -71,6 +85,200 @@ var tests = new (string Name, Action Run)[]
         Step(sim, 60, new ShipCommand(ReverseThrust: true));
         NearVector(sim.World.Ship.Velocity, new Vector3(0, 0, 6));
     }),
+    ("Duel starts as a fully powered direct 1 vs 1 with no subsystem damage", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            Hull = new HullSettings { EnableSubsystemDamage = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 77,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -2_000)), duelMode: true);
+        var enemy = duel.World.CurrentEnemy!;
+        Check(duel.World.CurrentEncounter.Id == 1 && duel.World.CurrentEnemies.Count() == 1,
+            "The duel must contain only one active opponent in its starting encounter.");
+        Near(Vector3.Distance(duel.World.Ship.Position, enemy.Ship.Position), 2_000f);
+        Check(!duel.World.RequireSensoriumConfirmationForBridgeContacts && duel.World.VisibleEnemies.Single() == enemy,
+            "Both ships must be mutually visible without Sensorium.");
+        Near(enemy.Ship.Shield.CurrentShield, enemy.Ship.Shield.MaximumShield);
+        Step(duel, 1);
+        Near(duel.World.Ship.Reactor.OperatingLevelPercent, 100f);
+        Near(enemy.Ship.Reactor.OperatingLevelPercent, 100f);
+        Check(duel.World.Ship.Systems.PropulsionCondition == 1f &&
+              duel.World.Ship.Systems.WeaponsCondition == 1f &&
+              duel.World.Ship.Systems.ShieldsCondition == 1f &&
+              enemy.Ship.Systems.PropulsionCondition == 1f &&
+              enemy.Ship.Systems.WeaponsCondition == 1f && enemy.Ship.Systems.ShieldsCondition == 1f,
+              "Duel systems must begin intact.");
+    }),
+    ("Aegis is a separate duel model while regular encounters retain Basic AI", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0
+        };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 91,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -2_000)), duelMode: true,
+            duelAiModel: EnemyAiModel.Aegis);
+        Check(duel.World.CurrentEncounter.EnemyAi!.Model == EnemyAiModel.Aegis,
+            "The new duel must select Aegis explicitly.");
+        duel.Step(default);
+        Check(duel.World.CurrentEncounter.EnemyAi.CurrentState == EnemyAiState.Approach &&
+              duel.World.CurrentEncounter.EnemyAi.LastCommand is { FireLance: false },
+            "Aegis must begin through the normal command-only combat path.");
+
+        var normal = new Simulation();
+        Check(normal.World.Encounters.All(encounter => encounter.EnemyAi?.Model is null or EnemyAiModel.Basic),
+            "Existing encounter opponents must keep the Basic model.");
+    }),
+    ("Aegis holds a stationary target and completes a direct duel", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            Shield = new ShieldSettings { MaximumShield = 1f, LanceDamage = 1f, RechargePerSecond = .01f },
+            Hull = new HullSettings { MaximumHull = 1, EnableSubsystemDamage = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 19,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -800), YawRadians: MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Aegis);
+        Step(duel, 1_200);
+        Check(duel.World.GameState == GameState.GameOver,
+            "Aegis must create and hold a valid firing solution against a stationary opponent.");
+    }),
+    ("Vanguard requires firing geometry before ATTACK and preserves a recovery arc", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 37,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -800), YawRadians: 0f), duelMode: true,
+            duelAiModel: EnemyAiModel.Vanguard);
+        Step(duel, 30);
+        Check(duel.World.CurrentEncounter.EnemyAi!.CurrentState == EnemyAiState.Approach,
+            "Vanguard must not call an away-facing ship an attacker merely because it is in range.");
+
+        var closeDuel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 38,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -210), YawRadians: MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Vanguard);
+        Step(closeDuel, 30);
+        Check(closeDuel.World.CurrentEncounter.EnemyAi!.CurrentState == EnemyAiState.Reposition,
+            "Vanguard must enter a safety arc before the nominal collision distance.");
+        Step(closeDuel, 30);
+        Check(closeDuel.World.CurrentEncounter.EnemyAi.CurrentState == EnemyAiState.Reposition,
+            "Vanguard must commit to its recovery arc instead of fluttering back to ATTACK.");
+    }),
+    ("Vanguard completes a direct stationary duel through normal commands", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            Shield = new ShieldSettings { MaximumShield = 1f, LanceDamage = 1f, RechargePerSecond = .01f },
+            Hull = new HullSettings { MaximumHull = 1, EnableSubsystemDamage = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 41,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -800), YawRadians: MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Vanguard);
+        Step(duel, 1_200);
+        Check(duel.World.GameState == GameState.GameOver,
+            "Vanguard must retain Aegis' ability to form and fire a valid lance solution.");
+    }),
+    ("Kestrel deflects only inside the close direct-collision trigger", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        var distant = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 44,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -360), new Vector3(0, 0, 100), MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Kestrel);
+        Step(distant, 1);
+        Check(distant.World.CurrentEncounter.EnemyAi!.LastCommand.ReverseThrust,
+            "Kestrel must use controlled reverse braking before the 350 m collision trigger.");
+
+        var imminent = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 45,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -340), new Vector3(0, 0, 100), MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Kestrel);
+        Step(imminent, 1);
+        ShipCommand command = imminent.World.CurrentEncounter.EnemyAi!.LastCommand;
+        Check((command.YawLeft || command.YawRight) && !command.ReverseThrust,
+            "Kestrel must begin a lateral deflection once a direct collision remains inside 350 m.");
+    }),
+    ("Kestrel completes a direct stationary duel through normal commands", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            Shield = new ShieldSettings { MaximumShield = 1f, LanceDamage = 1f, RechargePerSecond = .01f },
+            Hull = new HullSettings { MaximumHull = 1, EnableSubsystemDamage = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 46,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -800), YawRadians: MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Kestrel);
+        Step(duel, 1_200);
+        Check(duel.World.GameState == GameState.GameOver,
+            "Kestrel must retain a valid direct lance attack after its recovery changes.");
+    }),
+    ("Kestrel returns from a close deflection to pursuit", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 47,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -340), new Vector3(0, 0, 30), MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Kestrel);
+        bool sawReposition = false;
+        bool returnedToPursuit = false;
+        for (int tick = 0; tick < 360 && duel.World.GameState == GameState.Running; tick++)
+        {
+            duel.Step(default);
+            EnemyAiState state = duel.World.CurrentEncounter.EnemyAi!.CurrentState;
+            sawReposition |= state == EnemyAiState.Reposition;
+            returnedToPursuit |= sawReposition && (state is EnemyAiState.Approach or EnemyAiState.Attack);
+        }
+        Check(sawReposition && returnedToPursuit,
+            "Kestrel must resume pursuit after a minimum collision deflection instead of remaining in REPOSITION.");
+    }),
     ("Planar rule and normalized 3D orientation survive long flight", () =>
     {
         var sim = New();
@@ -84,6 +292,18 @@ var tests = new (string Name, Action Run)[]
         var sim = New();
         Step(sim, 3600, new ShipCommand(MainThrust: true));
         Near(sim.World.Ship.Velocity.Length(), 500f, 0.05f);
+    }),
+    ("Reverse thrust reaches its configured speed limit without clamping inertia", () =>
+    {
+        var sim = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            MaximumReverseSpeedMetersPerSecond = 100f
+        }, spawnEnemy: false);
+        Step(sim, 3600, new ShipCommand(ReverseThrust: true));
+        Near(sim.World.Ship.Velocity.Length(), 100f, 0.05f);
+        Step(sim, 60);
+        Near(sim.World.Ship.Velocity.Length(), 100f, 0.05f);
     }),
     ("Lance needs exactly three seconds to charge", () =>
     {
@@ -641,15 +861,15 @@ var tests = new (string Name, Action Run)[]
         var command = sim.World.CurrentEncounter.EnemyAi!.LastCommand;
         Check(command.YawRight && !command.YawLeft, "Positive yaw rate must receive opposing torque near aim.");
     }),
-    ("APPROACH plans a tangential fly-by instead of reversing into a collision risk", () =>
+    ("APPROACH uses reverse braking before the close collision-avoidance trigger", () =>
     {
         var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -900),
             new Vector3(0, 0, 100), MathF.PI));
         JumpToCombat(sim);
         sim.Step(default);
         var command = sim.World.CurrentEncounter.EnemyAi!.LastCommand;
-        Check(!command.MainThrust && !command.ReverseThrust && (command.YawLeft || command.YawRight),
-            "A fast close-range collision course must begin a normal yaw-and-thrust fly-by, not turn around for main-engine braking.");
+        Check(!command.MainThrust && command.ReverseThrust,
+            "Outside the 350 m collision trigger, a fast approach must use the normal reverse thruster rather than an early fly-by or a main-engine turnaround.");
     }),
     ("Combat AI uses one shared range and difficulty changes only aim tolerance", () =>
     {
@@ -707,20 +927,20 @@ var tests = new (string Name, Action Run)[]
         Step(sim, 300);
         Check(enemy.Ship.Position == position, "Destroyed enemy physics must stop.");
     }),
-    ("Ship collision below one hundred meters destroys both ships", () =>
+    ("Ship collision below fifty meters destroys both ships", () =>
     {
-        var atThreshold = CombatSimulation(enemy: new ShipInitialState(new Vector3(100, 0, 0)));
+        var atThreshold = CombatSimulation(enemy: new ShipInitialState(new Vector3(50, 0, 0)));
         JumpToCombat(atThreshold);
         atThreshold.Step(default);
         Check(atThreshold.World.GameState == GameState.Running && !atThreshold.World.CurrentEnemy!.IsDestroyed,
-            "Exactly one hundred meters must not count as a collision.");
+            "Exactly fifty meters must not count as a collision.");
 
-        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(99, 0, 0)));
+        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(49, 0, 0)));
         JumpToCombat(sim);
         var enemy = sim.World.CurrentEnemy!;
         sim.Step(new ShipCommand(FireLance: true));
         Check(sim.World.GameState == GameState.GameOver && enemy.IsDestroyed && sim.World.CurrentEnemy is null,
-            "A collision below one hundred meters must destroy player and enemy together.");
+            "A collision below fifty meters must destroy player and enemy together.");
         Check(sim.World.CurrentEncounter.EnemyAi!.CurrentState == EnemyAiState.Destroyed,
             "The destroyed enemy AI must stop after a collision.");
         Check(sim.Events.OfType<ShipCollision>().Single().EnemyId == enemy.EnemyId &&
