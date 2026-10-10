@@ -1,5 +1,6 @@
 using System.Numerics;
 using SpaceSim.Core.Combat;
+using SpaceSim.Core.Generation;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Weapons;
 
@@ -15,6 +16,8 @@ public sealed class EnemyAiController
     private readonly float _nominalReverseAcceleration;
     private readonly EnemyAiModel _model;
     private readonly float _aegisOrbitSign;
+    private readonly BoardComputerCommandProcessor _boardComputer;
+    private readonly ShipSubclass _subclass;
 
     public EnemyAiState CurrentState { get; private set; } = EnemyAiState.Acquire;
     public float TimeInState { get; private set; }
@@ -22,19 +25,27 @@ public sealed class EnemyAiController
     public ShipCommand LastCommand { get; private set; }
     public EnemyDifficulty Difficulty { get; }
     public EnemyAiModel Model => _model;
+    public BoardComputerProfile BoardComputer { get; }
+    /// <summary>Loadout role that selects the tactical doctrine while Kestrel remains the flight brain.</summary>
+    public ShipSubclass Subclass => _subclass;
     /// <summary>False while the enemy follows its seeded forward patrol course.</summary>
     public bool IsPlayerDetected { get; private set; }
     public float DesiredReactorOperatingLevelPercent => IsPlayerDetected ? 100f : _settings.PatrolReactorOperatingLevelPercent;
     public float FireAimToleranceRadians => _settings.FireAimTolerance;
 
     internal EnemyAiController(EnemyAiSettings settings, EnemyDifficulty difficulty, float nominalReverseAcceleration,
-        EnemyAiModel model = EnemyAiModel.Basic, int seed = 0)
+        EnemyAiModel model = EnemyAiModel.Kestrel, int seed = 0, BoardComputerProfile? boardComputer = null,
+        ShipSubclass subclass = ShipSubclass.Patrol)
     {
-        _settings = settings;
+        BoardComputer = boardComputer ?? BoardComputerProfile.MilitaryMk5;
+        BoardComputer.Validate();
+        _settings = settings with { FireAimTolerance = settings.FireAimTolerance * BoardComputer.FireAimToleranceMultiplier };
         Difficulty = difficulty;
         _nominalReverseAcceleration = nominalReverseAcceleration;
         _model = model;
+        _subclass = subclass;
         _aegisOrbitSign = (seed & 1) == 0 ? 1f : -1f;
+        _boardComputer = new BoardComputerCommandProcessor(BoardComputer, seed);
     }
 
     internal ShipCommand Tick(EnemyShipState enemy, ShipState player, LanceState playerLance,
@@ -45,25 +56,27 @@ public sealed class EnemyAiController
             if (CurrentState != EnemyAiState.Destroyed) ChangeState(EnemyAiState.Destroyed);
             return LastCommand = default;
         }
-        return TickCore(enemy.Ship, enemy.Lance, player, playerLance, lanceRange, gameState, detectTarget: true);
+        return TickCore(enemy.Ship, enemy.Lance, player, playerLance, lanceRange, gameState, detectTarget: true, enemy.Sensor);
     }
 
     /// <summary>Runs this controller as a symmetric duel pilot. The owner supplies the normal
     /// ShipCommand; it does not receive any privileged simulation access.</summary>
     internal ShipCommand TickDuelPilot(ShipState controlledShip, LanceState controlledLance,
         ShipState targetShip, LanceState targetLance, float lanceRange, GameState gameState) =>
-        TickCore(controlledShip, controlledLance, targetShip, targetLance, lanceRange, gameState, detectTarget: false);
+        TickCore(controlledShip, controlledLance, targetShip, targetLance, lanceRange, gameState, detectTarget: false, null);
 
     private ShipCommand TickCore(ShipState controlledShip, LanceState controlledLance,
-        ShipState targetShip, LanceState targetLance, float lanceRange, GameState gameState, bool detectTarget)
+        ShipState targetShip, LanceState targetLance, float lanceRange, GameState gameState, bool detectTarget,
+        EnemySensorDefinition? sensor)
     {
         if (gameState == GameState.GameOver) return LastCommand = default;
 
         LastContext = EnemyAiContext.Create(targetShip, targetLance, controlledShip, controlledLance);
+        _lastControlledWeaponRange = controlledShip.Tuning.LanceRangeMeters;
         if (!IsPlayerDetected)
         {
-            if (detectTarget && LastContext.DistanceToPlayer > DetectionRangeFor(targetShip))
-                return LastCommand = Patrol(controlledShip);
+            if (detectTarget && LastContext.DistanceToPlayer > DetectionRangeFor(targetShip, sensor!))
+                return LastCommand = _boardComputer.Apply(Patrol(controlledShip));
             IsPlayerDetected = true;
         }
 
@@ -74,7 +87,7 @@ public sealed class EnemyAiController
         else if (_model == EnemyAiModel.Aegis) EvaluateAegisTransitions();
         else EvaluateTransitions();
 
-        return LastCommand = CurrentState switch
+        ShipCommand rawCommand = CurrentState switch
         {
             EnemyAiState.Approach => _model == EnemyAiModel.Kestrel ? KestrelApproach(controlledShip, targetShip) :
                 _model == EnemyAiModel.Vanguard ? VanguardApproach(controlledShip, targetShip) :
@@ -87,6 +100,7 @@ public sealed class EnemyAiController
                 _model == EnemyAiModel.Aegis ? AegisReposition(controlledShip, targetShip) : Reposition(controlledShip, targetShip),
             _ => default
         };
+        return LastCommand = _boardComputer.Apply(rawCommand);
     }
     internal void MarkDestroyed()
     {
@@ -101,7 +115,7 @@ public sealed class EnemyAiController
     internal ShipCommand TickWithoutPlayer(EnemyShipState enemy, GameState gameState)
     {
         if (enemy.IsDestroyed || gameState == GameState.GameOver) return LastCommand = default;
-        return LastCommand = Patrol(enemy.Ship);
+        return LastCommand = _boardComputer.Apply(Patrol(enemy.Ship));
     }
 
     private void EvaluateTransitions()
@@ -202,8 +216,19 @@ public sealed class EnemyAiController
         if (TimeInState < _settings.MinimumStateDuration) return;
 
         float aimError = MathF.Abs(LastContext.EnemyAimError);
-        bool inCombatRange = LastContext.DistanceToPlayer >= _settings.MinimumCombatDistance &&
-                             LastContext.DistanceToPlayer <= _settings.MaximumCombatDistance;
+        bool rangedDoctrine = _subclass == ShipSubclass.Ranged;
+        bool assaultDoctrine = _subclass == ShipSubclass.Assault;
+        float maximumCombatDistance = rangedDoctrine
+            ? CurrentWeaponRange()
+            : assaultDoctrine
+                ? CurrentWeaponRange()
+                : PatrolMaximumDistance();
+        bool inCombatRange = rangedDoctrine
+            ? LastContext.DistanceToPlayer <= maximumCombatDistance
+            : assaultDoctrine
+                ? LastContext.DistanceToPlayer <= CurrentWeaponRange()
+            : LastContext.DistanceToPlayer >= PatrolMinimumDistance() &&
+              LastContext.DistanceToPlayer <= maximumCombatDistance;
         bool firingGeometryReady = inCombatRange && aimError <= _settings.KestrelAttackEntryAimAngle;
 
         if (CurrentState == EnemyAiState.Approach)
@@ -224,8 +249,8 @@ public sealed class EnemyAiController
 
         if (CurrentState == EnemyAiState.Attack &&
             (HasImmediateCollisionRisk() ||
-             LastContext.DistanceToPlayer < _settings.MinimumCombatDistance ||
-             LastContext.DistanceToPlayer > _settings.MaximumCombatDistance * 1.2f))
+             (!rangedDoctrine && !assaultDoctrine && LastContext.DistanceToPlayer < PatrolMinimumDistance()) ||
+             LastContext.DistanceToPlayer > maximumCombatDistance * 1.05f))
             ChangeState(EnemyAiState.Reposition);
     }
 
@@ -236,12 +261,9 @@ public sealed class EnemyAiController
         return new ShipCommand(MainThrust: forwardSpeed < _settings.PatrolCruiseSpeedMetersPerSecond);
     }
 
-    /// <summary>
-    /// The reactor's physical output is currently the only signature model:
-    /// 50 percent is visible at half of the full 2 km range, with linear interpolation.
-    /// </summary>
-    private float DetectionRangeFor(ShipState player) =>
-        _settings.DetectionRangeAtFullReactorMeters * Math.Clamp(player.Reactor.OperatingLevelPercent / 100f, 0f, 1f);
+    /// <summary>Maps the player's actual delivered reactor output to the installed sensor's 50/100 PU anchors.</summary>
+    private static float DetectionRangeFor(ShipState player, EnemySensorDefinition sensor) =>
+        sensor.DetectionRangeForPlayerOutput(player.Reactor.AvailablePower);
 
     private ShipCommand Approach(ShipState enemy, ShipState player)
     {
@@ -283,10 +305,18 @@ public sealed class EnemyAiController
     private ShipCommand KestrelApproach(ShipState enemy, ShipState player)
     {
         if (HasImmediateCollisionRisk()) return KestrelDeflect(enemy);
+        if (_subclass == ShipSubclass.Ranged)
+            return LastContext.DistanceToPlayer > enemy.Tuning.LanceRangeMeters
+                ? VelocityControl(enemy, KestrelRangedEntryVelocity(enemy, player))
+                : KestrelRangedCombatPosture(enemy);
+        if (_subclass == ShipSubclass.Assault)
+            return LastContext.DistanceToPlayer > enemy.Tuning.LanceRangeMeters
+                ? VelocityControl(enemy, KestrelAssaultEntryVelocity(enemy, player))
+                : KestrelAssaultCombatPass(enemy);
         // Pure nose pursuit can create a stable, high-lateral-speed orbit when both Kestrels
         // fly the same controller. Outside weapons range, first match the target's velocity
         // and enter on a controlled closing vector; once in range, preserve the firing posture.
-        return LastContext.DistanceToPlayer > _settings.MaximumCombatDistance
+        return LastContext.DistanceToPlayer > PatrolMaximumDistance()
             ? VelocityControl(enemy, KestrelEntryVelocity(enemy, player))
             : KestrelCombatPosture(enemy);
     }
@@ -294,7 +324,15 @@ public sealed class EnemyAiController
     private ShipCommand KestrelReposition(ShipState enemy, ShipState player)
     {
         if (HasImmediateCollisionRisk()) return KestrelDeflect(enemy);
-        return LastContext.DistanceToPlayer > _settings.MaximumCombatDistance
+        if (_subclass == ShipSubclass.Ranged)
+            return LastContext.DistanceToPlayer > enemy.Tuning.LanceRangeMeters
+                ? VelocityControl(enemy, KestrelRangedEntryVelocity(enemy, player))
+                : KestrelRangedCombatPosture(enemy);
+        if (_subclass == ShipSubclass.Assault)
+            return LastContext.DistanceToPlayer > enemy.Tuning.LanceRangeMeters
+                ? VelocityControl(enemy, KestrelAssaultEntryVelocity(enemy, player))
+                : KestrelAssaultCombatPass(enemy);
+        return LastContext.DistanceToPlayer > PatrolMaximumDistance()
             ? VelocityControl(enemy, KestrelEntryVelocity(enemy, player))
             : KestrelCombatPosture(enemy);
     }
@@ -306,8 +344,9 @@ public sealed class EnemyAiController
     /// </summary>
     private Vector3 KestrelEntryVelocity(ShipState enemy, ShipState player)
     {
-        float radialError = LastContext.DistanceToPlayer - _settings.PreferredCombatDistance;
-        float desiredClosing = Math.Clamp(radialError * .12f, 10f, BrakingLimitedClosingSpeed(enemy));
+        float radialError = LastContext.DistanceToPlayer - PatrolPreferredDistance();
+        float desiredClosing = Math.Clamp(radialError * .12f, 10f,
+            BrakingLimitedClosingSpeed(enemy, PatrolMaximumDistance()));
         float leadSeconds = Math.Clamp(radialError / MathF.Max(desiredClosing, 10f), 1f, 5f);
         Vector3 predictedPosition = player.Position + player.Velocity * leadSeconds;
         Vector3 toPredicted = predictedPosition - enemy.Position;
@@ -315,6 +354,51 @@ public sealed class EnemyAiController
             ? Vector3.Normalize(toPredicted)
             : LastContext.DirectionToPlayer;
         return player.Velocity + direction * desiredClosing;
+    }
+
+    /// <summary>
+    /// Ranged Kestrel plans a velocity match just inside its own weapon envelope. The braking
+    /// calculation uses the 80%-of-range reverse threshold rather than generic combat range, so
+    /// a long-range ship does not arrive at maximum range with an unmanageable closing speed.
+    /// </summary>
+    private Vector3 KestrelRangedEntryVelocity(ShipState enemy, ShipState player)
+    {
+        float weaponRange = enemy.Tuning.LanceRangeMeters;
+        float preferredDistance = weaponRange * _settings.RangedPreferredRangeFraction;
+        float reverseStartDistance = weaponRange * _settings.RangedReverseStartRangeFraction;
+        float radialError = LastContext.DistanceToPlayer - preferredDistance;
+        float closingLimit = MathF.Min(_settings.RangedMaximumApproachClosingSpeed,
+            BrakingLimitedClosingSpeed(enemy, reverseStartDistance));
+        float desiredClosing = Math.Clamp(radialError * .10f, 4f, closingLimit);
+        float leadSeconds = Math.Clamp(radialError / MathF.Max(desiredClosing, 4f), 1f, 6f);
+        Vector3 predictedPosition = player.Position + player.Velocity * leadSeconds;
+        Vector3 toPredicted = predictedPosition - enemy.Position;
+        Vector3 direction = toPredicted.LengthSquared() > .001f
+            ? Vector3.Normalize(toPredicted)
+            : LastContext.DirectionToPlayer;
+        return player.Velocity + direction * desiredClosing;
+    }
+
+    /// <summary>
+    /// Assault ships deliberately enter on a lateral offset. The pass speed is capped by the
+    /// slower of ship yaw and the installed weapon's tracking rate, so the ship is as fast as
+    /// possible without outrunning its own ability to keep a firing solution.
+    /// </summary>
+    private Vector3 KestrelAssaultEntryVelocity(ShipState enemy, ShipState player)
+    {
+        float passDistance = AssaultPassDistance(enemy);
+        float passSpeed = AssaultPassSpeed(enemy, passDistance);
+        float leadSeconds = Math.Clamp(LastContext.DistanceToPlayer / MathF.Max(passSpeed, 1f), 1f, 6f);
+        Vector3 predictedPosition = player.Position + player.Velocity * leadSeconds;
+        Vector3 directionToTarget = predictedPosition - enemy.Position;
+        Vector3 direction = directionToTarget.LengthSquared() > .001f
+            ? Vector3.Normalize(directionToTarget)
+            : LastContext.DirectionToPlayer;
+        Vector3 tangent = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, direction)) * _aegisOrbitSign;
+        Vector3 passPoint = predictedPosition + tangent * passDistance;
+        Vector3 toPassPoint = passPoint - enemy.Position;
+        Vector3 passDirection = toPassPoint.LengthSquared() > .001f ? Vector3.Normalize(toPassPoint) : direction;
+        return player.Velocity + passDirection * passSpeed;
     }
 
     /// <summary>
@@ -404,7 +488,11 @@ public sealed class EnemyAiController
     {
         if (HasImmediateCollisionRisk()) return KestrelDeflect(enemy);
 
-        ShipCommand posture = KestrelCombatPosture(enemy);
+        ShipCommand posture = _subclass == ShipSubclass.Ranged
+            ? KestrelRangedCombatPosture(enemy)
+            : _subclass == ShipSubclass.Assault
+                ? KestrelAssaultCombatPass(enemy)
+                : KestrelCombatPosture(enemy);
         bool fire = enemyLance.IsReady && LastContext.DistanceToPlayer <= lanceRange &&
                     Vector3.Dot(enemy.Forward, LastContext.DirectionToPlayer) > 0f &&
                     MathF.Abs(LastContext.EnemyAimError) <= _settings.FireAimTolerance;
@@ -420,11 +508,89 @@ public sealed class EnemyAiController
         var turn = AegisTurnToward(enemy, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
         float aimError = MathF.Abs(LastContext.EnemyAimError);
         bool thrustAligned = aimError <= _settings.ThrustAlignmentAngle;
-        float desiredClosing = Math.Clamp((LastContext.DistanceToPlayer - _settings.PreferredCombatDistance) * .10f, -20f, 28f);
+        float desiredClosing = Math.Clamp((LastContext.DistanceToPlayer - PatrolPreferredDistance()) * .10f, -20f, 28f);
         float closingError = desiredClosing - LastContext.ClosingSpeed;
         bool main = thrustAligned && closingError > 3f;
         bool reverse = thrustAligned && closingError < -3f;
         return new ShipCommand(main, reverse, turn.Left, turn.Right);
+    }
+
+    /// <summary>
+    /// A Ranged ship retains a target-facing firing posture. At 80% of the actual installed
+    /// weapon range it deliberately opens the distance with reverse thrust, instead of making a
+    /// 180-degree turn or allowing a close-quarters opponent to dictate the engagement.
+    /// </summary>
+    private ShipCommand KestrelRangedCombatPosture(ShipState enemy)
+    {
+        var turn = AegisTurnToward(enemy, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
+        float aimError = MathF.Abs(LastContext.EnemyAimError);
+        bool thrustAligned = aimError <= _settings.ThrustAlignmentAngle;
+        float weaponRange = enemy.Tuning.LanceRangeMeters;
+        float reverseStartDistance = weaponRange * _settings.RangedReverseStartRangeFraction;
+        float preferredDistance = weaponRange * _settings.RangedPreferredRangeFraction;
+        bool needsEarlyReverse = RequiresRangedReverseBraking(enemy, reverseStartDistance);
+
+        float desiredClosing = needsEarlyReverse
+            ? -_settings.RangedWithdrawalSpeed
+            : LastContext.DistanceToPlayer > weaponRange
+                ? Math.Min(_settings.RangedMaximumApproachClosingSpeed,
+                    (LastContext.DistanceToPlayer - preferredDistance) * .10f)
+                : 0f;
+        float closingError = desiredClosing - LastContext.ClosingSpeed;
+        bool main = thrustAligned && LastContext.DistanceToPlayer > weaponRange && closingError > 3f;
+        bool reverse = thrustAligned && (needsEarlyReverse || closingError < -3f);
+        return new ShipCommand(main, reverse, turn.Left, turn.Right);
+    }
+
+    /// <summary>
+    /// Hold the bow on the target through the firing pass. Reverse thrust is deliberately not
+    /// used here: the inherited velocity carries the ship through the offset arc, while the main
+    /// thruster is only used to build enough speed before the intended pass distance is reached.
+    /// </summary>
+    private ShipCommand KestrelAssaultCombatPass(ShipState enemy)
+    {
+        var turn = AegisTurnToward(enemy, LastContext.DirectionToPlayer, LastContext.LineOfSightAngularVelocity);
+        float aimError = MathF.Abs(LastContext.EnemyAimError);
+        bool thrustAligned = aimError <= _settings.ThrustAlignmentAngle;
+        float passDistance = AssaultPassDistance(enemy);
+        float passSpeed = AssaultPassSpeed(enemy, passDistance);
+        bool main = thrustAligned && LastContext.DistanceToPlayer > passDistance &&
+                    LastContext.ClosingSpeed < passSpeed;
+        return new ShipCommand(MainThrust: main, YawLeft: turn.Left, YawRight: turn.Right);
+    }
+
+    private float AssaultPassDistance(ShipState enemy) => Math.Max(_settings.AssaultMinimumPassDistanceMeters,
+        enemy.Tuning.LanceRangeMeters * _settings.AssaultPassDistanceRangeFraction);
+
+    private float AssaultPassSpeed(ShipState enemy, float passDistance)
+    {
+        float trackingRate = Math.Min(enemy.Tuning.MaximumYawAngularVelocityRadiansPerSecond,
+            Degrees(enemy.Tuning.BowWeapon.TurretDegreesPerSecond));
+        float aimStableSpeed = passDistance * trackingRate * _settings.AssaultTrackingSafetyFactor;
+        return Math.Clamp(aimStableSpeed, _settings.AssaultMinimumPassSpeedMetersPerSecond,
+            _settings.AssaultMaximumPassSpeedMetersPerSecond);
+    }
+
+    private float PatrolMinimumDistance() => Math.Max(_settings.MinimumCombatDistance,
+        CurrentWeaponRange() * _settings.PatrolMinimumRangeFraction);
+
+    private float PatrolPreferredDistance() => CurrentWeaponRange() * _settings.PatrolPreferredRangeFraction;
+
+    private float PatrolMaximumDistance() => CurrentWeaponRange() * _settings.PatrolMaximumRangeFraction;
+
+    /// <summary>
+    /// Holds a ranged fire corridor instead of waiting until the target is already close. The
+    /// current radial closure is converted into the normal reverse-thruster stopping distance,
+    /// then padded with a small manoeuvre margin. Low relative velocity produces no early brake.
+    /// </summary>
+    private bool RequiresRangedReverseBraking(ShipState enemy, float reverseStartDistance)
+    {
+        if (LastContext.DistanceToPlayer <= reverseStartDistance) return true;
+        if (LastContext.ClosingSpeed <= 1f) return false;
+        float reverseFactor = enemy.Power.PropulsionPowerFactor * enemy.Systems.ReverseBoosterCondition;
+        float brakingAcceleration = MathF.Max(.01f, _nominalReverseAcceleration * reverseFactor);
+        float brakingDistance = LastContext.ClosingSpeed * LastContext.ClosingSpeed / (2f * brakingAcceleration);
+        return LastContext.DistanceToPlayer <= reverseStartDistance + brakingDistance + _settings.RangedReverseBrakingMarginMeters;
     }
 
     /// <summary>
@@ -441,7 +607,12 @@ public sealed class EnemyAiController
         tangent = Vector3.Normalize(tangent);
         var turn = AegisTurnToward(enemy, tangent);
         bool main = MathF.Abs(EnemyAiContext.SignedPlanarAngle(enemy.Forward, tangent)) <= _settings.ThrustAlignmentAngle;
-        return new ShipCommand(MainThrust: main, YawLeft: turn.Left, YawRight: turn.Right);
+        // A standard VECTOR S-1 needs time to rotate into the lateral escape arc. While the
+        // ship still faces the incoming target, its ANCHOR reverse booster buys that time
+        // without the forbidden 180-degree main-engine braking turn.
+        bool facesIncomingTarget = MathF.Abs(EnemyAiContext.SignedPlanarAngle(enemy.Forward, LastContext.DirectionToPlayer)) < MathF.PI / 2f;
+        bool reverse = facesIncomingTarget && LastContext.ClosingSpeed > 1f;
+        return new ShipCommand(MainThrust: main, ReverseThrust: reverse, YawLeft: turn.Left, YawRight: turn.Right);
     }
 
     private ShipCommand AegisFlyby(ShipState enemy, ShipState player)
@@ -466,10 +637,11 @@ public sealed class EnemyAiController
         return (arrivalPosition - enemy.Position) / leadSeconds;
     }
 
-    private float BrakingLimitedClosingSpeed(ShipState? enemy)
+    private float BrakingLimitedClosingSpeed(ShipState? enemy, float? brakingStartDistance = null)
     {
-        float availableDistance = MathF.Max(0f, LastContext.DistanceToPlayer - _settings.MaximumCombatDistance);
-        float reverseFactor = enemy is null ? 1f : enemy.Power.PropulsionPowerFactor * enemy.Systems.PropulsionCondition;
+        float startDistance = brakingStartDistance ?? _settings.MaximumCombatDistance;
+        float availableDistance = MathF.Max(0f, LastContext.DistanceToPlayer - startDistance);
+        float reverseFactor = enemy is null ? 1f : enemy.Power.PropulsionPowerFactor * enemy.Systems.ReverseBoosterCondition;
         float brakingAcceleration = MathF.Max(0.01f, _nominalReverseAcceleration * reverseFactor);
         float speedSquared = _settings.MaximumAttackRelativeSpeed * _settings.MaximumAttackRelativeSpeed + 2f * brakingAcceleration * availableDistance;
         return MathF.Min(_settings.MaximumApproachClosingSpeed, MathF.Sqrt(speedSquared));
@@ -593,6 +765,10 @@ public sealed class EnemyAiController
     }
 
     private static float Degrees(float value) => value * MathF.PI / 180f;
+
+    private float CurrentWeaponRange() => _lastControlledWeaponRange;
+
+    private float _lastControlledWeaponRange = 1_000f;
 
     private void ChangeState(EnemyAiState state)
     {

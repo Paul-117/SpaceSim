@@ -3,7 +3,7 @@
 Ein spielbarer 2D-Prototyp eines modularen Raumschiff-Simulators: Traegheitsflug,
 statische Ziele, eine automatisch ladende Energielanze und vier ueber eine
 Sternenkarte verbundene Encounter. Encounter 1 startet mit 10 Zielen, Encounter 2
- mit einem Easy-Transporter, Encounter 3 mit einer Medium-Korvette und Encounter 4 mit
+ mit einem Easy-Interceptor, Encounter 3 mit einer Medium-Korvette und Encounter 4 mit
  einer Hard-Frigatte. Es gibt keinen Respawn. Grafik und HUD entstehen aus
 geometrischen Formen und eigenen Schiffs-Assets. Die Laufzeit-Assets liegen unter
 `SpaceSim.Godot/Assets/Sprites` und werden mit Godot exportiert.

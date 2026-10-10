@@ -1,0 +1,20 @@
+SpaceSim Gefechts-Simulation
+Erstellt: 2026-10-10T15:48:14.7085794+02:00
+SCHIFF 1: DAUNTLESS · Interceptor · Patrol · 6,50 t · Hull 18 HP
+  Boardcomputer: Standard MK 3; Reaktor: HELIX N-115; Waffe: WRAITH
+  Schild: GUARDIAN S-20; Sensor: ECHOSHROUD V-7
+  Booster: SKYFANG M-85 / BACKDRAFT R-20 / VECTOR S-1
+SCHIFF 2: AURORA · Corvette · Patrol · 9,00 t · Hull 24 HP
+  Boardcomputer: Tactical MK 3; Reaktor: HORIZON A-150; Waffe: RAPTOR
+  Schild: ETHEREAL WARD; Sensor: NIGHTFALL
+  Booster: SKYFANG M-85 / ANCHOR R-30 / VECTOR S-1
+
+Gefechtslauf 01: gegner_sieg; Seed 1330220505; Dauer 39,08 s; minimaler Abstand 443,8 m; gefecht_01.txt
+Gefechtslauf 02: gegner_sieg; Seed 1330228424; Dauer 48,28 s; minimaler Abstand 309,0 m; gefecht_02.txt
+Gefechtslauf 03: gegner_sieg; Seed 1330236343; Dauer 106,75 s; minimaler Abstand 651,0 m; gefecht_03.txt
+Gefechtslauf 04: nomad_sieg; Seed 1330244262; Dauer 58,88 s; minimaler Abstand 688,4 m; gefecht_04.txt
+Gefechtslauf 05: gegner_sieg; Seed 1330252181; Dauer 62,28 s; minimaler Abstand 549,6 m; gefecht_05.txt
+
+Schiff-1-Siege: 1
+Schiff-2-Siege: 4
+Timeouts: 0

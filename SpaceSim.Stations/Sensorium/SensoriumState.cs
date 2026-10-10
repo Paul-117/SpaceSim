@@ -19,8 +19,8 @@ public sealed record SensoriumContact(
     float ShieldFraction,
     float PropulsionOutputFraction,
     float WeaponsOutputFraction,
-    int Hull,
-    int MaximumHull);
+    float Hull,
+    float MaximumHull);
 
 public sealed record SensoriumState(IReadOnlyList<SensoriumContact> Contacts, long SimulationTick);
 
@@ -47,7 +47,7 @@ public static class SensoriumStateBuilder
 
     private static string SignatureCode(EnemyShipClass shipClass) => shipClass switch
     {
-        EnemyShipClass.Transporter => "CETUS",
+        EnemyShipClass.Interceptor => "CETUS",
         EnemyShipClass.Corvette => "ARGUS",
         EnemyShipClass.Frigate => "ATLAS",
         _ => "UNKNOWN"

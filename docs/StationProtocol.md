@@ -232,7 +232,10 @@ Commands und sendet selbst keine Bedienbefehle.
 Zusätzlich enthält der Snapshot `propulsionCondition`, `weaponsCondition` und
 `shieldsCondition` (jeweils 0 bis 1) sowie die zugehörigen gelieferten Draw-Werte.
 `enemyAvailable: false` signalisiert, dass der aktuelle Encounter keinen aktiven
-Gegner besitzt. Der Server serialisiert keinen `WorldState`; die Nachricht ist
+Gegner besitzt. Der optionale Block `loadout` beschreibt die konkret montierten
+Module. Er enthält Klasse, Quelle (`PROCEDURAL` oder `STANDARD`), bei
+prozeduralen Gegnern Seed, Subklasse, Score, Peak-/Mindestleistung sowie die
+ausgewählten Reaktor-, Waffen-, Schild-, Sensor- und Booster-Module. Der Server serialisiert keinen `WorldState`; die Nachricht ist
 gezielt auf die Fehlersuche der Gegner-KI beschränkt.
 
 ## Sensorium (V2.0)

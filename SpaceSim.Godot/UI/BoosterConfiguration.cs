@@ -11,7 +11,7 @@ public sealed record BoosterConfiguration(
     float SideBoosterKilonewtons,
     float MaximumRotationDegreesPerSecond)
 {
-    public static BoosterConfiguration Default { get; } = new(144f, 5f, 500f, 72f, 250f, 4.68f, 120f);
+    public static BoosterConfiguration Default { get; } = new(100f, 10f, 100f, 30f, 50f, 1f, 10f);
 
     public BoosterConfiguration Clamp() => this with
     {

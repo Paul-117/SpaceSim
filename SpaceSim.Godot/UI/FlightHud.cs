@@ -89,7 +89,7 @@ public partial class FlightHud : Control
         RightText(width - 30, height - 154,
             $"POS  X {World.Ship.Position.X,9:0.0}   Z {World.Ship.Position.Z,9:0.0} m    SCALE {FormatZoomScale()}", 12, ViewSettings.Muted);
         RightText(width - 30, height - 132,
-            $"INTEGRITY {World.Ship.Hull.CurrentHull}/{World.Ship.Hull.MaximumHull}  SYS ENG {World.Ship.Systems.PropulsionCondition * 100:0}% WPN {World.Ship.Systems.WeaponsCondition * 100:0}% SHD {World.Ship.Systems.ShieldsCondition * 100:0}%", 11, ViewSettings.Muted);
+            $"INTEGRITY {World.Ship.Hull.CurrentHull:0}/{World.Ship.Hull.MaximumHull:0}  SYS ENG {World.Ship.Systems.PropulsionCondition * 100:0}% WPN {World.Ship.Systems.WeaponsCondition * 100:0}% SHD {World.Ship.Systems.ShieldsCondition * 100:0}%", 11, ViewSettings.Muted);
         RightText(width - 30, height - 109, $"KURS {heading:000.0} DEG    SIM {World.TimeSeconds:0.0}s", 12, ViewSettings.Muted);
         DrawLine(new Vector2(30, height - 96), new Vector2(width - 30, height - 96), ViewSettings.Line, 1);
         var enemies = World.VisibleEnemies.ToArray();
@@ -128,7 +128,7 @@ public partial class FlightHud : Control
         bool lanceReady = enemy.Lance.IsReady;
         DrawContactLine(panel, 186, "WEAPONS", lanceReady ? "READY" : "CHARGING",
             lanceReady ? new Color("ff6577") : ViewSettings.Amber);
-        DrawContactLine(panel, 210, "HULL INTEGRITY", $"{enemy.Ship.Hull.CurrentHull}/{enemy.Ship.Hull.MaximumHull}", ViewSettings.Text);
+        DrawContactLine(panel, 210, "HULL INTEGRITY", $"{enemy.Ship.Hull.CurrentHull:0}/{enemy.Ship.Hull.MaximumHull:0}", ViewSettings.Text);
     }
 
     private void DrawAutopilot(float width)

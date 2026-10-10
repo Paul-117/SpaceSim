@@ -1,0 +1,83 @@
+{
+  "Id": "dauntless_vs_aurora_2026-10-10_15-48-14-708",
+  "CreatedAt": "2026-10-10T15:48:14.7085794+02:00",
+  "Nomad": null,
+  "Enemy": null,
+  "Battles": [
+    {
+      "Number": 1,
+      "Seed": 1330220505,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 39.083333333333336,
+      "MinimumDistanceMeters": 443.84683,
+      "LogFile": "gefecht_01.txt"
+    },
+    {
+      "Number": 2,
+      "Seed": 1330228424,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 48.28333333333333,
+      "MinimumDistanceMeters": 309.03235,
+      "LogFile": "gefecht_02.txt"
+    },
+    {
+      "Number": 3,
+      "Seed": 1330236343,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 106.75,
+      "MinimumDistanceMeters": 650.97076,
+      "LogFile": "gefecht_03.txt"
+    },
+    {
+      "Number": 4,
+      "Seed": 1330244262,
+      "Outcome": "nomad_sieg",
+      "DurationSeconds": 58.88333333333333,
+      "MinimumDistanceMeters": 688.40137,
+      "LogFile": "gefecht_04.txt"
+    },
+    {
+      "Number": 5,
+      "Seed": 1330252181,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 62.28333333333333,
+      "MinimumDistanceMeters": 549.57056,
+      "LogFile": "gefecht_05.txt"
+    }
+  ],
+  "NomadWins": 1,
+  "EnemyWins": 4,
+  "Timeouts": 0,
+  "NomadShip": {
+    "Name": "DAUNTLESS",
+    "ShipClass": 0,
+    "Subclass": 1,
+    "MassKg": 6500,
+    "MaximumHull": 18,
+    "Reactor": 9,
+    "BowWeapon": 9,
+    "Shield": 0,
+    "Sensor": 3,
+    "MainBooster": 1,
+    "ReverseBooster": 2,
+    "SideBooster": 0,
+    "BoardComputerClass": 1,
+    "BoardComputerMark": 3
+  },
+  "EnemyShip": {
+    "Name": "AURORA",
+    "ShipClass": 1,
+    "Subclass": 1,
+    "MassKg": 9000,
+    "MaximumHull": 24,
+    "Reactor": 5,
+    "BowWeapon": 1,
+    "Shield": 6,
+    "Sensor": 8,
+    "MainBooster": 1,
+    "ReverseBooster": 0,
+    "SideBooster": 0,
+    "BoardComputerClass": 2,
+    "BoardComputerMark": 3
+  }
+}

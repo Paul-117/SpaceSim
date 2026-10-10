@@ -5,6 +5,7 @@ using SpaceSim.Core.Navigation;
 using SpaceSim.Core.Power;
 using SpaceSim.Core.AI;
 using SpaceSim.Core.Combat;
+using SpaceSim.Core.Generation;
 using SpaceSim.GodotClient.Input;
 using SpaceSim.GodotClient.Rendering;
 using SpaceSim.GodotClient.UI;
@@ -74,6 +75,9 @@ public partial class Flight : Node
     private bool _startDuelDirect;
     private bool _duelMode;
     private bool _duelFinished;
+    private EnemyShipClass _duelEnemyShipClass = EnemyShipClass.Corvette;
+    private DuelShipSelection? _duelPlayerLoadout;
+    private DuelShipSelection? _duelEnemyLoadout;
     private DuelAiLogger? _duelLogger;
     private BoosterConfiguration _boosterConfiguration = BoosterConfiguration.Default;
 
@@ -147,7 +151,7 @@ public partial class Flight : Node
         if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest && !_quickStartEnabled && !_startDuelDirect)
             _mainMenu.ShowMain();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim " + ProjectSettings.GetSetting("application/config/version", "2.1.2").AsString() +
+        GD.Print("SpaceSim " + ProjectSettings.GetSetting("application/config/version", "2.3.0").AsString() +
             " | Core 60 Hz | Armarium, Voltarium and Sensorium station server enabled");
     }
 
@@ -161,12 +165,12 @@ public partial class Flight : Node
             ? new Simulation(new SimulationSettings { TargetCount = testTargetCount },
                 initialTargets: Enumerable.Range(0, testTargetCount).Select(i =>
                     i == 0 ? new NVector3(0, 0, -300) : new NVector3(200 + 40 * i, 0, 200)), spawnEnemy: false)
-            : new Simulation(CreateGameplaySettings(startInHyperspace: true));
+            : new Simulation(CreateGameplaySettings(startInHyperspace: true), randomSeed: Random.Shared.Next());
     }
 
     private Simulation CreateQuickStartSimulation()
     {
-        var simulation = new Simulation(CreateGameplaySettings(startInHyperspace: true));
+        var simulation = new Simulation(CreateGameplaySettings(startInHyperspace: true), randomSeed: Random.Shared.Next());
         simulation.Step(default, new NavigationCommand(QuickStartEncounterId: 2, QuickStartDistanceMeters: 3_000f));
         return simulation;
     }
@@ -191,8 +195,13 @@ public partial class Flight : Node
             EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
         };
         ApplyBoosterConfiguration(settings, _boosterConfiguration);
+        GeneratedShipLoadout? playerLoadout = _duelPlayerLoadout?.Loadout;
+        GeneratedShipLoadout? enemyLoadout = _duelEnemyLoadout?.Loadout;
         return new Simulation(settings, player, random.Next(), enemyInitial: enemy, duelMode: true,
-            duelAiModel: EnemyAiModel.Kestrel);
+            duelAiModel: EnemyAiModel.Kestrel, playerTuning: playerLoadout?.Tuning, enemyTuning: enemyLoadout?.Tuning,
+            duelBoardComputer: enemyLoadout?.BoardComputer, duelEnemyShipClass: enemyLoadout?.ShipClass ?? _duelEnemyShipClass,
+            duelPlayerMassKg: playerLoadout?.Hull.MassKg, duelPlayerMaximumHull: playerLoadout?.Hull.MaximumHull,
+            duelEnemyLoadout: enemyLoadout, duelEnemyName: _duelEnemyLoadout?.Name);
     }
 
     private static NVector3 CourseVector(float course) => new(MathF.Sin(course), 0f, -MathF.Cos(course));
@@ -601,8 +610,11 @@ public partial class Flight : Node
         _starMap.Open();
     }
 
-    private void StartDuel()
+    private void StartDuel(DuelShipSelection playerLoadout, DuelShipSelection enemyLoadout)
     {
+        _duelPlayerLoadout = playerLoadout;
+        _duelEnemyLoadout = enemyLoadout;
+        _duelEnemyShipClass = enemyLoadout.Loadout.ShipClass;
         RestartGame(duel: true);
         _mainMenu.Hide();
     }
@@ -621,7 +633,13 @@ public partial class Flight : Node
 
     private void RestartCurrentMode()
     {
-        RestartGame(duel: _duelMode);
+        if (_duelMode)
+        {
+            _gameOver.Hide();
+            _mainMenu.ShowDuelSelection();
+            return;
+        }
+        RestartGame();
     }
 
     private void RestartGame(bool quickStart = false, bool duel = false)
@@ -664,8 +682,8 @@ public partial class Flight : Node
     private void StartDuelLogIfNeeded()
     {
         if (!_duelMode || _duelLogger is not null) return;
-        EnemyAiModel model = _simulation.World.CurrentEncounter.EnemyAi?.Model ?? EnemyAiModel.Basic;
-        _duelLogger = new DuelAiLogger(model);
+        EnemyAiModel model = _simulation.World.CurrentEncounter.EnemyAi?.Model ?? EnemyAiModel.Kestrel;
+        _duelLogger = new DuelAiLogger(model, _duelPlayerLoadout?.Name ?? "SCHIFF 1", _duelEnemyLoadout?.Name ?? "SCHIFF 2");
         _duelLogger.WriteSnapshot(_simulation.World, _simulation.Settings, _lastCommand, Array.Empty<SimulationEvent>());
         GD.Print($"1VS1 AI log: {_duelLogger.Path}");
     }
@@ -683,7 +701,7 @@ public partial class Flight : Node
         _ship.Rotation = MathF.Atan2(forward.X, -forward.Z);
         float effectiveMainThrust = _lastCommand.MainThrust
             ? Math.Clamp(_lastCommand.MainThrustIntensity, 0f, 1f) * state.Power.MainThrusterPowerFactor *
-              state.Systems.PropulsionCondition
+              state.Systems.MainBoosterCondition
             : 0f;
         _ship.Refresh(_lastCommand, _visualTime, effectiveMainThrust);
         _ship.Visible = _simulation.World.IsPlayerInRealSpace;
@@ -753,7 +771,7 @@ public partial class Flight : Node
             ShipCommand command = _simulation.World.CurrentEncounter.GetEnemyAi(enemy.EnemyId)?.LastCommand ?? default;
             float mainThrust = command.MainThrust
                 ? Math.Clamp(command.MainThrustIntensity, 0f, 1f) * enemy.Ship.Power.MainThrusterPowerFactor *
-                  enemy.Ship.Systems.PropulsionCondition
+                  enemy.Ship.Systems.MainBoosterCondition
                 : 0f;
             view.Refresh(command, mainThrust);
             view.Visible = _simulation.World.IsPlayerInRealSpace;

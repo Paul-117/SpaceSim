@@ -8,6 +8,8 @@ using SpaceSim.Core.Navigation;
 using SpaceSim.Core.AI;
 using SpaceSim.Core.Combat;
 using SpaceSim.Core.Power;
+using SpaceSim.Core.Weapons;
+using SpaceSim.Core.Generation;
 using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
 using SpaceSim.Stations.Debug;
@@ -27,7 +29,7 @@ var tests = new (string Name, Action Run)[]
     {
         var sim = New(new ShipInitialState(YawRadians: MathF.PI / 2));
         Step(sim, 120, new ShipCommand(MainThrust: true));
-        NearVector(sim.World.Ship.Velocity, new Vector3(-24, 0, 0), 0.001f);
+        NearVector(sim.World.Ship.Velocity, new Vector3(-100f / 12f * 2f, 0, 0), 0.001f);
     }),
     ("Velocity persists after releasing thrust", () =>
     {
@@ -44,18 +46,18 @@ var tests = new (string Name, Action Run)[]
         float rate = sim.World.Ship.AngularVelocity.Y;
         var nose = sim.World.Ship.Forward;
         Step(sim, 60);
-        Near(rate, 0.6f);
+        Near(rate, 11_530f / 90_000f);
         Near(sim.World.Ship.AngularVelocity.Y, rate);
-        Check(Vector3.Distance(nose, sim.World.Ship.Forward) > 0.5f, "Orientation must keep changing.");
+        Check(Vector3.Distance(nose, sim.World.Ship.Forward) > .1f, "Orientation must keep changing.");
     }),
     ("Opposing torque brakes and reverses angular velocity", () =>
     {
         var sim = New();
         Step(sim, 60, new ShipCommand(YawLeft: true));
         Step(sim, 30, new ShipCommand(YawRight: true));
-        Near(sim.World.Ship.AngularVelocity.Y, 0.3f);
+        Near(sim.World.Ship.AngularVelocity.Y, 11_530f / 90_000f * .5f);
         Step(sim, 60, new ShipCommand(YawRight: true));
-        Near(sim.World.Ship.AngularVelocity.Y, -0.3f);
+        Near(sim.World.Ship.AngularVelocity.Y, -11_530f / 90_000f * .5f);
     }),
     ("Yaw thrust respects the configured rotational speed limit without erasing inertia", () =>
     {
@@ -64,7 +66,7 @@ var tests = new (string Name, Action Run)[]
             TargetCount = 0,
             MaximumYawAngularVelocityRadiansPerSecond = .5f
         }, spawnEnemy: false);
-        Step(sim, 120, new ShipCommand(YawLeft: true));
+        Step(sim, 240, new ShipCommand(YawLeft: true));
         Near(sim.World.Ship.AngularVelocity.Y, .5f, .001f);
         Step(sim, 60);
         Near(sim.World.Ship.AngularVelocity.Y, .5f, .001f);
@@ -83,7 +85,40 @@ var tests = new (string Name, Action Run)[]
     {
         var sim = New();
         Step(sim, 60, new ShipCommand(ReverseThrust: true));
-        NearVector(sim.World.Ship.Velocity, new Vector3(0, 0, 6));
+        NearVector(sim.World.Ship.Velocity, new Vector3(0, 0, 2.5f));
+    }),
+    ("Default combat health uses 30 hull, 20 shield and 20 lance damage", () =>
+    {
+        var settings = new SimulationSettings();
+        Near(settings.Hull.MaximumHull, 30f);
+        Near(settings.ShipMassKg, 12_000f);
+        Near(ShieldDefinitions.GuardianS20.MaximumHitPoints, 20f);
+        Near(BowWeaponDefinitions.PeregrineL1000.Damage, 20f);
+        Near(settings.Hull.SubsystemDamageChancePerHullHit, .5f);
+        var sim = CombatSimulation(power: CombatPower());
+        JumpToCombat(sim);
+        EnemyShipState enemy = sim.World.CurrentEnemy!;
+        float hullBefore = enemy.Ship.Hull.CurrentHull;
+        sim.Step(new ShipCommand(FireLance: true));
+        Near(enemy.Ship.Hull.CurrentHull, Math.Max(0f, hullBefore - BowWeaponDefinitions.PeregrineL1000.Damage), .1f);
+        Near(enemy.Ship.Shield.CurrentShield, 0f);
+        Check(enemy.Ship.Hull.MaximumHull is >= 20f and <= 35f,
+            "A Corvette must retain its configured structural-health range after an unshielded lance hit.");
+    }),
+    ("Board computer subclasses trade firing quality against manoeuvring quality", () =>
+    {
+        BoardComputerProfile civilianMk4 = BoardComputerProfile.CivilianMk4;
+        BoardComputerProfile standardMk3 = BoardComputerProfile.StandardMk3;
+        BoardComputerProfile tacticalMk4 = BoardComputerProfile.TacticalMk4;
+        BoardComputerProfile militaryMk5 = BoardComputerProfile.MilitaryMk5;
+        Check(civilianMk4.FireAimToleranceMultiplier > standardMk3.FireAimToleranceMultiplier,
+            "Civilian Mk IV must remain less disciplined at firing than a standard board.");
+        Check(tacticalMk4.FireAimToleranceMultiplier < standardMk3.FireAimToleranceMultiplier &&
+              tacticalMk4.YawAuthorityFactor < standardMk3.YawAuthorityFactor,
+            "Tactical boards must favour firing precision over manoeuvring authority.");
+        Check(militaryMk5.CommandUpdateIntervalTicks == 1 && militaryMk5.ReactionDelayTicks == 0 &&
+              militaryMk5.ThrustCalibrationErrorFraction == 0f && militaryMk5.YawAuthorityFactor == 1f,
+            "Military Mk V must execute unfiltered Kestrel commands.");
     }),
     ("Duel starts as a fully powered direct 1 vs 1 with no subsystem damage", () =>
     {
@@ -116,7 +151,7 @@ var tests = new (string Name, Action Run)[]
               enemy.Ship.Systems.WeaponsCondition == 1f && enemy.Ship.Systems.ShieldsCondition == 1f,
               "Duel systems must begin intact.");
     }),
-    ("Aegis is a separate duel model while regular encounters retain Basic AI", () =>
+    ("Aegis is a preserved legacy duel model while regular encounters use Kestrel", () =>
     {
         var settings = new SimulationSettings
         {
@@ -136,8 +171,8 @@ var tests = new (string Name, Action Run)[]
             "Aegis must begin through the normal command-only combat path.");
 
         var normal = new Simulation();
-        Check(normal.World.Encounters.All(encounter => encounter.EnemyAi?.Model is null or EnemyAiModel.Basic),
-            "Existing encounter opponents must keep the Basic model.");
+        Check(normal.World.Encounters.All(encounter => encounter.EnemyAi?.Model is null or EnemyAiModel.Kestrel),
+            "Every production encounter opponent must use the Kestrel model.");
     }),
     ("Aegis holds a stationary target and completes a direct duel", () =>
     {
@@ -148,14 +183,20 @@ var tests = new (string Name, Action Run)[]
             EncounterThreeTargetCount = 0,
             EncounterFourTargetCount = 0,
             Power = new PowerSettings { ReactorSimulationEnabled = false },
-            Shield = new ShieldSettings { MaximumShield = 1f, LanceDamage = 1f, RechargePerSecond = .01f },
+            MainThrustNewtons = 144_000f,
+            ReverseThrustNewtons = 72_000f,
+            YawTorqueNewtonMeters = 54_000f,
+            MaximumYawAngularVelocityRadiansPerSecond = 2.0943951f,
+            MaximumNominalSpeedMetersPerSecond = 500f,
+            MaximumReverseSpeedMetersPerSecond = 250f,
+            Shield = new ShieldSettings(),
             Hull = new HullSettings { MaximumHull = 1, EnableSubsystemDamage = false },
             EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
         };
         var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 19,
             enemyInitial: new ShipInitialState(new Vector3(0, 0, -800), YawRadians: MathF.PI), duelMode: true,
-            duelAiModel: EnemyAiModel.Aegis);
-        Step(duel, 1_200);
+            duelAiModel: EnemyAiModel.Aegis, enemyTuning: ShipTuning.From(settings));
+        Step(duel, 3_600);
         Check(duel.World.GameState == GameState.GameOver,
             "Aegis must create and hold a valid firing solution against a stationary opponent.");
     }),
@@ -196,14 +237,20 @@ var tests = new (string Name, Action Run)[]
             EncounterThreeTargetCount = 0,
             EncounterFourTargetCount = 0,
             Power = new PowerSettings { ReactorSimulationEnabled = false },
-            Shield = new ShieldSettings { MaximumShield = 1f, LanceDamage = 1f, RechargePerSecond = .01f },
+            MainThrustNewtons = 144_000f,
+            ReverseThrustNewtons = 72_000f,
+            YawTorqueNewtonMeters = 54_000f,
+            MaximumYawAngularVelocityRadiansPerSecond = 2.0943951f,
+            MaximumNominalSpeedMetersPerSecond = 500f,
+            MaximumReverseSpeedMetersPerSecond = 250f,
+            Shield = new ShieldSettings(),
             Hull = new HullSettings { MaximumHull = 1, EnableSubsystemDamage = false },
             EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
         };
         var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 41,
             enemyInitial: new ShipInitialState(new Vector3(0, 0, -800), YawRadians: MathF.PI), duelMode: true,
             duelAiModel: EnemyAiModel.Vanguard);
-        Step(duel, 1_200);
+        Step(duel, 3_600);
         Check(duel.World.GameState == GameState.GameOver,
             "Vanguard must retain Aegis' ability to form and fire a valid lance solution.");
     }),
@@ -220,18 +267,96 @@ var tests = new (string Name, Action Run)[]
         };
         var distant = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 44,
             enemyInitial: new ShipInitialState(new Vector3(0, 0, -360), new Vector3(0, 0, 100), MathF.PI), duelMode: true,
-            duelAiModel: EnemyAiModel.Kestrel);
+            duelAiModel: EnemyAiModel.Kestrel, duelBoardComputer: BoardComputerProfile.MilitaryMk5);
         Step(distant, 1);
         Check(distant.World.CurrentEncounter.EnemyAi!.LastCommand.ReverseThrust,
             "Kestrel must use controlled reverse braking before the 350 m collision trigger.");
 
         var imminent = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 45,
             enemyInitial: new ShipInitialState(new Vector3(0, 0, -340), new Vector3(0, 0, 100), MathF.PI), duelMode: true,
-            duelAiModel: EnemyAiModel.Kestrel);
+            duelAiModel: EnemyAiModel.Kestrel, duelBoardComputer: BoardComputerProfile.MilitaryMk5);
         Step(imminent, 1);
         ShipCommand command = imminent.World.CurrentEncounter.EnemyAi!.LastCommand;
-        Check((command.YawLeft || command.YawRight) && !command.ReverseThrust,
+        Check(command.YawLeft || command.YawRight,
             "Kestrel must begin a lateral deflection once a direct collision remains inside 350 m.");
+        Check(command.ReverseThrust,
+            "Kestrel must use reverse thrust while its slower standard side thrusters rotate into the escape arc.");
+    }),
+    ("Kestrel Ranged derives its standoff and reverse threshold from its installed weapon", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        GeneratedShipLoadout sampled = ShipLoadoutGenerator.Generate(EnemyShipClass.Corvette, 7_209, ShipSubclass.Ranged);
+        ShipTuning longspearTuning = ShipTuning.From(settings, BowWeaponDefinitions.Longspear, sampled.Tuning.Shield,
+            sampled.Tuning.Reactor, sampled.Tuning.MainBooster, sampled.Tuning.ReverseBooster, sampled.Tuning.SideBooster);
+        GeneratedShipLoadout ranged = sampled with { Tuning = longspearTuning };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 48,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -1_450), new Vector3(0, 0, 25f), MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Kestrel, duelBoardComputer: BoardComputerProfile.MilitaryMk5,
+            duelEnemyShipClass: EnemyShipClass.Corvette, duelEnemyLoadout: ranged);
+        Step(duel, 1);
+        EnemyAiController ai = duel.World.CurrentEncounter.EnemyAi!;
+        Check(ai.Subclass == ShipSubclass.Ranged,
+            "Generated Ranged loadouts must select the Ranged Kestrel doctrine.");
+        Check(ai.LastCommand.ReverseThrust,
+            "A Ranged LONGSPEAR must brake before 80 percent of range when its current closure needs the stopping distance.");
+    }),
+    ("Kestrel Assault commits to a weapon-derived fly-by without reverse braking", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        GeneratedShipLoadout sampled = ShipLoadoutGenerator.Generate(EnemyShipClass.Corvette, 8_123, ShipSubclass.Assault);
+        ShipTuning hellstormTuning = ShipTuning.From(settings, BowWeaponDefinitions.Hellstorm, sampled.Tuning.Shield,
+            sampled.Tuning.Reactor, sampled.Tuning.MainBooster, sampled.Tuning.ReverseBooster, sampled.Tuning.SideBooster);
+        GeneratedShipLoadout assault = sampled with { Tuning = hellstormTuning };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 49,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -400), new Vector3(0, 0, 25f), MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Kestrel, duelBoardComputer: BoardComputerProfile.MilitaryMk5,
+            duelEnemyShipClass: EnemyShipClass.Corvette, duelEnemyLoadout: assault);
+        Step(duel, 1);
+        EnemyAiController ai = duel.World.CurrentEncounter.EnemyAi!;
+        Check(ai.Subclass == ShipSubclass.Assault,
+            "Generated Assault loadouts must select the Assault Kestrel doctrine.");
+        Check(!ai.LastCommand.ReverseThrust,
+            "An Assault ship inside weapon range must preserve a deliberate fly-by instead of ranged-style reverse braking.");
+    }),
+    ("Kestrel Patrol derives its stable combat corridor from the installed weapon", () =>
+    {
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            EncounterTwoTargetCount = 0,
+            EncounterThreeTargetCount = 0,
+            EncounterFourTargetCount = 0,
+            Power = new PowerSettings { ReactorSimulationEnabled = false },
+            EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+        };
+        GeneratedShipLoadout sampled = ShipLoadoutGenerator.Generate(EnemyShipClass.Corvette, 9_231, ShipSubclass.Patrol);
+        ShipTuning viperTuning = ShipTuning.From(settings, BowWeaponDefinitions.Viper, sampled.Tuning.Shield,
+            sampled.Tuning.Reactor, sampled.Tuning.MainBooster, sampled.Tuning.ReverseBooster, sampled.Tuning.SideBooster);
+        GeneratedShipLoadout patrol = sampled with { Tuning = viperTuning };
+        var duel = new Simulation(settings, new ShipInitialState(Vector3.Zero), randomSeed: 50,
+            enemyInitial: new ShipInitialState(new Vector3(0, 0, -800), YawRadians: MathF.PI), duelMode: true,
+            duelAiModel: EnemyAiModel.Kestrel, duelBoardComputer: BoardComputerProfile.MilitaryMk5,
+            duelEnemyShipClass: EnemyShipClass.Corvette, duelEnemyLoadout: patrol);
+        Step(duel, 1);
+        EnemyAiController ai = duel.World.CurrentEncounter.EnemyAi!;
+        Check(ai.Subclass == ShipSubclass.Patrol && ai.LastCommand.MainThrust,
+            "A Patrol VIPER outside its 90-percent, 765 m weapon corridor must close toward its 595 m preferred distance.");
     }),
     ("Kestrel completes a direct stationary duel through normal commands", () =>
     {
@@ -242,7 +367,7 @@ var tests = new (string Name, Action Run)[]
             EncounterThreeTargetCount = 0,
             EncounterFourTargetCount = 0,
             Power = new PowerSettings { ReactorSimulationEnabled = false },
-            Shield = new ShieldSettings { MaximumShield = 1f, LanceDamage = 1f, RechargePerSecond = .01f },
+            Shield = new ShieldSettings(),
             Hull = new HullSettings { MaximumHull = 1, EnableSubsystemDamage = false },
             EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
         };
@@ -269,7 +394,7 @@ var tests = new (string Name, Action Run)[]
             duelAiModel: EnemyAiModel.Kestrel);
         bool sawReposition = false;
         bool returnedToPursuit = false;
-        for (int tick = 0; tick < 360 && duel.World.GameState == GameState.Running; tick++)
+        for (int tick = 0; tick < 900 && duel.World.GameState == GameState.Running; tick++)
         {
             duel.Step(default);
             EnemyAiState state = duel.World.CurrentEncounter.EnemyAi!.CurrentState;
@@ -291,7 +416,7 @@ var tests = new (string Name, Action Run)[]
     {
         var sim = New();
         Step(sim, 3600, new ShipCommand(MainThrust: true));
-        Near(sim.World.Ship.Velocity.Length(), 500f, 0.05f);
+        Near(sim.World.Ship.Velocity.Length(), 100f, 0.05f);
     }),
     ("Reverse thrust reaches its configured speed limit without clamping inertia", () =>
     {
@@ -305,34 +430,294 @@ var tests = new (string Name, Action Run)[]
         Step(sim, 60);
         Near(sim.World.Ship.Velocity.Length(), 100f, 0.05f);
     }),
-    ("Lance needs exactly three seconds to charge", () =>
+    ("Bow weapon catalogue contains every configured weapon and ships default to PEREGRINE L-1000", () =>
+    {
+        Check(BowWeaponDefinitions.All.Count == 10, "Exactly ten bow weapons must be available.");
+        var expected = new (BowWeaponType Type, float Damage, float Range, float Charge, float Arc, float Turn, float Power)[]
+        {
+            (BowWeaponType.PeregrineL1000, 20f, 1_000f, 5f, 5f, 3.33f, 40f),
+            (BowWeaponType.Raptor, 11f, 750f, 2.5f, 12f, 10f, 38f),
+            (BowWeaponType.Doomhammer, 36f, 1_400f, 11f, 5f, 2f, 60f),
+            (BowWeaponType.Longspear, 15f, 1_650f, 6.5f, 3f, 2.5f, 46f),
+            (BowWeaponType.Hellstorm, 6f, 500f, 1f, 15f, 15f, 48f),
+            (BowWeaponType.Ravager, 28f, 600f, 5.5f, 7f, 5f, 42f),
+            (BowWeaponType.Spectre, 13f, 1_050f, 3.5f, 15f, 12f, 50f),
+            (BowWeaponType.Oblivion, 48f, 1_800f, 15f, 2f, 1.5f, 75f),
+            (BowWeaponType.Viper, 18f, 850f, 3.8f, 8f, 7f, 44f),
+            (BowWeaponType.Wraith, 16f, 900f, 5f, 6f, 4f, 22f)
+        };
+        foreach (var entry in expected)
+        {
+            BowWeaponDefinition weapon = BowWeaponDefinitions.Get(entry.Type);
+            Near(weapon.Damage, entry.Damage); Near(weapon.RangeMeters, entry.Range);
+            Near(weapon.ChargeSeconds, entry.Charge); Near(weapon.TurretMaximumAngleDegrees, entry.Arc);
+            Near(weapon.TurretDegreesPerSecond, entry.Turn); Near(weapon.PowerDraw, entry.Power);
+        }
+        var sim = NewWeapons();
+        Check(sim.World.Ship.Tuning.BowWeapon.Type == BowWeaponType.PeregrineL1000 &&
+              sim.World.Ship.Power.MaximumWeaponsDraw == 40f,
+            "The Nomad must default to PEREGRINE L-1000 and its 40 PU weapon station draw.");
+    }),
+    ("Booster catalogue contains every configured model and ships default to Atlas, Anchor and Vector", () =>
+    {
+        Check(BoosterDefinitions.MainAll.Count == 5 && BoosterDefinitions.ReverseAll.Count == 3 && BoosterDefinitions.SideAll.Count == 3,
+            "The booster catalogue must contain every configured model.");
+        ShipTuning tuning = ShipTuning.From(new SimulationSettings());
+        Check(tuning.MainBooster.Type == MainBoosterType.AtlasM100 && tuning.ReverseBooster.Type == ReverseBoosterType.AnchorR30 &&
+              tuning.SideBooster.Type == SideBoosterType.VectorS1, "Ships must use the three Standard booster models initially.");
+        Near(tuning.MainThrustNewtons, 100_000f);
+        Near(tuning.ReverseThrustNewtons, 30_000f);
+        Near(tuning.MaximumForwardSpeedMetersPerSecond, 100f);
+        Near(tuning.MaximumReverseSpeedMetersPerSecond, 50f);
+        Near(tuning.MaximumYawAngularVelocityRadiansPerSecond, 10f * MathF.PI / 180f);
+    }),
+    ("Procedural ship generator samples deterministic class-valid loadouts", () =>
+    {
+        GeneratedShipLoadout first = ShipLoadoutGenerator.GenerateCorvette(44_721);
+        GeneratedShipLoadout second = ShipLoadoutGenerator.GenerateCorvette(44_721);
+        Check(first.ShipClass == EnemyShipClass.Corvette && first.Tuning.Reactor.MaximumOutputPower is >= 110f and <= 150f,
+            "A Corvette must select a reactor inside its 110 to 150 PU class range.");
+        Check(first.MeetsHardPowerRule && first.RequiredReactorOutputAtEightyPercent == first.PeakPowerDemand * .8f,
+            "Generated loadouts must satisfy the mandatory 80 percent simultaneous-power rule.");
+        Check(first.Subclass == second.Subclass && first.Tuning.Reactor.Type == second.Tuning.Reactor.Type &&
+              first.Tuning.BowWeapon.Type == second.Tuning.BowWeapon.Type && first.Sensor.Type == second.Sensor.Type &&
+              first.Score == second.Score, "A fixed generator seed must reproduce the same loadout.");
+        foreach (ShipSubclass subclass in Enum.GetValues<ShipSubclass>())
+        {
+            GeneratedShipLoadout forced = ShipLoadoutGenerator.Generate(EnemyShipClass.Corvette, 100 + (int)subclass, subclass);
+            Check(forced.Subclass == subclass && forced.MeetsHardPowerRule && forced.ScoreBreakdown.Count > 0 &&
+                  forced.BoardComputer.Class == BoardComputerClass.Tactical && forced.BoardComputerTargetMark is >= 2 and <= 5 &&
+                  forced.BoardComputerScoreBreakdown.Count > 0,
+                "Every Corvette subclass must produce an explainable hard-valid loadout.");
+        }
+        Check(ShipClassGenerationProfiles.Interceptor.MinimumReactorOutputPower == 90f &&
+              ShipClassGenerationProfiles.Interceptor.MaximumReactorOutputPower == 120f &&
+              ShipClassGenerationProfiles.Frigate.MinimumReactorOutputPower == 150f &&
+              ShipClassGenerationProfiles.Frigate.MaximumReactorOutputPower == 250f &&
+              ShipClassGenerationProfiles.Interceptor.MinimumMassTons == 5f &&
+              ShipClassGenerationProfiles.Interceptor.MaximumMassTons == 8f &&
+              ShipClassGenerationProfiles.Corvette.MinimumHull == 20f &&
+              ShipClassGenerationProfiles.Corvette.MaximumHull == 35f &&
+              ShipClassGenerationProfiles.Frigate.MinimumMassTons == 13f &&
+              ShipClassGenerationProfiles.Frigate.MaximumHull == 45f,
+            "Class reactor, mass and hull ranges must remain centrally configured.");
+    }),
+    ("Hull loadout scoring produces bounded heavy and lightweight ship profiles", () =>
+    {
+        ShipTuning heavy = ShipTuning.From(new SimulationSettings(), BowWeaponDefinitions.Doomhammer,
+            ShieldDefinitions.Citadel, ReactorDefinitions.LeviathanL250, BoosterDefinitions.DreadnoughtM180,
+            BoosterDefinitions.GravebreakR60, BoosterDefinitions.ColossusS4);
+        ShipHullLoadoutSelection frigate = ShipHullLoadoutSelector.Select(ShipClassGenerationProfiles.Frigate,
+            ShipSubclass.Assault, heavy);
+        Check(frigate.MassKg == 20_000f && frigate.MaximumHull == 45f &&
+              frigate.ScoreBreakdown.Any(rule => rule.Id == "mass_heavy_shield") &&
+              frigate.ScoreBreakdown.Any(rule => rule.Id == "hull_heavy_weapon"),
+            "Heavy Frigate hardware must select the upper class mass and hull limits.");
+
+        ShipTuning light = ShipTuning.From(new SimulationSettings(), BowWeaponDefinitions.Hellstorm,
+            ShieldDefinitions.Quicksilver, ReactorDefinitions.SwiftcoreR90, BoosterDefinitions.StarlingM70,
+            BoosterDefinitions.BackdraftR20, BoosterDefinitions.TalonS2);
+        ShipHullLoadoutSelection interceptor = ShipHullLoadoutSelector.Select(ShipClassGenerationProfiles.Interceptor,
+            ShipSubclass.Ranged, light);
+        Check(interceptor.MassKg == 5_000f && interceptor.MaximumHull == 10f &&
+              interceptor.ScoreBreakdown.Any(rule => rule.Id == "mass_fast_main_lightweight") &&
+              interceptor.ScoreBreakdown.Any(rule => rule.Id == "hull_fragile_shield"),
+            "Light Interceptor hardware must select the lower class mass and hull limits.");
+    }),
+    ("Board computer loadout scoring binds hull class and flight complexity to a bounded Mark", () =>
+    {
+        ShipTuning precision = ShipTuning.From(new SimulationSettings(), BowWeaponDefinitions.Longspear,
+            ShieldDefinitions.GuardianS20, ReactorDefinitions.CoreX125, BoosterDefinitions.AtlasM100,
+            BoosterDefinitions.AnchorR30, BoosterDefinitions.VectorS1);
+        BoardComputerLoadoutSelection ranged = BoardComputerLoadoutSelector.Select(
+            EnemyShipClass.Corvette, ShipSubclass.Ranged, precision);
+        Check(ranged.Profile.Class == BoardComputerClass.Tactical && ranged.TargetMark == 5 &&
+              ranged.ScoreBreakdown.Any(rule => rule.Id == "board_long_range_precision") &&
+              ranged.ScoreBreakdown.Any(rule => rule.Id == "board_narrow_weapon_arc"),
+            "A demanding ranged Corvette must gain Tactical Mark from the documented precision rules.");
+
+        ShipTuning forgiving = ShipTuning.From(new SimulationSettings(), BowWeaponDefinitions.Hellstorm,
+            ShieldDefinitions.GuardianS20, ReactorDefinitions.CoreX125, BoosterDefinitions.StarlingM70,
+            BoosterDefinitions.GravebreakR60, BoosterDefinitions.TalonS2);
+        BoardComputerLoadoutSelection assault = BoardComputerLoadoutSelector.Select(
+            EnemyShipClass.Corvette, ShipSubclass.Assault, forgiving);
+        Check(assault.Profile.Class == BoardComputerClass.Tactical && assault.TargetMark == 2 &&
+              assault.ScoreBreakdown.Any(rule => rule.Id == "board_forgiving_close_weapon") &&
+              assault.ScoreBreakdown.Any(rule => rule.Id == "board_wide_arc_fast_yaw"),
+            "A forgiving close Corvette must spend fewer board-computer marks.");
+
+        BoardComputerLoadoutSelection frigate = BoardComputerLoadoutSelector.Select(
+            EnemyShipClass.Frigate, ShipSubclass.Assault, precision);
+        Check(frigate.Profile.Class == BoardComputerClass.Military && frigate.TargetMark == 5,
+            "A Frigate must always select its Military board computer within its MK III to V range.");
+    }),
+    ("Duel enemy class selects and retains a procedural loadout", () =>
+    {
+        foreach (EnemyShipClass shipClass in Enum.GetValues<EnemyShipClass>())
+        {
+            var duel = new Simulation(new SimulationSettings
+            {
+                TargetCount = 0,
+                EncounterTwoTargetCount = 0,
+                EncounterThreeTargetCount = 0,
+                EncounterFourTargetCount = 0,
+                Power = new PowerSettings { ReactorSimulationEnabled = false },
+                Hull = new HullSettings { EnableSubsystemDamage = false },
+                EnemyExplosion = new EnemyExplosionSettings { Enabled = false }
+            }, randomSeed: 2_500 + (int)shipClass, enemyInitial: new ShipInitialState(new Vector3(0, 0, -2_000), YawRadians: MathF.PI),
+                duelMode: true, duelEnemyShipClass: shipClass);
+            EnemyShipState enemy = duel.World.CurrentEnemy!;
+            ShipClassGenerationProfile profile = ShipClassGenerationProfiles.Get(shipClass);
+            Check(enemy.ShipClass == shipClass && enemy.GeneratedLoadout is { } loadout &&
+                  loadout.ShipClass == shipClass && loadout.MeetsHardPowerRule &&
+                  enemy.Ship.MassKg >= profile.MinimumMassTons * 1_000f && enemy.Ship.MassKg <= profile.MaximumMassTons * 1_000f &&
+                  enemy.Ship.Hull.MaximumHull >= profile.MinimumHull && enemy.Ship.Hull.MaximumHull <= profile.MaximumHull &&
+                  enemy.Ship.MassKg == loadout.Hull.MassKg && enemy.Ship.Hull.MaximumHull == loadout.Hull.MaximumHull,
+                "A 1VS1 class selection must mount its retained mass, hull and hard-valid procedural loadout.");
+        }
+    }),
+    ("Shield catalogue contains every configured generator and ships default to GUARDIAN S-20", () =>
+    {
+        Check(ShieldDefinitions.All.Count == 10, "Exactly ten shield generators must be available.");
+        var expected = new (ShieldType Type, float Hp, float Recharge, float Reboot, float Power)[]
+        {
+            (ShieldType.GuardianS20, 20f, 5f, 10f, 30f), (ShieldType.PhantomVeil, 12f, 1.5f, 6f, 35f),
+            (ShieldType.Ironclad, 40f, 9f, 20f, 45f), (ShieldType.Citadel, 50f, 15f, 30f, 60f),
+            (ShieldType.Pulseguard, 18f, 2.5f, 12f, 42f), (ShieldType.SentinelArray, 30f, 6f, 15f, 38f),
+            (ShieldType.EtherealWard, 15f, 3.5f, 5f, 24f), (ShieldType.Bulwark, 35f, 8f, 18f, 32f),
+            (ShieldType.NovaBarrier, 25f, 4f, 22f, 50f), (ShieldType.Quicksilver, 10f, 1f, 8f, 40f)
+        };
+        foreach (var entry in expected)
+        {
+            ShieldDefinition shield = ShieldDefinitions.Get(entry.Type);
+            Near(shield.MaximumHitPoints, entry.Hp); Near(shield.RechargeSeconds, entry.Recharge);
+            Near(shield.RebootSeconds, entry.Reboot); Near(shield.PowerDraw, entry.Power);
+        }
+        var sim = NewWeapons();
+        Check(sim.World.Ship.Tuning.Shield.Type == ShieldType.GuardianS20 &&
+              sim.World.Ship.Power.MaximumShieldsDraw == 30f && sim.World.Ship.Shield.MaximumShield == 20f,
+            "The Nomad must default to GUARDIAN S-20 and its 30 PU shield station draw.");
+    }),
+    ("A depleted GUARDIAN S-20 requires its powered reboot before recharging", () =>
+    {
+        ShieldDefinition definition = ShieldDefinitions.GuardianS20;
+        ShieldState shield = ShieldSystem.Create(definition);
+        var events = new List<SimulationEvent>();
+        float residual = ShieldSystem.ApplyLanceDamage(shield, WeaponOwner.Player, null, Vector3.Zero,
+            new ShieldSettings(), events, 20f, 1f, definition);
+        Near(residual, 0f); Near(shield.CurrentShield, 0f); Near(shield.RebootRemaining, 10f);
+        Check(shield.IsRebooting && shield.NeedsPower && events.OfType<ShieldDepleted>().Any(),
+            "A depleted shield must enter its reboot state and request shield power.");
+        StepShield(shield, definition, 599, 1f);
+        Check(shield.IsRebooting && shield.CurrentShield == 0f, "GUARDIAN S-20 must not reboot early.");
+        ShieldSystem.Recharge(shield, 1f, new ShieldSettings(), definition);
+        Check(!shield.IsRebooting && shield.CurrentShield == 0f, "Reboot completes before ordinary recharge begins.");
+        StepShield(shield, definition, 299, 1f);
+        Check(shield.CurrentShield < shield.MaximumShield, "GUARDIAN S-20 must not finish its five-second recharge early.");
+        ShieldSystem.Recharge(shield, 1f, new ShieldSettings(), definition);
+        Near(shield.CurrentShield, shield.MaximumShield);
+        ShieldSystem.BeginReboot(shield, definition);
+        StepShield(shield, definition, 600, 0f);
+        Check(shield.IsRebooting, "Without shield power, reboot progress must pause.");
+    }),
+    ("Reactor catalogue contains every configured model and ships default to CORE-X125", () =>
+    {
+        Check(ReactorDefinitions.All.Count == 10, "Exactly ten reactor models must be available.");
+        var expected = new (ReactorType Type, float Output, float Fuel, float Ramp)[]
+        {
+            (ReactorType.CoreX125, 125f, 7f, 60f), (ReactorType.SwiftcoreR90, 90f, 6.5f, 15f),
+            (ReactorType.MonolithT200, 200f, 13f, 110f), (ReactorType.EcofluxP110, 110f, 4f, 45f),
+            (ReactorType.InfernoX175, 175f, 15f, 25f), (ReactorType.HorizonA150, 150f, 8.5f, 65f),
+            (ReactorType.EnduranceW80, 80f, 2.5f, 90f), (ReactorType.OverdriveOd140, 140f, 12f, 10f),
+            (ReactorType.LeviathanL250, 250f, 19f, 150f), (ReactorType.HelixN115, 115f, 5.5f, 30f)
+        };
+        foreach (var entry in expected)
+        {
+            ReactorDefinition reactor = ReactorDefinitions.Get(entry.Type);
+            Near(reactor.MaximumOutputPower, entry.Output); Near(reactor.MaximumFuelUsagePerMinute, entry.Fuel);
+            Near(reactor.RampUpSeconds, entry.Ramp);
+        }
+        var standard = NewWeapons();
+        Check(standard.World.Ship.Tuning.Reactor.Type == ReactorType.CoreX125 &&
+              standard.World.Ship.Reactor.MaximumOutputPower == 125f,
+            "The Nomad must default to the CORE-X125.");
+
+        var settings = new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 0f }
+        };
+        var raptor = new Simulation(settings, spawnEnemy: false,
+            playerTuning: ShipTuning.From(settings, reactor: ReactorDefinitions.SwiftcoreR90));
+        raptor.Step(default, default, new ReactorCommand(100f));
+        Step(raptor, 898);
+        Check(raptor.World.Ship.Reactor.OperatingLevelPercent < 100f, "SWIFTCORE R-90 must not finish its 15-second ramp early.");
+        Step(raptor, 1);
+        Near(raptor.World.Ship.Reactor.OperatingLevelPercent, 100f, .001f);
+        Near(raptor.World.Ship.Reactor.AvailablePower, 90f, .001f);
+        Near(raptor.World.Ship.Reactor.FuelUsagePerMinute, 6.5f, .001f);
+    }),
+    ("Enemy sensor catalogue uses 50 and 100 PU detection anchors and ARGUS by default", () =>
+    {
+        Check(EnemySensorDefinitions.All.Count == 10, "Exactly ten enemy sensor suites must be available.");
+        var expected = new (EnemySensorType Type, float Minimum, float Maximum, float Power)[]
+        {
+            (EnemySensorType.ArgusS200, 1_000f, 2_500f, 20f), (EnemySensorType.GhostEye, 500f, 1_400f, 8f),
+            (EnemySensorType.RavenS4, 750f, 1_800f, 12f), (EnemySensorType.EchoshroudV7, 650f, 2_300f, 18f),
+            (EnemySensorType.OracleX9, 1_200f, 3_000f, 45f), (EnemySensorType.HawkeyeM3, 1_100f, 2_700f, 32f),
+            (EnemySensorType.Voidseeker, 900f, 3_000f, 38f), (EnemySensorType.Watchtower, 1_500f, 2_200f, 28f),
+            (EnemySensorType.Nightfall, 500f, 2_000f, 15f), (EnemySensorType.Omniscient, 1_400f, 3_000f, 55f)
+        };
+        foreach (var entry in expected)
+        {
+            EnemySensorDefinition sensor = EnemySensorDefinitions.Get(entry.Type);
+            Near(sensor.MinimumRangeMeters, entry.Minimum); Near(sensor.MaximumRangeMeters, entry.Maximum);
+            Near(sensor.PowerUsage, entry.Power);
+        }
+        EnemySensorDefinition argus = EnemySensorDefinitions.ArgusS200;
+        Near(argus.DetectionRangeForPlayerOutput(0f), 1_000f);
+        Near(argus.DetectionRangeForPlayerOutput(50f), 1_000f);
+        Near(argus.DetectionRangeForPlayerOutput(75f), 1_750f);
+        Near(argus.DetectionRangeForPlayerOutput(100f), 2_500f);
+        Near(argus.DetectionRangeForPlayerOutput(125f), 2_500f);
+
+        var sim = new Simulation(new SimulationSettings
+        {
+            Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 32f }
+        });
+        EnemyShipState enemy = sim.World.Encounters[1].Enemies.Single();
+        Check(enemy.Sensor.Type == EnemySensorType.ArgusS200 && enemy.SensorPowerUsage == 20f &&
+              enemy.Ship.Power.MaximumSensorsDraw == 20f,
+            "Existing enemy ships must use the ARGUS S-200 and reserve its 20 PU sensor draw.");
+    }),
+    ("PEREGRINE L-1000 needs exactly five seconds to charge", () =>
     {
         var sim = NewWeapons();
         Check(!sim.World.Lance.IsReady, "Lance starts empty.");
-        Step(sim, 179);
+        Step(sim, 299);
         Check(!sim.World.Lance.IsReady, "Lance must not charge early.");
         Step(sim, 1);
-        Check(sim.World.Lance.IsReady, "Lance must be ready after 180 ticks.");
+        Check(sim.World.Lance.IsReady, "PEREGRINE L-1000 must be ready after 300 ticks.");
     }),
     ("Early fire is ignored and never queued", () =>
     {
         var sim = NewWeapons();
         sim.Step(new ShipCommand(FireLance: true));
         Check(!sim.Events.OfType<WeaponFired>().Any(), "Early shot must be rejected.");
-        Step(sim, 179);
+        Step(sim, 299);
         Check(sim.World.Lance.IsReady, "Rejected request must not fire later.");
         Check(!sim.Events.OfType<WeaponFired>().Any(), "No delayed shot.");
     }),
     ("Shot resets charge, emits once, and recharges", () =>
     {
         var sim = NewWeapons();
-        Step(sim, 180);
+        Step(sim, 300);
         sim.Step(new ShipCommand(FireLance: true));
         Near(sim.World.Lance.ChargeFraction, 0);
         Check(sim.Events.OfType<WeaponFired>().Count() == 1, "Exactly one shot event expected.");
         Step(sim, 1);
         Check(sim.Events.Count == 0, "Old events must not repeat.");
-        Step(sim, 178);
+        Step(sim, 298);
         Check(!sim.World.Lance.IsReady, "Cooldown must last full duration.");
         Step(sim, 1);
         Check(sim.World.Lance.IsReady, "Must recharge automatically.");
@@ -385,12 +770,12 @@ var tests = new (string Name, Action Run)[]
     ("Lance turret is limited and does not apply ship yaw", () =>
     {
         var sim = NewWeapons();
-        Step(sim, 30, new ShipCommand(AimLanceRight: true));
+        Step(sim, 91, new ShipCommand(AimLanceRight: true));
         Near(sim.World.LanceAim.YawOffsetDegrees, 5f);
         Near(sim.World.Ship.AngularVelocity.Y, 0f);
         Check(sim.World.LanceDirection.X > 0f && sim.World.LanceDirection.Z < 0f,
             "Starboard turret aim must rotate only the lance ray to starboard.");
-        Step(sim, 60, new ShipCommand(AimLanceLeft: true));
+        Step(sim, 181, new ShipCommand(AimLanceLeft: true));
         Near(sim.World.LanceAim.YawOffsetDegrees, -5f);
         Near(sim.World.Ship.AngularVelocity.Y, 0f);
     }),
@@ -399,8 +784,8 @@ var tests = new (string Name, Action Run)[]
         float radians = 5f * MathF.PI / 180f;
         var target = new Vector3(MathF.Sin(radians) * 300f, 0f, -MathF.Cos(radians) * 300f);
         var sim = WithTargets(target);
-        Step(sim, 30, new ShipCommand(AimLanceRight: true));
-        Step(sim, 150);
+        Step(sim, 91, new ShipCommand(AimLanceRight: true));
+        Step(sim, 209);
         sim.Step(new ShipCommand(FireLance: true));
         Check(sim.World.HitCount == 1, "A target on the mounted lance axis must be hit.");
     }),
@@ -455,10 +840,10 @@ var tests = new (string Name, Action Run)[]
               noTarget.TargetDistanceMeters == 0f && noTarget.LanceTurretAngleDegrees == 0f &&
               noTarget.MaximumPower == 40f && noTarget.LanceSystemCondition == 1f,
             "An empty encounter must not expose a target or world state.");
-        Step(empty, 180);
+        Step(empty, 300);
         Check(ArmariumStateBuilder.Build(empty.World).LanceReady,
             "Armarium must expose the ordinary lance readiness state.");
-        Step(empty, 30, new ShipCommand(AimLanceRight: true));
+        Step(empty, 91, new ShipCommand(AimLanceRight: true));
         Near(ArmariumStateBuilder.Build(empty.World).LanceTurretAngleDegrees, 5f);
 
         var combat = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -900)));
@@ -514,7 +899,7 @@ var tests = new (string Name, Action Run)[]
         Check(!early.Events.OfType<WeaponFired>().Any(), "Early Armarium fire must obey the ordinary lance readiness rule.");
 
         var sim = WithTargets(new Vector3(0, 0, -300));
-        Step(sim, 180);
+        Step(sim, 300);
         buffer.RequestFire(); buffer.RequestFire();
         buffer.SetTurretDirection(-1);
         ArmariumCommand command = buffer.ReadCommand();
@@ -528,7 +913,10 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Enemy AI debug state is focused and exposes patrol telemetry", () =>
     {
-        var sim = new Simulation();
+        var sim = new Simulation(new SimulationSettings
+        {
+            Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 32f }
+        });
         EnemyDebugState empty = EnemyDebugStateBuilder.Build(sim.World);
         Check(!empty.EnemyAvailable && empty.SimulationTick == sim.World.Tick,
             "Enemy debug station must report the absence of an active enemy without exposing a WorldState.");
@@ -539,6 +927,7 @@ var tests = new (string Name, Action Run)[]
         Check(state.EnemyAvailable && state.EnemyId == 1 && !state.PlayerDetected &&
               state.Difficulty == "EASY" && state.AiState == "ACQUIRE" && state.ReactorOperatingLevelPercent == 50f &&
               state.PropulsionRequested == 50f && state.PropulsionDraw > 0f && state.WeaponsDraw == 0f && state.ShieldsDraw == 0f &&
+              state.Loadout is { Source: "STANDARD", Modules.Count: 9 } &&
               state.EnemyFireControl is { CombatActive: false, FireCommandWouldBeIssued: false } &&
               state.PlayerFireControl is { HasTarget: true, AimToleranceDegrees: 2f },
             "Enemy debug state must expose only the active patrol enemy's meaningful AI and power telemetry.");
@@ -546,7 +935,7 @@ var tests = new (string Name, Action Run)[]
     ("Armarium turret input never changes the ship thrusters", () =>
     {
         var sim = NewWeapons();
-        Step(sim, 60, new ShipCommand(AimLanceRight: true));
+        Step(sim, 91, new ShipCommand(AimLanceRight: true));
         Near(sim.World.Ship.AngularVelocity.Y, 0f);
         Near(sim.World.LanceAim.YawOffsetDegrees, 5f);
     }),
@@ -554,7 +943,10 @@ var tests = new (string Name, Action Run)[]
         StationServerSmokeAsync().GetAwaiter().GetResult()),
     ("Four encounters assign their configured content and enemy difficulty", () =>
     {
-        var sim = new Simulation();
+        var sim = new Simulation(new SimulationSettings
+        {
+            Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 32f }
+        });
         Check(sim.World.CurrentEncounter.Id == 1, "Start in encounter 1.");
         Check(sim.World.Encounters.Count == 4, "There must be four destinations.");
         Check(sim.World.Encounters[0].Targets.Count == 10 && sim.World.Encounters[1].Targets.Count == 0 &&
@@ -574,14 +966,27 @@ var tests = new (string Name, Action Run)[]
         Check(enemies.Select(enemy => enemy.ShipClass).Distinct().Count() == enemies.Length,
             "Each configured enemy must expose its contact class.");
         Check(enemies.Select(enemy => enemy.ShipClass).SequenceEqual(
-                [EnemyShipClass.Transporter, EnemyShipClass.Corvette, EnemyShipClass.Frigate]),
-            "Easy, Medium and Hard encounters must use Transporter, Corvette and Frigate contact classes.");
+                [EnemyShipClass.Interceptor, EnemyShipClass.Corvette, EnemyShipClass.Frigate]),
+            "Easy, Medium and Hard encounters must use Interceptor, Corvette and Frigate contact classes.");
+        EnemyShipState generatedCorvette = sim.World.Encounters[2].Enemies.Single();
+        float corvettePeakDemand = ShipLoadoutGenerator.PeakPowerDemand(generatedCorvette.Ship.Tuning.MainBooster,
+            generatedCorvette.Ship.Tuning.ReverseBooster, generatedCorvette.Ship.Tuning.SideBooster,
+            generatedCorvette.Ship.Tuning.BowWeapon, generatedCorvette.Ship.Tuning.Shield, generatedCorvette.Sensor);
+        Check(generatedCorvette.Ship.Tuning.Reactor.MaximumOutputPower is >= 110f and <= 150f &&
+              generatedCorvette.Ship.Tuning.Reactor.MaximumOutputPower >= corvettePeakDemand * ShipLoadoutGenerator.RequiredPowerCoverage,
+            "The medium encounter Corvette must use a hard-valid generated loadout.");
+        Check(generatedCorvette.GeneratedLoadout is { ShipClass: EnemyShipClass.Corvette } &&
+              generatedCorvette.GeneratedLoadout.PeakPowerDemand == corvettePeakDemand,
+            "A procedurally generated enemy must retain its manifest for reproducible inspection.");
         Check(sim.World.Encounters.SelectMany(e => e.Targets).Select(t => t.Id).Distinct().Count() == 10,
             "Target IDs must be unique across encounters.");
     }),
     ("Distant enemies begin on deterministic random patrol courses with patrol reactor power", () =>
     {
-        var sim = new Simulation();
+        var sim = new Simulation(new SimulationSettings
+        {
+            Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 32f }
+        });
         var enemies = sim.World.Encounters.Skip(1).SelectMany(encounter => encounter.Enemies).ToArray();
         Check(enemies.Length == 3, "Each hostile encounter must contain its patrol enemy.");
         foreach (EnemyShipState enemy in enemies)
@@ -593,7 +998,9 @@ var tests = new (string Name, Action Run)[]
             Near(enemy.Ship.Velocity.Length(), sim.Settings.EnemyAi.PatrolCruiseSpeedMetersPerSecond);
             Near(enemy.Ship.Reactor.OperatingLevelPercent, sim.Settings.EnemyAi.PatrolReactorOperatingLevelPercent);
             Near(enemy.Ship.Power.PropulsionRequested, sim.Settings.EnemyAi.PatrolPropulsionDraw);
-            Near(enemy.Ship.Power.PropulsionDraw, sim.Settings.EnemyAi.PatrolPropulsionDraw);
+            Near(enemy.Ship.Power.SensorsRequested, enemy.Sensor.PowerUsage);
+            Near(enemy.Ship.Power.SensorsDraw, enemy.Sensor.PowerUsage * enemy.Ship.Power.DemandScale);
+            Near(enemy.Ship.Power.PropulsionDraw, sim.Settings.EnemyAi.PatrolPropulsionDraw * enemy.Ship.Power.DemandScale);
             Near(enemy.Ship.Power.WeaponsDraw, 0f);
             Near(enemy.Ship.Power.ShieldsDraw, 0f);
             Near(enemy.Ship.Shield.CurrentShield, 0f);
@@ -624,27 +1031,37 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Enemy detection range scales linearly with the player's physical reactor output", () =>
     {
-        var halfOutside = DetectionSimulation(50f, 1_001f);
-        JumpToCombat(halfOutside);
-        halfOutside.Step(default);
-        Check(!halfOutside.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
-            "A 50 percent reactor must not be detected beyond one kilometre.");
+        var lowOutside = DetectionSimulation(32f, 1_001f); // 40 PU: clamped to the 50 PU minimum anchor.
+        JumpToCombat(lowOutside);
+        lowOutside.Step(default);
+        Check(!lowOutside.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
+            "Below 50 PU, ARGUS must not detect beyond its one-kilometre minimum range.");
 
-        var halfAtRange = DetectionSimulation(50f, 1_000f);
-        JumpToCombat(halfAtRange);
-        halfAtRange.Step(default);
-        Check(halfAtRange.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
-            "A 50 percent reactor must be detected at one kilometre.");
+        var minimumAtRange = DetectionSimulation(40f, 1_000f); // 50 PU.
+        JumpToCombat(minimumAtRange);
+        minimumAtRange.Step(default);
+        Check(minimumAtRange.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
+            "At 50 PU, ARGUS must detect at its one-kilometre minimum range.");
 
-        var fullAtRange = DetectionSimulation(100f, 2_000f);
-        JumpToCombat(fullAtRange);
-        fullAtRange.Step(default);
-        Check(fullAtRange.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
-            "A 100 percent reactor must be detected at two kilometres.");
+        var interpolatedAtRange = DetectionSimulation(60f, 1_750f); // 75 PU, exactly between both anchors.
+        JumpToCombat(interpolatedAtRange);
+        interpolatedAtRange.Step(default);
+        Check(interpolatedAtRange.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
+            "Between 50 and 100 PU, ARGUS detection must interpolate linearly.");
+
+        var maximumAtRange = DetectionSimulation(80f, 2_500f); // 100 PU.
+        JumpToCombat(maximumAtRange);
+        maximumAtRange.Step(default);
+        Check(maximumAtRange.World.CurrentEncounter.EnemyAi!.IsPlayerDetected,
+            "At 100 PU, ARGUS must detect at its 2.5-kilometre maximum range.");
     }),
     ("Encounter 4 activates its Hard enemy through shared physics", () =>
     {
-        var sim = new Simulation(new SimulationSettings { TargetCount = 0 });
+        var sim = new Simulation(new SimulationSettings
+        {
+            TargetCount = 0,
+            Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 32f }
+        });
         Step(sim, 600);
         EnterEncounter(sim, 4);
         var enemies = sim.World.CurrentEnemies.OrderBy(enemy => enemy.EnemyId).ToArray();
@@ -791,7 +1208,7 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Each jump point starts its configured enemy difficulty in ACQUIRE", () =>
     {
-        var sim = CombatSimulation();
+        var sim = new Simulation();
         Check(sim.World.Encounters[0].Enemy is null, "Encounter 1 contains targets only.");
         Check(sim.World.Encounters[1].Enemy is { EnemyId: 1, Difficulty: EnemyDifficulty.Easy, IsDestroyed: false },
             "Encounter 2 needs one Easy enemy.");
@@ -801,9 +1218,10 @@ var tests = new (string Name, Action Run)[]
         Check(sim.World.Encounters[3].Enemy is { EnemyId: 3, Difficulty: EnemyDifficulty.Hard, IsDestroyed: false },
             "Encounter 4 needs one Hard enemy.");
         Check(encounter.EnemyAi?.CurrentState == EnemyAiState.Acquire, "Enemy must start in ACQUIRE.");
-        Check(encounter.Enemy!.Ship.MassKg == sim.World.Ship.MassKg &&
+        Check(encounter.Enemy!.Ship.MassKg is >= 7_000f and <= 15_000f &&
+              encounter.Enemy.Ship.Hull.MaximumHull is >= 20f and <= 35f &&
               encounter.Enemy.Ship.YawMomentOfInertia == sim.World.Ship.YawMomentOfInertia,
-            "Player and enemy must use identical physical parameters.");
+            "A Corvette must use class-specific mass and hull while preserving shared ship physics.");
     }),
     ("ACQUIRE immediately transitions to APPROACH and AI only outputs ShipCommand", () =>
     {
@@ -889,7 +1307,7 @@ var tests = new (string Name, Action Run)[]
     ("Enemy lance overload causes frozen GameOver", () =>
     {
         var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(900, 0, 0),
-            YawRadians: MathF.PI / 2), shield: new ShieldSettings { MaximumShield = 1f }, hull: new HullSettings { MaximumHull = 1 });
+            YawRadians: MathF.PI / 2), shield: new ShieldSettings(), hull: new HullSettings { MaximumHull = 1 });
         JumpToCombat(sim);
         bool sawAttack = false;
         for (int i = 0; i < 2_400 && sim.World.GameState == GameState.Running; i++)
@@ -910,9 +1328,9 @@ var tests = new (string Name, Action Run)[]
               sim.World.CurrentEncounter.Enemy!.Ship.Position == enemyPosition && sim.Events.Count == 0,
             "GameOver must freeze physics, weapons, AI, navigation and simulation time.");
     }),
-    ("Player lance with overload destroys enemy and disables its AI", () =>
+    ("Player lance destroys an unshielded enemy and disables its AI", () =>
     {
-        var sim = CombatSimulation(shield: new ShieldSettings { LanceDamage = 200f }, hull: new HullSettings { MaximumHull = 1 });
+        var sim = CombatSimulation(shield: new ShieldSettings(), hull: new HullSettings { MaximumHull = 1 });
         JumpToCombat(sim);
         sim.Step(new ShipCommand(FireLance: true));
         var enemy = sim.World.CurrentEncounter.Enemy!;
@@ -965,18 +1383,14 @@ var tests = new (string Name, Action Run)[]
         var oneSubsystem = ExplosionScenario(249f);
         JumpToCombat(oneSubsystem);
         oneSubsystem.Step(new ShipCommand(FireLance: true));
-        float[] oneConditions = [oneSubsystem.World.Ship.Systems.PropulsionCondition,
-            oneSubsystem.World.Ship.Systems.WeaponsCondition, oneSubsystem.World.Ship.Systems.ShieldsCondition,
-            oneSubsystem.World.Ship.Systems.ReactorCondition, oneSubsystem.World.Ship.Systems.SensorsCondition];
+        float[] oneConditions = DamageConditions(oneSubsystem.World.Ship.Systems);
         Check(oneSubsystem.World.GameState == GameState.Running && oneConditions.Count(value => value == 0f) == 1,
             "An enemy destroyed within 250 meters must disable exactly one player subsystem.");
 
         var twoSubsystems = ExplosionScenario(199f);
         JumpToCombat(twoSubsystems);
         twoSubsystems.Step(new ShipCommand(FireLance: true));
-        float[] twoConditions = [twoSubsystems.World.Ship.Systems.PropulsionCondition,
-            twoSubsystems.World.Ship.Systems.WeaponsCondition, twoSubsystems.World.Ship.Systems.ShieldsCondition,
-            twoSubsystems.World.Ship.Systems.ReactorCondition, twoSubsystems.World.Ship.Systems.SensorsCondition];
+        float[] twoConditions = DamageConditions(twoSubsystems.World.Ship.Systems);
         Check(twoSubsystems.World.GameState == GameState.Running && twoConditions.Count(value => value == 0f) == 2,
             "An enemy destroyed within 200 meters must disable two distinct player subsystems.");
 
@@ -998,14 +1412,14 @@ var tests = new (string Name, Action Run)[]
         }, spawnEnemy: false);
         var power = sim.World.Ship.Power;
         sim.Step(new ShipCommand(MainThrust: true), default, new ReactorCommand(Allocation: new PowerAllocation(100f, 0f, 0f)));
-        Near(power.MaximumPropulsionDraw, 50f);
+        Near(power.MaximumPropulsionDraw, 60f);
         Near(power.MaximumWeaponsDraw, 40f);
-        Near(power.MaximumShieldsDraw, 35f);
+        Near(power.MaximumShieldsDraw, 30f);
         Near(power.PropulsionAllocationPercent, 100f);
         Near(power.WeaponsAllocationPercent, 0f);
         Near(power.ShieldsAllocationPercent, 0f);
         Near(power.PropulsionAvailable, 50f);
-        Near(power.RequestedPower, 90f);
+        Near(power.RequestedPower, 100f);
         Near(power.DemandScale, 1f);
         Near(power.CurrentDraw, 50f);
         Near(sim.World.Ship.Reactor.CurrentDraw, 50f);
@@ -1015,10 +1429,10 @@ var tests = new (string Name, Action Run)[]
         var sim = new Simulation(new SimulationSettings { TargetCount = 0 }, spawnEnemy: false);
         sim.Step(default, default, new ReactorCommand(Allocation: new PowerAllocation(100f, 0f, 0f)));
         var power = sim.World.Ship.Power;
-        Near(power.PropulsionAvailable, 50f);
-        Near(power.PropulsionAllocationPercent, 40f);
+        Near(power.PropulsionAvailable, 60f);
+        Near(power.PropulsionAllocationPercent, 48f);
         sim.Step(default, default, new ReactorCommand(Allocation: new PowerAllocation(70f, 20f, 20f)));
-        Near(power.PropulsionAllocationPercent, 40f);
+        Near(power.PropulsionAllocationPercent, 48f);
         Near(power.ShieldsAllocationPercent, 0f);
         Near(power.WeaponsAllocationPercent, 0f);
     }),
@@ -1037,7 +1451,7 @@ var tests = new (string Name, Action Run)[]
         Near(power.AuxiliaryThrusterDraw, 30f);
         Near(power.MainThrusterDraw, 5f);
         Near(power.MainThrusterAvailable, 5f);
-        Near(power.MainThrusterPowerFactor, .25f);
+        Near(power.MainThrusterPowerFactor, 1f / 6f);
     }),
     ("Below thirty PU reverse and yaw thrusters scale linearly while main thrust is unavailable", () =>
     {
@@ -1051,9 +1465,9 @@ var tests = new (string Name, Action Run)[]
         Near(sim.World.Ship.Power.AuxiliaryThrusterPowerFactor, 5f / 6f, .001f);
         Near(sim.World.Ship.Power.MainThrusterPowerFactor, 0f);
         Step(sim, 60, new ShipCommand(ReverseThrust: true));
-        NearVector(sim.World.Ship.Velocity, new Vector3(0f, 0f, 5f), .01f);
+        NearVector(sim.World.Ship.Velocity, new Vector3(0f, 0f, 2.5f * 5f / 6f), .01f);
         Step(sim, 60, new ShipCommand(YawLeft: true));
-        Near(sim.World.Ship.AngularVelocity.Y, .5f, .01f);
+        Near(sim.World.Ship.AngularVelocity.Y, 11_530f / 90_000f * 5f / 6f, .01f);
     }),
     ("Auxiliary thrusters retain priority over the main thruster while inertia persists at zero", () =>
     {
@@ -1086,22 +1500,22 @@ var tests = new (string Name, Action Run)[]
             Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 16f }
         }, spawnEnemy: false);
         sim.Step(default, default, new ReactorCommand(Allocation: new PowerAllocation(0f, 0f, 100f)));
-        Step(sim, 358);
-        Check(!sim.World.Lance.IsReady, "Half Armarium power must not charge a lance in under six seconds.");
+        Step(sim, 598);
+        Check(!sim.World.Lance.IsReady, "Half Armarium power must not charge the PEREGRINE L-1000 in under ten seconds.");
         Step(sim, 1);
-        Check(sim.World.Lance.IsReady, "Twenty allocated PU must charge the lance in six seconds.");
+        Check(sim.World.Lance.IsReady, "Twenty allocated PU must charge the PEREGRINE L-1000 in ten seconds.");
         var stopped = new Simulation(new SimulationSettings
         {
             TargetCount = 0,
             Power = WeaponsOnlyPower() with { ReactorRampSeconds = .001f }
         }, spawnEnemy: false);
-        Step(stopped, 90);
+        Step(stopped, 150);
         float charge = stopped.World.Lance.ChargeFraction;
         stopped.Step(default, default, new ReactorCommand(0f));
         Step(stopped, 300);
         Near(stopped.World.Lance.ChargeFraction, charge, 0.0001f);
         stopped.Step(default, default, new ReactorCommand(100f));
-        Step(stopped, 90);
+        Step(stopped, 150);
         Check(stopped.World.Lance.IsReady, "Restored weapons power must continue from retained charge.");
     }),
     ("Reactor ramps from zero to full output in sixty simulation seconds", () =>
@@ -1136,29 +1550,27 @@ var tests = new (string Name, Action Run)[]
     ("A ready lance fires after weapons power is removed and still resets charge", () =>
     {
         var sim = WithTargets(new Vector3(0, 0, -300));
-        Step(sim, 180);
+        Step(sim, 300);
         sim.Step(default, default, new ReactorCommand(0f));
         sim.Step(new ShipCommand(FireLance: true));
         Check(sim.Events.OfType<WeaponFired>().Any() && sim.World.Targets.Count == 0, "Ready lance must fire without weapons power.");
         Near(sim.World.Lance.ChargeFraction, 0);
     }),
-    ("Full enemy shield absorbs one lance hit, emits shield events and delays recharge", () =>
+    ("Full enemy shield absorbs one lance hit, emits shield events and begins reboot", () =>
     {
-        var sim = CombatSimulation(power: CombatPower());
-        JumpToCombat(sim);
-        sim.Step(new ShipCommand(FireLance: true));
-        var enemy = sim.World.CurrentEnemy!;
-        Check(!enemy.IsDestroyed && enemy.Ship.Shield.CurrentShield == 0f, "Full shield must absorb the first hit.");
-        Check(sim.Events.OfType<ShieldHit>().Single().TargetEnemyId == enemy.EnemyId, "Shield hit must identify its enemy.");
-        Check(sim.Events.OfType<ShieldDepleted>().Any(), "Shield depletion event is required.");
-        Step(sim, 180);
-        Near(enemy.Ship.Shield.CurrentShield, 0);
-        Step(sim, 3);
-        Check(enemy.Ship.Shield.CurrentShield > 0f, "Shield must recharge after its delay.");
+        ShieldDefinition definition = ShieldDefinitions.GuardianS20;
+        ShieldState shield = ShieldSystem.Create(definition);
+        var events = new List<SimulationEvent>();
+        float residual = ShieldSystem.ApplyLanceDamage(shield, WeaponOwner.Enemy, 1, Vector3.Zero,
+            new ShieldSettings(), events, 20f, 1f, definition);
+        Check(residual == 0f && shield.CurrentShield == 0f && shield.IsRebooting,
+            "A full shield must absorb one Vanguard hit and enter reboot.");
+        Check(events.OfType<ShieldHit>().Single().TargetEnemyId == 1 && events.OfType<ShieldDepleted>().Any(),
+            "Shield events must identify the depleted enemy.");
     }),
     ("Partial enemy shield passes residual lance damage through and destroys the ship", () =>
     {
-        var sim = CombatSimulation(power: CombatPower(), shield: new ShieldSettings { MaximumShield = 40f }, hull: new HullSettings { MaximumHull = 1 });
+        var sim = CombatSimulation(power: CombatPower(), shield: new ShieldSettings(), hull: new HullSettings { MaximumHull = 1 });
         JumpToCombat(sim);
         sim.Step(new ShipCommand(FireLance: true));
         var enemy = sim.World.CurrentEncounter.Enemy!;
@@ -1185,28 +1597,31 @@ var tests = new (string Name, Action Run)[]
               enemy.Ship.Power.WeaponsRequested == enemy.Ship.Power.MaximumWeaponsDraw &&
               enemy.Ship.Power.ShieldsRequested == enemy.Ship.Power.MaximumShieldsDraw,
             "Detected enemies must request full propulsion, weapons and shields without health-aware profiles.");
-        Check(enemy.Ship.Shield.CurrentShield > 0f && enemy.Ship.Shield.CurrentShield <= enemy.Ship.Shield.MaximumShield,
-            "The initially empty shield must begin normal recharge only after detection.");
+        Check(enemy.Ship.Shield.CurrentShield == 0f && enemy.Ship.Shield.IsRebooting,
+            "The initially empty shield must begin its powered reboot only after detection.");
     }),
     ("Residual damage removes hull and damages exactly one reproducible subsystem", () =>
     {
-        var sim = CombatSimulation(power: CombatPower());
+        var sim = CombatSimulation(power: CombatPower(), hull: new HullSettings { SubsystemDamageChancePerHullHit = 1f });
         JumpToCombat(sim);
+        EnemyShipState enemy = sim.World.CurrentEnemy!;
+        float hullBefore = enemy.Ship.Hull.CurrentHull;
         sim.Step(new ShipCommand(FireLance: true)); // enemy shield starts empty; first hit reaches hull
-        var enemy = sim.World.CurrentEnemy!;
-        Check(enemy.Ship.Hull.CurrentHull == 2, "Residual lance damage must remove one hull point.");
-        var conditions = new[] { enemy.Ship.Systems.PropulsionCondition, enemy.Ship.Systems.WeaponsCondition,
-            enemy.Ship.Systems.ShieldsCondition, enemy.Ship.Systems.ReactorCondition, enemy.Ship.Systems.SensorsCondition };
-        Check(conditions.Count(value => value == 0.5f) == 1 && conditions.Count(value => value == 1f) == 4,
-            "Each hull hit must damage exactly one subsystem by fifty percent.");
+        Near(enemy.Ship.Hull.CurrentHull, hullBefore - BowWeaponDefinitions.PeregrineL1000.Damage, .1f);
+        Check(enemy.Ship.Hull.MaximumHull > BowWeaponDefinitions.PeregrineL1000.Damage,
+            "The controlled test Corvette needs enough class hull for one non-lethal hit.");
+        float[] conditions = DamageConditions(enemy.Ship.Systems);
+        Check(conditions.Count(value => value < 1f) == 1 && conditions.Count(value => value == 1f) == 6,
+            "With a 100% configured damage chance, each hull hit must debuff exactly one subsystem.");
         Check(sim.Events.OfType<HullDamaged>().Any() && sim.Events.OfType<SubsystemDamaged>().Any(), "Hull events are required.");
     }),
     ("Warp repairs systems and shield but preserves hull", () =>
     {
         var sim = CombatSimulation(power: CombatPower());
         JumpToCombat(sim);
-        sim.Step(new ShipCommand(FireLance: true)); Step(sim, 180); sim.Step(new ShipCommand(FireLance: true));
-        int hull = sim.World.CurrentEnemy!.Ship.Hull.CurrentHull;
+        var damagedEnemy = sim.World.CurrentEnemy!;
+        sim.Step(new ShipCommand(FireLance: true)); Step(sim, 300); sim.Step(new ShipCommand(FireLance: true));
+        float hull = damagedEnemy.Ship.Hull.CurrentHull;
         // Damage the player through the same seeded combat rules is not required: warp repair applies to player state.
         Step(sim, 600);
         EnterEncounter(sim, 1);
@@ -1214,36 +1629,42 @@ var tests = new (string Name, Action Run)[]
               sim.World.Ship.Systems.ShieldsCondition == 1f && sim.World.Ship.Systems.ReactorCondition == 1f &&
               sim.World.Ship.Systems.SensorsCondition == 1f && sim.World.Ship.Shield.CurrentShield == sim.World.Ship.Shield.MaximumShield,
             "Successful warp must repair player systems and refill the shield.");
-        Check(sim.World.CurrentEncounter.Id == 1 && hull == 1, "Warp must not repair stored enemy hull or alter encounter progress.");
+        Check(sim.World.CurrentEncounter.Id == 1 && hull < damagedEnemy.Ship.Hull.MaximumHull, "Warp must not repair stored enemy hull or alter encounter progress.");
     }),
     ("Power and condition define the speed limit without removing existing momentum", () =>
     {
         var sim = New();
         Step(sim, 3000, new ShipCommand(MainThrust: true));
-        Near(sim.World.Ship.Velocity.Length(), 500f, 0.1f);
+        Near(sim.World.Ship.Velocity.Length(), 100f, 0.1f);
         sim.Step(default, default, new ReactorCommand(20f));
         Step(sim, 60, new ShipCommand(MainThrust: true));
-        Check(sim.World.Ship.Velocity.Length() >= 499f, "Reducing power must not clamp existing velocity.");
+        Check(sim.World.Ship.Velocity.Length() >= 99f, "Reducing power must not clamp existing velocity.");
         Step(sim, 60, new ShipCommand(ReverseThrust: true));
-        Check(sim.World.Ship.Velocity.Length() < 499f, "Reverse thrust must brake while overspeed.");
+        Check(sim.World.Ship.Velocity.Length() < 99f, "Reverse thrust must brake while overspeed.");
     }),
-    ("Bridge main throttle timings use the configured five-second rise and three-second fall", () =>
+    ("Bridge main throttle timings use the configured ten-second rise and three-second fall", () =>
     {
         var power = new PowerSettings();
-        Near(power.BridgeMainThrottleRiseSeconds, 5f);
+        Near(power.BridgeMainThrottleRiseSeconds, 10f);
         Near(power.BridgeMainThrottleFallSeconds, 3f);
     }),
-    ("Difficulty profiles differ only by lance aim tolerance", () =>
+    ("Board computer classes define execution quality while encounters retain Kestrel", () =>
     {
         var sim = new Simulation();
         var easy = sim.World.Encounters[1].EnemyAi!;
         var medium = sim.World.Encounters[2].EnemyAi!;
         var hard = sim.World.Encounters[3].EnemyAi!;
-        Near(easy.FireAimToleranceRadians * 180f / MathF.PI, 2f);
-        Near(medium.FireAimToleranceRadians * 180f / MathF.PI, 3f);
-        Near(hard.FireAimToleranceRadians * 180f / MathF.PI, 5f);
-        Check(sim.World.Encounters[1].Enemy!.ShipClass == EnemyShipClass.Transporter,
-            "Encounter 2 must contain the easy Transporter.");
+        Check(easy.Model == EnemyAiModel.Kestrel && medium.Model == EnemyAiModel.Kestrel && hard.Model == EnemyAiModel.Kestrel,
+            "All encounter classes must run the same Kestrel tactical model.");
+        Check(sim.World.Encounters[1].Enemy!.BoardComputer.Class == BoardComputerClass.Standard &&
+              sim.World.Encounters[2].Enemy!.BoardComputer.Class == BoardComputerClass.Tactical &&
+              sim.World.Encounters[3].Enemy!.BoardComputer.Class == BoardComputerClass.Military,
+            "Interceptor, Corvette and Frigate must select Standard, Tactical and Military boards respectively.");
+        Check(medium.FireAimToleranceRadians < easy.FireAimToleranceRadians &&
+              medium.FireAimToleranceRadians < hard.FireAimToleranceRadians,
+            "The Tactical Corvette board must retain its precision advantage over the default Standard and Military boards.");
+        Check(sim.World.Encounters[1].Enemy!.ShipClass == EnemyShipClass.Interceptor,
+            "Encounter 2 must contain the easy Interceptor.");
         Check(sim.World.Encounters[2].Enemy!.ShipClass == EnemyShipClass.Corvette,
             "Encounter 3 must contain the medium Corvette.");
         Check(sim.World.Encounters[3].Enemy!.ShipClass == EnemyShipClass.Frigate,
@@ -1284,21 +1705,38 @@ static Simulation CombatSimulation(ShipInitialState player = default, ShipInitia
     new(new SimulationSettings
     {
         TargetCount = 0, EncounterTwoTargetCount = 0,
-        Shield = shield ?? new ShieldSettings(), Power = power ?? new PowerSettings(), Hull = hull ?? new HullSettings()
+        Shield = shield ?? new ShieldSettings(), Power = power ?? new PowerSettings(), Hull = hull ?? new HullSettings(),
+        BoardComputers = PerfectBoardComputers(),
+        UseGeneratedBoardComputers = false,
+        UseClassHullProfiles = false
     }, player,
-        randomSeed: 42, enemyInitial: enemy ?? new ShipInitialState(new Vector3(0, 0, -1_000), YawRadians: MathF.PI), spawnEnemy: true);
-static Simulation DetectionSimulation(float playerReactorPercent, float enemyDistance) =>
-    new(new SimulationSettings
+        randomSeed: 42, enemyInitial: enemy ?? new ShipInitialState(new Vector3(0, 0, -1_000), YawRadians: MathF.PI),
+        enemyTuning: ShipTuning.From(new SimulationSettings { Power = power ?? new PowerSettings(), Hull = hull ?? new HullSettings() }), spawnEnemy: true);
+static Simulation DetectionSimulation(float playerReactorPercent, float enemyDistance)
+{
+    var settings = new SimulationSettings
     {
         TargetCount = 0,
         Power = new PowerSettings { DefaultReactorOperatingLevelPercent = playerReactorPercent }
-    }, enemyInitial: new ShipInitialState(new Vector3(0, 0, -enemyDistance), YawRadians: MathF.PI), spawnEnemy: true);
+    };
+    // This integration test deliberately mounts the standard loadout so it tests ARGUS' anchors,
+    // rather than whichever sensor a procedurally generated Corvette happened to select.
+    return new Simulation(settings, enemyInitial: new ShipInitialState(new Vector3(0, 0, -enemyDistance), YawRadians: MathF.PI),
+        enemyTuning: ShipTuning.From(settings), spawnEnemy: true);
+}
 static Simulation ExplosionScenario(float distance) => CombatSimulation(
     enemy: new ShipInitialState(new Vector3(0, 0, -distance)),
-    shield: new ShieldSettings { LanceDamage = 200f }, hull: new HullSettings { MaximumHull = 1 });
+    shield: new ShieldSettings(), hull: new HullSettings { MaximumHull = 1 });
 static PowerSettings PropulsionOnlyPower() => new();
 static PowerSettings WeaponsOnlyPower() => new();
 static PowerSettings CombatPower() => new();
+static BoardComputerSettings PerfectBoardComputers() => new()
+{
+    EasyEnemy = BoardComputerProfile.MilitaryMk5,
+    MediumEnemy = BoardComputerProfile.MilitaryMk5,
+    HardEnemy = BoardComputerProfile.MilitaryMk5,
+    Duel = BoardComputerProfile.MilitaryMk5
+};
 static void JumpToCombat(Simulation sim)
 {
     Step(sim, 600);
@@ -1312,13 +1750,24 @@ static void EnterEncounter(Simulation sim, int encounterId, Vector3? entryPositi
 }
 static void Fire(Simulation sim)
 {
-    Step(sim, 180);
+    Step(sim, 300);
     sim.Step(new ShipCommand(FireLance: true));
 }
 static void Step(Simulation simulation, int count, ShipCommand command = default)
 {
     for (int i = 0; i < count; i++) simulation.Step(command);
 }
+static void StepShield(ShieldState shield, ShieldDefinition definition, int count, float powerFactor)
+{
+    for (int i = 0; i < count; i++)
+        ShieldSystem.Recharge(shield, powerFactor, new ShieldSettings(), definition);
+}
+static float[] DamageConditions(SubsystemState systems) =>
+[
+    systems.MainBoosterCondition, systems.ReverseBoosterCondition, systems.SideLeftCondition,
+    systems.SideRightCondition, systems.LanceCondition, systems.ShieldGeneratorCondition,
+    systems.ReactorCondition
+];
 static async Task StationServerSmokeAsync()
 {
     var commands = new ArmariumCommandBuffer();
@@ -1330,6 +1779,8 @@ static async Task StationServerSmokeAsync()
         ["armarium.css"] = "body{}",
         ["armarium.js"] = "",
         ["voltarium/index.html"] = "<main>VOLTARIUM</main>",
+        ["voltarium/voltarium.css"] = "body{background:#000}",
+        ["voltarium/voltarium.js"] = "console.log('voltarium')",
         ["sensorium/index.html"] = "<main>SENSORIUM</main>",
         ["debug/index.html"] = "<main>ENEMY AI DEBUG</main>"
     };
@@ -1373,6 +1824,10 @@ static async Task StationServerSmokeAsync()
 
     string reactorPage = await http.GetStringAsync(server.VoltariumUrl);
     Check(reactorPage.Contains("VOLTARIUM"), "Station server must serve the Voltarium page.");
+    string reactorCss = await http.GetStringAsync($"http://127.0.0.1:{server.Port}/voltarium/voltarium.css");
+    string reactorScript = await http.GetStringAsync($"http://127.0.0.1:{server.Port}/voltarium/voltarium.js");
+    Check(reactorCss.Contains("background") && reactorScript.Contains("voltarium"),
+        "Station server must serve Voltarium CSS and JavaScript from their public paths.");
     using var reactorSocket = new ClientWebSocket();
     await reactorSocket.ConnectAsync(new Uri($"ws://127.0.0.1:{server.Port}/station"), CancellationToken.None);
     await SendWebSocketJsonAsync(reactorSocket, new { type = "hello", station = "voltarium", protocolVersion = StationProtocol.Version });

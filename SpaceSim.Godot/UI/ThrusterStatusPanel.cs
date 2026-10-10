@@ -13,7 +13,9 @@ public partial class ThrusterStatusPanel : Control
     private Font Font => ThemeDB.FallbackFont;
     private float _mainThrust;
     private float _mainStatus;
-    private float _auxiliaryStatus;
+    private float _starboardStatus;
+    private float _portStatus;
+    private float _reverseStatus;
     private float _availableEnergy;
 
     public override void _Process(double delta)
@@ -24,11 +26,14 @@ public partial class ThrusterStatusPanel : Control
         if (World is not null)
         {
             _availableEnergy = World.Ship.Power.PropulsionAvailable;
-            _mainStatus = Ratio(_availableEnergy, World.Ship.Power.MaximumPropulsionDraw);
-            _auxiliaryStatus = Ratio(_availableEnergy, World.Ship.Power.AuxiliaryThrusterReserveDraw);
+            _mainStatus = Ratio(_availableEnergy, World.Ship.Power.MaximumPropulsionDraw) * World.Ship.Systems.MainBoosterCondition;
+            float auxiliaryEnergy = Ratio(_availableEnergy, World.Ship.Power.AuxiliaryThrusterReserveDraw);
+            _starboardStatus = auxiliaryEnergy * World.Ship.Systems.SideRightCondition;
+            _portStatus = auxiliaryEnergy * World.Ship.Systems.SideLeftCondition;
+            _reverseStatus = auxiliaryEnergy * World.Ship.Systems.ReverseBoosterCondition;
             float mainInput = Command.MainThrust ? Math.Clamp(Command.MainThrustIntensity, 0f, 1f) : 0f;
             _mainThrust = mainInput * World.Ship.Power.MainThrusterPowerFactor *
-                World.Ship.Systems.PropulsionCondition;
+                World.Ship.Systems.MainBoosterCondition;
         }
         QueueRedraw();
     }
@@ -40,9 +45,9 @@ public partial class ThrusterStatusPanel : Control
         Text(new Vector2(12, 20), "AVAILABLE ENERGY:", 11, ViewSettings.Muted);
         Text(new Vector2(220, 20), $"{_availableEnergy:0.0} PU", 11, ViewSettings.Text);
         DrawLine(new Vector2(12, 28), new Vector2(Size.X - 12, 28), ViewSettings.Line, 1);
-        Header(50, "STARBOARD THRUSTERS", _auxiliaryStatus);
-        Header(74, "PORT THRUSTERS", _auxiliaryStatus);
-        Header(98, "REVERSE THRUSTERS", _auxiliaryStatus);
+        Header(50, "STARBOARD THRUSTERS", _starboardStatus);
+        Header(74, "PORT THRUSTERS", _portStatus);
+        Header(98, "REVERSE THRUSTERS", _reverseStatus);
         Header(122, "MAIN THRUSTERS", _mainStatus);
         Text(new Vector2(12, 150), "THRUST", 10, ViewSettings.Muted);
         Text(new Vector2(274, 150), $"{_mainThrust * 100:0}%", 10, ViewSettings.Text);

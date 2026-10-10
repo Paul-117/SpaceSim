@@ -1,0 +1,112 @@
+﻿SpaceSim - Prozeduraler Schiffsgenerator
+=========================================
+
+Zweck
+-----
+Der Generator erstellt reproduzierbare vollstaendige Schiffsloadouts. Er ist
+vom Kampfverhalten getrennt: Ein Loadout bestimmt Module und Leistungsbedarf,
+die bestehende Kestrel-KI bestimmt weiterhin nur die Flug- und Feuerbefehle.
+
+Klassenprofile
+--------------
+Klasse       Reaktorleistung    Masse             Hull-HP
+Interceptor  90 bis 120 PU      5 bis 8 t         10 bis 25
+Corvette    110 bis 150 PU      7 bis 15 t        20 bis 35
+Frigate     150 bis 250 PU      13 bis 20 t       30 bis 45
+
+Ablauf
+------
+1. Klassenprofil waehlen.
+2. Einen Reaktor innerhalb der Klassenreichweite ziehen.
+3. Subklasse Ranged, Patrol oder Assault ziehen.
+4. Waffen, Schilde, Sensoren und Booster mit rollenabhaengigen Gewichten ziehen.
+5. Harte Leistungsregel pruefen.
+6. Mehrere gueltige Kandidaten erzeugen.
+7. Soft-Score mit Einzelbegruendungen berechnen und den besten Kandidaten waehlen.
+8. Einen Boardcomputer aus Klasse, Subklasse und Flug-/Waffenkomplexitaet bestimmen.
+
+Harte Leistungsregel
+--------------------
+Alle Systeme muessen gleichzeitig mit mindestens 80 Prozent ihrer maximalen
+Leistungsnachfrage versorgt werden koennen:
+
+RequiredReactorOutput = 0.80 * PeakPowerDemand
+PeakPowerDemand = MainPU + max(ReversePU, SidePU) + WeaponPU + ShieldPU + SensorPU
+
+Reverse- und Side-Booster teilen sich entsprechend der bestehenden
+Brueckenlogik eine Hilfstriebwerk-Reserve; deshalb zaehlt hier nur ihr hoeherer
+Bedarf. Ein Kandidat ist nur gueltig, wenn:
+
+ReactorMaxOutput >= RequiredReactorOutput
+
+Subklassen
+----------
+Ranged
+- bevorzugt Waffen ueber 1.200 m sowie starke Sensoren;
+- bevorzugt eher moderate Main- und Side-Booster.
+
+Patrol
+- bevorzugt Waffen zwischen 701 und 1.200 m;
+- bevorzugt ausgeglichene Sensor-, Schild- und Boosterwerte.
+
+Assault
+- bevorzugt Waffen bis 700 m;
+- bevorzugt hohe Geschwindigkeit, starke Reverse-Booster und schnelle Rotation.
+
+Masse und Hull
+--------------
+Masse und Hull werden pro generiertem Schiff innerhalb des Klassenbereichs
+bestimmt. Masse beeinflusst direkt die lineare Beschleunigung ueber F/m; Hull
+ist die tatsaechliche maximale strukturelle Integritaet.
+
+Ranged, Patrol und Assault starten jeweils in Masse-/Hull-Klasse 1, 2 und 3
+(von 0 bis 4). Fuer Masse gilt: schwere Schilde ab 35 HP, Waffen ab 28 Schaden,
+Reaktoren ab 175 PU und Main-Booster ab 150 kN erhoehen die Klasse; Waffen ab
+1.400 m, Main-Speed ab 130 m/s und Schilde bis 18 HP verringern sie. Fuer Hull
+erhoehen schwere Schilde, schwere Waffen und hohe gewaehlte Masse die Klasse;
+leichte Schilde bis 15 HP, Main-Speed ab 130 m/s und Waffen ab 1.400 m
+verringern sie. Beide Ergebnisse werden auf 0 bis 4 begrenzt und linear in den
+jeweiligen Klassenbereich abgebildet.
+
+Zentrale Soft-Scoring-Regeln
+----------------------------
+Regel-ID                    Punkte  Bedingung
+long_range_weak_sensor        -3    Reichweite > 1.200 m und Sensor <= 1.800 m
+long_range_strong_sensor      +2    Reichweite > 1.200 m und Sensor >= 2.500 m
+close_fast_main               +2    Reichweite <= 700 m und Main-Speed >= 120 m/s
+close_fast_yaw                +2    Reichweite <= 700 m und Rotation >= 12 Grad/s
+high_weapon_low_reactor       -3    Waffenbedarf >= 50 PU und Reaktor <= 125 PU
+heavy_weapon_heavy_shield     -2    Schaden >= 36 und Schild >= 40 HP
+fast_main_weak_reverse        -2    Main-Speed >= 130 m/s und Reverse-Schub <= 30 kN
+tight_arc_fast_yaw            +2    Waffenwinkel <= 5 Grad und Rotation >= 15 Grad/s
+efficient_loadout             +2    Peak <= 145 PU und Fuel-Max <= 5,5 U/min
+ranged_role                   +3    Ranged mit Langstreckenwaffe
+patrol_role                   +3    Patrol mit Mittelstreckenwaffe
+assault_role                  +3    Assault mit Nahkampfwaffe
+
+Zukunftssicherheit
+------------------
+Neue Module werden in ihren bestehenden Katalog aufgenommen. Der Generator
+verwendet ausschliesslich ihre bereits vorhandenen numerischen Werte:
+Reichweite, Leistung, Schild-HP, Aufladezeit, Schub, Geschwindigkeit,
+Rotation, Sensorreichweite sowie Reaktorleistung und Fuelverbrauch.
+Eine neue Waffe wird deshalb automatisch als Close (bis 700 m), Medium
+(701 bis 1.200 m) oder Long (ueber 1.200 m) eingeordnet. Keine Regel ist an
+einen konkreten Modulnamen gekoppelt.
+
+Ergebnisdaten
+-------------
+Ein GeneratedShipLoadout speichert Seed, Klasse, Subklasse, ShipTuning,
+Sensorarray, PeakPowerDemand, erforderliche 80-Prozent-Reaktorleistung,
+Gesamtscore und jede einzelne Score-Regel. Er speichert ausserdem den konkreten
+Boardcomputer, dessen Ziel-MK und alle Boardcomputer-Scoring-Regeln. Damit lassen sich Ergebnisse
+reproduzieren und Balancing-Entscheidungen nachvollziehen.
+
+Aktueller Spieleinsatz
+----------------------
+Die mittlere Corvette im normalen Encounter wird bereits aus diesem Generator
+erstellt. Ihr Manifest bleibt am EnemyShipState erhalten. Interceptor und
+Frigate verwenden bis zur jeweiligen Feinabstimmung weiterhin ihre
+Standardloadouts, koennen jedoch schon ueber Generate(ShipClass, Seed)
+erzeugt und getestet werden. Neue normale Spielstarts verwenden einen frischen
+Seed; ein bekannter Seed liefert stets dasselbe Ergebnis.

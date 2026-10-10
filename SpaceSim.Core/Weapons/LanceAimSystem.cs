@@ -7,12 +7,12 @@ namespace SpaceSim.Core.Weapons;
 /// <summary>Applies normal command intent to the limited player lance mount.</summary>
 public static class LanceAimSystem
 {
-    public static void Step(LanceAimState aim, ShipCommand command, SimulationSettings settings)
+    public static void Step(LanceAimState aim, ShipCommand command, BowWeaponDefinition weapon)
     {
         float input = (command.AimLanceRight ? 1f : 0f) - (command.AimLanceLeft ? 1f : 0f);
-        float next = aim.YawOffsetDegrees + input * settings.LanceTurretDegreesPerSecond * SimulationSettings.FixedDeltaSeconds;
-        aim.YawOffsetDegrees = Math.Clamp(next, -settings.LanceTurretMaximumAngleDegrees,
-            settings.LanceTurretMaximumAngleDegrees);
+        float next = aim.YawOffsetDegrees + input * weapon.TurretDegreesPerSecond * SimulationSettings.FixedDeltaSeconds;
+        aim.YawOffsetDegrees = Math.Clamp(next, -weapon.TurretMaximumAngleDegrees,
+            weapon.TurretMaximumAngleDegrees);
     }
 
     /// <summary>Returns the planar lance direction. Positive mount offset is starboard/right.</summary>

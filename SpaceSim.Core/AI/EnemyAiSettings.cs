@@ -3,8 +3,6 @@ namespace SpaceSim.Core.AI;
 /// <summary>All enemy decision thresholds live here; angles are stored as radians.</summary>
 public sealed record EnemyAiSettings
 {
-    /// <summary>Detection distance when the player's physical reactor output is 100 percent.</summary>
-    public float DetectionRangeAtFullReactorMeters { get; init; } = 2_000f;
     public float PatrolSpawnMinimumDistanceMeters { get; init; } = 2_000f;
     public float PatrolSpawnMaximumDistanceMeters { get; init; } = 3_000f;
     public float PatrolCruiseSpeedMetersPerSecond { get; init; } = 100f;
@@ -52,9 +50,41 @@ public sealed record EnemyAiSettings
     /// <summary>Kestrel performs a short deflection, then deliberately returns to pursuit.</summary>
     public float KestrelMinimumRepositionDuration { get; init; } = .75f;
 
+    /// <summary>
+    /// Ranged ships plan their arrival just inside their actual weapon range. The value is a
+    /// fraction of the installed bow weapon's range, so LONGSPEAR and PEREGRINE ships do not
+    /// inherit a fixed distance from the generic combat settings.
+    /// </summary>
+    public float RangedPreferredRangeFraction { get; init; } = .90f;
+    /// <summary>
+    /// Ranged ships start creating separation at this fraction of their weapon range. It is
+    /// deliberately well inside maximum range, leaving reverse-thruster braking room before
+    /// an opponent can force a close-range fight.
+    /// </summary>
+    public float RangedReverseStartRangeFraction { get; init; } = .80f;
+    /// <summary>Maximum intentional closure for a ranged approach, limited to preserve its standoff.</summary>
+    public float RangedMaximumApproachClosingSpeed { get; init; } = 28f;
+    /// <summary>Desired opening speed once a ranged ship has crossed its reverse threshold.</summary>
+    public float RangedWithdrawalSpeed { get; init; } = 18f;
+    /// <summary>Extra distance retained beyond calculated reverse braking distance for a stable ranged firing corridor.</summary>
+    public float RangedReverseBrakingMarginMeters { get; init; } = 35f;
+
+    /// <summary>Assault ships aim their planned fly-by at this fraction of their own weapon range.</summary>
+    public float AssaultPassDistanceRangeFraction { get; init; } = .55f;
+    /// <summary>Absolute safety floor for an intentional Assault fly-by; collision handling remains stricter.</summary>
+    public float AssaultMinimumPassDistanceMeters { get; init; } = 250f;
+    /// <summary>Fraction of the available tracking rate used to keep an Assault firing solution stable during a pass.</summary>
+    public float AssaultTrackingSafetyFactor { get; init; } = .70f;
+    public float AssaultMinimumPassSpeedMetersPerSecond { get; init; } = 15f;
+    public float AssaultMaximumPassSpeedMetersPerSecond { get; init; } = 55f;
+
+    /// <summary>Patrol maintains a stable mid-range firing corridor derived from its installed weapon.</summary>
+    public float PatrolMinimumRangeFraction { get; init; } = .40f;
+    public float PatrolPreferredRangeFraction { get; init; } = .70f;
+    public float PatrolMaximumRangeFraction { get; init; } = .90f;
+
     internal void Validate()
     {
-        Positive(DetectionRangeAtFullReactorMeters, nameof(DetectionRangeAtFullReactorMeters));
         Positive(PatrolSpawnMinimumDistanceMeters, nameof(PatrolSpawnMinimumDistanceMeters));
         Positive(PatrolSpawnMaximumDistanceMeters, nameof(PatrolSpawnMaximumDistanceMeters));
         Positive(PatrolCruiseSpeedMetersPerSecond, nameof(PatrolCruiseSpeedMetersPerSecond));
@@ -82,6 +112,19 @@ public sealed record EnemyAiSettings
         Positive(VanguardLateralSpeedMetersPerSecond, nameof(VanguardLateralSpeedMetersPerSecond));
         Positive(KestrelAttackEntryAimAngle, nameof(KestrelAttackEntryAimAngle));
         Positive(KestrelMinimumRepositionDuration, nameof(KestrelMinimumRepositionDuration));
+        Fraction(RangedPreferredRangeFraction, nameof(RangedPreferredRangeFraction));
+        Fraction(RangedReverseStartRangeFraction, nameof(RangedReverseStartRangeFraction));
+        Positive(RangedMaximumApproachClosingSpeed, nameof(RangedMaximumApproachClosingSpeed));
+        Positive(RangedWithdrawalSpeed, nameof(RangedWithdrawalSpeed));
+        Positive(RangedReverseBrakingMarginMeters, nameof(RangedReverseBrakingMarginMeters));
+        Fraction(AssaultPassDistanceRangeFraction, nameof(AssaultPassDistanceRangeFraction));
+        Positive(AssaultMinimumPassDistanceMeters, nameof(AssaultMinimumPassDistanceMeters));
+        Fraction(AssaultTrackingSafetyFactor, nameof(AssaultTrackingSafetyFactor));
+        Positive(AssaultMinimumPassSpeedMetersPerSecond, nameof(AssaultMinimumPassSpeedMetersPerSecond));
+        Positive(AssaultMaximumPassSpeedMetersPerSecond, nameof(AssaultMaximumPassSpeedMetersPerSecond));
+        Fraction(PatrolMinimumRangeFraction, nameof(PatrolMinimumRangeFraction));
+        Fraction(PatrolPreferredRangeFraction, nameof(PatrolPreferredRangeFraction));
+        Fraction(PatrolMaximumRangeFraction, nameof(PatrolMaximumRangeFraction));
         if (MinimumCombatDistance >= PreferredCombatDistance || PreferredCombatDistance >= MaximumCombatDistance)
             throw new ArgumentException("Combat distances must increase from minimum through preferred to maximum.");
         if (CollisionAvoidanceMinimumDistanceMeters <= 50f)
@@ -91,16 +134,27 @@ public sealed record EnemyAiSettings
             throw new ArgumentException("Collision avoidance distances must increase from minimum through manoeuvre to trigger.");
         if (VanguardSafetyDistanceMeters <= CollisionAvoidanceMinimumDistanceMeters)
             throw new ArgumentOutOfRangeException(nameof(VanguardSafetyDistanceMeters), "Must exceed the AI minimum distance.");
-        if (PatrolSpawnMaximumDistanceMeters <= PatrolSpawnMinimumDistanceMeters ||
-            DetectionRangeAtFullReactorMeters > PatrolSpawnMinimumDistanceMeters)
-            throw new ArgumentException("Patrol spawn distances must stay outside the detection range.");
+        if (PatrolSpawnMaximumDistanceMeters <= PatrolSpawnMinimumDistanceMeters)
+            throw new ArgumentException("Patrol spawn distances must increase.");
         if (PatrolReactorOperatingLevelPercent is <= 0f or > 100f || !float.IsFinite(PatrolReactorOperatingLevelPercent))
             throw new ArgumentOutOfRangeException(nameof(PatrolReactorOperatingLevelPercent));
+        if (RangedReverseStartRangeFraction >= RangedPreferredRangeFraction)
+            throw new ArgumentException("Ranged reverse threshold must remain below the preferred weapon-range distance.");
+        if (AssaultMinimumPassSpeedMetersPerSecond > AssaultMaximumPassSpeedMetersPerSecond)
+            throw new ArgumentException("Assault pass speed limits must increase from minimum to maximum.");
+        if (PatrolMinimumRangeFraction >= PatrolPreferredRangeFraction ||
+            PatrolPreferredRangeFraction >= PatrolMaximumRangeFraction)
+            throw new ArgumentException("Patrol weapon-range fractions must increase from minimum through preferred to maximum.");
     }
 
     private static float Degrees(float value) => value * MathF.PI / 180f;
     private static void Positive(float value, string name)
     {
         if (!float.IsFinite(value) || value <= 0f) throw new ArgumentOutOfRangeException(name);
+    }
+
+    private static void Fraction(float value, string name)
+    {
+        if (!float.IsFinite(value) || value <= 0f || value >= 1f) throw new ArgumentOutOfRangeException(name);
     }
 }

@@ -1,0 +1,122 @@
+SpaceSim V2.2 - Boardcomputer-Stufen
+Stand: 2026-10-09
+
+GRUNDPRINZIP
+============
+Jedes KI-Schiff verwendet dieselbe taktische Kestrel-KI. Kestrel entscheidet nur,
+was das Schiff tun soll: APPROACH, ATTACK oder REPOSITION.
+
+Der Boardcomputer bestimmt, wie gut diese Entscheidung als normale ShipCommands
+umgesetzt wird. Er veraendert niemals direkt Position, Geschwindigkeit oder Rotation.
+
+Ein Boardcomputer beeinflusst:
+- Befehlsintervall: Nach wie vielen Simulationsticks ein neuer Steuerbefehl uebernommen wird.
+- Reaktionsdelay: Wie viele Ticks ein bereits berechneter Befehl warten muss.
+- Feuertoleranz: Der maximale Winkelfehler beim Feuerbefehl. Hoeher bedeutet mehr
+  vorschnelle und damit eher verfehlende Schuesse.
+- Schubkalibrierung: Zufallsabweichung in Main- und Reverse-Thrust. Das erzeugt
+  kontrollierte Geschwindigkeitsfehler bei Annäherung und Bremsen.
+- Drehautoritaet: Anteil des von Kestrel angeforderten Yaw-Thrusts.
+
+Alle Zufallsabweichungen sind pro Schiff/Seed reproduzierbar.
+
+REFERENZ
+========
+Die Kestrel-Basis verwendet eine Feuertoleranz von 3.0 Grad.
+Military Mk V ist die unverfaelschte Kestrel-Referenz:
+- neuer Command jede Simulation (1 Tick)
+- kein Delay
+- keine Schubabweichung
+- 100 % Yaw-Autoritaet
+- 3.0 Grad Feuertoleranz
+
+KLASSENCHARAKTER
+================
+CIVILIAN
+- Gute Entwicklung bei Geschwindigkeitskontrolle, aber generell schlechte Feuerdisziplin.
+- Civilian Mk IV ist absichtlich ein Beispiel fuer guten Flug, aber ungenaues Feuern.
+
+STANDARD
+- Ausgewogener Allrounder.
+- Mit hoeherem Mk wird er direkt, reaktionsschnell und brauchbar beim Feuern.
+
+TACTICAL
+- Priorisiert Feuerdisziplin und kleine Aim-Fehler.
+- Manoevriert bei gleichem Mk etwas schwaecher als Standard.
+
+MILITARY
+- Hochwertiger universeller Boardcomputer.
+- Military Mk V entspricht Kestrel ohne Ausfuehrungsfehler.
+
+AKTUELLE PROFILE
+================
+
+CIVILIAN
+Mk    Command-Intervall  Delay    Feuertoleranz  Schubabweichung  Yaw
+I     6 Ticks            12 Ticks 8.10 Grad      +/- 30.0 %       55.0 %
+II    5 Ticks            10 Ticks 7.43 Grad      +/- 24.5 %       63.3 %
+III   4 Ticks             8 Ticks 6.75 Grad      +/- 19.0 %       71.5 %
+IV    3 Ticks             5 Ticks 6.08 Grad      +/- 13.5 %       79.8 %
+V     2 Ticks             3 Ticks 5.40 Grad      +/-  8.0 %       88.0 %
+
+STANDARD
+Mk    Command-Intervall  Delay    Feuertoleranz  Schubabweichung  Yaw
+I     4 Ticks             5 Ticks 4.50 Grad      +/- 16.0 %       70.0 %
+II    3 Ticks             4 Ticks 4.13 Grad      +/- 12.5 %       77.0 %
+III   2 Ticks             2 Ticks 3.75 Grad      +/-  9.0 %       84.0 %
+IV    2 Ticks             1 Tick  3.38 Grad      +/-  5.5 %       91.0 %
+V     1 Tick              0 Ticks 3.00 Grad      +/-  2.0 %       98.0 %
+
+TACTICAL
+Mk    Command-Intervall  Delay    Feuertoleranz  Schubabweichung  Yaw
+I     5 Ticks             7 Ticks 2.40 Grad      +/- 20.0 %       62.0 %
+II    4 Ticks             6 Ticks 2.18 Grad      +/- 16.5 %       69.0 %
+III   4 Ticks             4 Ticks 1.95 Grad      +/- 13.0 %       76.0 %
+IV    3 Ticks             2 Ticks 1.73 Grad      +/-  9.5 %       83.0 %
+V     2 Ticks             1 Tick  1.50 Grad      +/-  6.0 %       90.0 %
+
+MILITARY
+Mk    Command-Intervall  Delay    Feuertoleranz  Schubabweichung  Yaw
+I     3 Ticks             3 Ticks 3.60 Grad      +/-  8.0 %       82.0 %
+II    2 Ticks             2 Ticks 3.45 Grad      +/-  6.0 %       86.5 %
+III   2 Ticks             2 Ticks 3.30 Grad      +/-  4.0 %       91.0 %
+IV    2 Ticks             1 Tick  3.15 Grad      +/-  2.0 %       95.5 %
+V     1 Tick              0 Ticks 3.00 Grad      +/-  0.0 %      100.0 %
+
+AKTUELLE STANDARDZUORDNUNG
+==========================
+- Interceptor:           Standard, MK I bis IV
+- Corvette:              Tactical, MK II bis V
+- Frigatte:              Military, MK III bis V
+- 1vs1:                  Klasse bestimmt Familie und MK durch das generierte Loadout
+- Gefechtssimulation:    weiterhin Military Mk V auf beiden Seiten
+
+LOADOUT-SCORING
+===============
+Die Klasse bestimmt die Boardcomputer-Familie. Die Subklasse bestimmt die
+Basis-MK: Interceptor Ranged/Patrol/Assault = II/III/IV, Corvette = IV/III/IV,
+Frigatte = IV/IV/V. Danach gelten diese Additionen:
+
++1: Waffenreichweite > 1.200 m
++1: Schwenkfenster <= +/-5 Grad
++1: Schaden >= 36 oder Ladezeit >= 10 s
++1: Main-Speed >= 130 m/s und Reverse-Schub <= 30 kN
++1: Rotation <= 10 Grad/s und Schwenkfenster <= +/-5 Grad
+-1: Reichweite <= 700 m und (Schwenkfenster >= +/-12 Grad oder Ladezeit <= 2,5 s)
+-1: Main-Speed <= 100 m/s und Reverse-Schub >= 30 kN
+-1: Schwenkfenster >= +/-12 Grad und Rotation >= 15 Grad/s
+
+Das Ergebnis wird auf den Klassenbereich begrenzt. Reaktor, Schild und Sensor
+werden bewusst nicht direkt bewertet: Sie verändern die Kampfstärke, aber nicht
+die Schwierigkeit der konkreten Flug- und Feuerbefehle.
+
+WICHTIGE HINWEISE
+=================
+- Die Feuertoleranz ist kein Aim-Assist. Ein hoher Wert feuert frueher, obwohl
+  die Lanze noch nicht exakt auf dem Ziel liegt. Der Raycast kann deshalb verfehlen.
+- Command-Intervall und Delay werden in Simulationsticks gemessen. Ein Tick dauert
+  1/60 Sekunde. Beispiel: Civilian Mk IV mit 3 Ticks und 5 Ticks reagiert etwa
+  alle 0.05 s und setzt diesen Befehl rund 0.083 s spaeter um.
+- Die Werte leben zentral in SpaceSim.Core/AI/BoardComputerProfile.cs.
+- BoardComputerSettings in SimulationSettings ordnet Profile Easy, Medium, Hard
+  und Duell zu. Sie koennen spaeter pro Schiff, Encounter oder im UI gewaehlt werden.

@@ -1,0 +1,83 @@
+{
+  "Id": "eclipse_vs_solace_2026-10-10_15-49-10-942",
+  "CreatedAt": "2026-10-10T15:49:10.9422122+02:00",
+  "Nomad": null,
+  "Enemy": null,
+  "Battles": [
+    {
+      "Number": 1,
+      "Seed": 955982219,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 49.25,
+      "MinimumDistanceMeters": 589.69226,
+      "LogFile": "gefecht_01.txt"
+    },
+    {
+      "Number": 2,
+      "Seed": 955990138,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 74.18333333333334,
+      "MinimumDistanceMeters": 623.1356,
+      "LogFile": "gefecht_02.txt"
+    },
+    {
+      "Number": 3,
+      "Seed": 955998057,
+      "Outcome": "nomad_sieg",
+      "DurationSeconds": 46.81666666666667,
+      "MinimumDistanceMeters": 278.9607,
+      "LogFile": "gefecht_03.txt"
+    },
+    {
+      "Number": 4,
+      "Seed": 956005976,
+      "Outcome": "nomad_sieg",
+      "DurationSeconds": 59.583333333333336,
+      "MinimumDistanceMeters": 351.36948,
+      "LogFile": "gefecht_04.txt"
+    },
+    {
+      "Number": 5,
+      "Seed": 956013895,
+      "Outcome": "gegner_sieg",
+      "DurationSeconds": 81.18333333333334,
+      "MinimumDistanceMeters": 494.75842,
+      "LogFile": "gefecht_05.txt"
+    }
+  ],
+  "NomadWins": 2,
+  "EnemyWins": 3,
+  "Timeouts": 0,
+  "NomadShip": {
+    "Name": "ECLIPSE",
+    "ShipClass": 2,
+    "Subclass": 2,
+    "MassKg": 20000,
+    "MaximumHull": 45,
+    "Reactor": 2,
+    "BowWeapon": 4,
+    "Shield": 7,
+    "Sensor": 2,
+    "MainBooster": 1,
+    "ReverseBooster": 0,
+    "SideBooster": 1,
+    "BoardComputerClass": 3,
+    "BoardComputerMark": 3
+  },
+  "EnemyShip": {
+    "Name": "SOLACE",
+    "ShipClass": 1,
+    "Subclass": 1,
+    "MassKg": 9000,
+    "MaximumHull": 24,
+    "Reactor": 7,
+    "BowWeapon": 8,
+    "Shield": 1,
+    "Sensor": 8,
+    "MainBooster": 0,
+    "ReverseBooster": 1,
+    "SideBooster": 2,
+    "BoardComputerClass": 2,
+    "BoardComputerMark": 2
+  }
+}

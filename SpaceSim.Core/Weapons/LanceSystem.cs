@@ -52,10 +52,12 @@ internal static class LanceSystem
             origin + direction * lanceRange, origin + direction * world.Ship.Tuning.LanceVisualRangeMeters));
         if (enemyHit is not null)
         {
-            if (ShieldSystem.ApplyLanceDamage(enemyHit.Ship.Shield, WeaponOwner.Enemy, enemyHit.EnemyId,
-                enemyHit.Ship.Position, settings.Shield, events) && HullSystem.ApplyHit(enemyHit.Ship.Hull,
+            float hullDamage = ShieldSystem.ApplyLanceDamage(enemyHit.Ship.Shield, WeaponOwner.Enemy, enemyHit.EnemyId,
+                enemyHit.Ship.Position, settings.Shield, events, world.Ship.Tuning.BowWeapon.Damage,
+                enemyHit.Ship.Systems.ShieldsCondition, enemyHit.Ship.Tuning.Shield);
+            if (hullDamage > 0f && HullSystem.ApplyDamage(enemyHit.Ship.Hull,
                 enemyHit.Ship.Systems, WeaponOwner.Enemy, enemyHit.EnemyId, enemyHit.Ship.Position,
-                settings.Hull, random, events))
+                hullDamage, settings.Hull, random, events))
             {
                 enemyHit.IsDestroyed = true;
                 world.HitCount++;
@@ -85,9 +87,11 @@ internal static class LanceSystem
             WeaponOwner.Enemy, hit ? WeaponHitKind.Player : WeaponHitKind.None,
             origin + direction * lanceRange, origin + direction * world.Ship.Tuning.LanceVisualRangeMeters));
         if (!hit) return;
-        if (!ShieldSystem.ApplyLanceDamage(world.Ship.Shield, WeaponOwner.Player, null,
-            world.Ship.Position, settings.Shield, events) || !HullSystem.ApplyHit(world.Ship.Hull,
-            world.Ship.Systems, WeaponOwner.Player, null, world.Ship.Position, settings.Hull, random, events)) return;
+        float hullDamage = ShieldSystem.ApplyLanceDamage(world.Ship.Shield, WeaponOwner.Player, null,
+            world.Ship.Position, settings.Shield, events, enemy.Ship.Tuning.BowWeapon.Damage,
+            world.Ship.Systems.ShieldsCondition, world.Ship.Tuning.Shield);
+        if (hullDamage <= 0f || !HullSystem.ApplyDamage(world.Ship.Hull,
+            world.Ship.Systems, WeaponOwner.Player, null, world.Ship.Position, hullDamage, settings.Hull, random, events)) return;
         world.GameState = GameState.GameOver;
         events.Add(new PlayerDestroyed(enemy.EnemyId, world.Ship.Position));
     }

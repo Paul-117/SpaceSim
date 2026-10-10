@@ -1,0 +1,44 @@
+SpaceSim – Schildgenerator-Katalog
+==================================
+
+Stand: Alle bestehenden Schiffe tragen den GUARDIAN S-20.
+
+Die Schildwerte liegen zentral in:
+SpaceSim.Core/Combat/ShieldDefinition.cs
+
+Der pro Schiff montierte Generator gehoert zu ShipTuning und bestimmt:
+- maximale Schild-HP
+- Aufladezeit bei 100 % Schildleistung und intaktem Generator
+- Rebootzeit nach vollstaendiger Entladung
+- maximalen PU-Bedarf der Schildstation
+
+Name             Schild-HP  Aufladezeit  Reboot  Leistung
+----------------------------------------------------------
+GUARDIAN S-20            20       5,0 s      10 s    30 PU
+Phantom Veil          12       1,5 s       6 s    35 PU
+Ironclad              40       9,0 s      20 s    45 PU
+CITADEL         50      15,0 s      30 s    60 PU
+Pulseguard            18       2,5 s      12 s    42 PU
+Sentinel Array        30       6,0 s      15 s    38 PU
+ETHEREAL WARD         15       3,5 s       5 s    24 PU
+Bulwark               35       8,0 s      18 s    32 PU
+Nova Barrier          25       4,0 s      22 s    50 PU
+QUICKSILVER         10       1,0 s       8 s    40 PU
+
+Reboot-Regeln
+-------------
+- Ein nicht vollstaendig entleerter Schild nutzt weiterhin die globale Trefferpause von 3 Sekunden.
+- Faellt der Schild durch einen Treffer oder eine Explosion auf 0 HP, beginnt sein generatorabhaengiger Reboot.
+- Reboot-Fortschritt braucht gelieferte Schildenergie. Bei 100 % Leistung dauert er genau die angegebene Zeit; bei 50 % Leistung doppelt so lange; bei 0 PU pausiert er.
+- Nach dem Reboot beginnt die normale Aufladung bei 0 HP.
+- Ein Warp-Sprung stellt den Schild voll wieder her und beendet Reboot und Trefferpause.
+- Ein Generator-Schaden halbiert weiterhin die wirksame Schildleistung: Reboot und Aufladung dauern dadurch jeweils doppelt so lange.
+
+Noch nicht Teil dieses Schritts
+-------------------------------
+- Ausruestungs- oder Shop-UI
+- Wechsel des Generators im laufenden Spiel
+- Unterschiede bei Schildgrafik, Treffer-Effekten oder Sounds
+
+Die anderen neun Generatoren sind bereits als vollstaendige, validierte Definitionen vorhanden.
+Ein kuenftiger Loadout muss ShipTuning lediglich die gewuenschte ShieldDefinition geben.

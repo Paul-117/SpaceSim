@@ -1,0 +1,39 @@
+SpaceSim – Bugwaffen-Katalog
+=============================
+
+Stand: PEREGRINE L-1000 ist die Standard-Bugwaffe aller bestehenden Schiffe.
+
+Die Waffenwerte liegen zentral in:
+SpaceSim.Core/Weapons/BowWeaponDefinition.cs
+
+Die pro Schiff installierte Waffe gehoert zu ShipTuning. Daraus folgen direkt:
+- Schaden pro Treffer
+- Gameplay-Reichweite
+- visueller Strahl: dreifache Gameplay-Reichweite, mit Ausfaden nach der Reichweite
+- Ladezeit
+- Schwenkfenster der Buglafette
+- Schwenkrate
+- maximaler Leistungsbedarf der Amarium-Station
+
+Name             Schaden  Reichweite  Ladezeit  DPS   Schwenkfenster  Schwenkrate  Leistung
+------------------------------------------------------------------------------------------------
+PEREGRINE L-1000      20     1.000 m      5,0 s   4,00       +/-5°        3,33°/s     40 PU
+Raptor               11       750 m     2,5 s   4,40      +/-12°       10,00°/s     38 PU
+Doomhammer           36     1.400 m    11,0 s   3,27       +/-5°        2,00°/s     60 PU
+Longspear            15     1.650 m     6,5 s   2,31       +/-3°        2,50°/s     46 PU
+Hellstorm             6       500 m     1,0 s   6,00      +/-15°       15,00°/s     48 PU
+Ravager              28       600 m     5,5 s   5,09       +/-7°        5,00°/s     42 PU
+Spectre              13     1.050 m     3,5 s   3,71      +/-15°       12,00°/s     50 PU
+Oblivion             48     1.800 m    15,0 s   3,20       +/-2°        1,50°/s     75 PU
+Viper                18       850 m     3,8 s   4,74       +/-8°        7,00°/s     44 PU
+Wraith               16       900 m     5,0 s   3,20       +/-6°        4,00°/s     22 PU
+
+Noch nicht Teil dieses Schritts
+-------------------------------
+- Ausruestungs- oder Shop-UI
+- Wechsel der montierten Waffe im Spiel
+- unterschiedliche Schuss-Animationen oder Sounds
+- separate Projektiltypen
+
+Die anderen neun Waffen sind bereits als vollstaendige, validierte Definitionen vorhanden.
+Ein kuenftiger Loadout braucht nur ShipTuning mit der gewuenschten BowWeaponDefinition zu erzeugen.

@@ -1,0 +1,20 @@
+SpaceSim Gefechts-Simulation
+Erstellt: 2026-10-10T15:37:39.1805650+02:00
+SCHIFF 1: ORION · Interceptor · Patrol · 6,50 t · Hull 18 HP
+  Boardcomputer: Standard MK 2; Reaktor: HELIX N-115; Waffe: WRAITH
+  Schild: SENTINEL ARRAY; Sensor: GHOST EYE
+  Booster: ATLAS M-100 / ANCHOR R-30 / VECTOR S-1
+SCHIFF 2: VANGUARD · Frigate · Ranged · 13,00 t · Hull 30 HP
+  Boardcomputer: Military MK 5; Reaktor: MONOLITH T-200; Waffe: LONGSPEAR
+  Schild: PULSEGUARD; Sensor: ORACLE X-9
+  Booster: SKYFANG M-85 / ANCHOR R-30 / TALON S-2
+
+Gefechtslauf 01: nomad_sieg; Seed 1107293634; Dauer 57,53 s; minimaler Abstand 581,7 m; gefecht_01.txt
+Gefechtslauf 02: nomad_sieg; Seed 1107301553; Dauer 50,78 s; minimaler Abstand 613,2 m; gefecht_02.txt
+Gefechtslauf 03: nomad_sieg; Seed 1107309472; Dauer 72,53 s; minimaler Abstand 578,7 m; gefecht_03.txt
+Gefechtslauf 04: nomad_sieg; Seed 1107317391; Dauer 87,63 s; minimaler Abstand 586,5 m; gefecht_04.txt
+Gefechtslauf 05: nomad_sieg; Seed 1107325310; Dauer 108,13 s; minimaler Abstand 573,5 m; gefecht_05.txt
+
+Schiff-1-Siege: 5
+Schiff-2-Siege: 0
+Timeouts: 0

@@ -10,7 +10,7 @@ bool openBrowser = !args.Contains("--no-browser", StringComparer.OrdinalIgnoreCa
 if (args.Contains("--batch", StringComparer.OrdinalIgnoreCase))
 {
     SessionResult result = CombatBatchRunner.Run(root, new CombatLabRequest());
-    Console.WriteLine($"{result.Id}: Nomad {result.NomadWins} : {result.EnemyWins} Gegner, {result.Timeouts} Timeouts.");
+    Console.WriteLine($"{result.Id}: {result.NomadShip?.Name ?? "Schiff 1"} {result.NomadWins} : {result.EnemyWins} {result.EnemyShip?.Name ?? "Schiff 2"}, {result.Timeouts} Timeouts.");
     return;
 }
 
@@ -20,6 +20,12 @@ builder.WebHost.UseUrls(address);
 var app = builder.Build();
 JsonSerializerOptions json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 app.MapGet("/api/sessions", () => Results.Json(Sessions(root), json));
+app.MapGet("/api/catalog", () => Results.Json(CombatShipLoadoutFactory.Catalog(), json));
+app.MapPost("/api/generate", (CombatShipGenerationRequest? request) =>
+{
+    try { return Results.Json(CombatShipLoadoutFactory.Generate(request), json); }
+    catch (Exception error) { return Results.Problem(error.Message, statusCode: 400); }
+});
 app.MapGet("/api/session/{id}", (string id) =>
 {
     if (!SafeId(id)) return Results.BadRequest();
@@ -59,7 +65,7 @@ static object[] Sessions(string root)
         if (File.Exists(state))
         {
             SessionResult? result = JsonSerializer.Deserialize<SessionResult>(File.ReadAllText(state));
-            if (result is not null) return (object)new { id, createdAt = result.CreatedAt, result.Nomad, result.Enemy, result.NomadWins, result.EnemyWins, result.Timeouts, battleCount = result.Battles.Count, configured = true };
+            if (result is not null) return (object)new { id, createdAt = result.CreatedAt, result.Nomad, result.Enemy, result.NomadShip, result.EnemyShip, result.NomadWins, result.EnemyWins, result.Timeouts, battleCount = result.Battles.Count, configured = true };
         }
         int count = Directory.GetFiles(directory, "gefecht_*.txt").Length;
         return (object)new { id, createdAt = Directory.GetCreationTimeUtc(directory), nomad = (DuelParameters?)null, enemy = (DuelParameters?)null, nomadWins = 0, enemyWins = 0, timeouts = 0, battleCount = count, configured = false };

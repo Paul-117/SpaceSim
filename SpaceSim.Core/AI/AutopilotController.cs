@@ -101,7 +101,7 @@ public sealed class AutopilotController
     private float BrakingLimitedClosingSpeed(ShipState ship)
     {
         float availableDistance = MathF.Max(0f, _context.Distance - _settings.MaximumCombatDistance);
-        float reverseFactor = ship.Power.PropulsionPowerFactor * ship.Systems.PropulsionCondition;
+        float reverseFactor = ship.Power.PropulsionPowerFactor * ship.Systems.ReverseBoosterCondition;
         float brakingAcceleration = MathF.Max(.01f, _nominalReverseAcceleration * reverseFactor);
         float speedSquared = _settings.MaximumAttackRelativeSpeed * _settings.MaximumAttackRelativeSpeed +
                              2f * brakingAcceleration * availableDistance;

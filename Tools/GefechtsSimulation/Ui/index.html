@@ -1,17 +1,40 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="de">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SpaceSim Gefechts-Simulation</title><link rel="stylesheet" href="combat-lab.css"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SpaceSim Gefechts-Simulation</title>
+  <link rel="stylesheet" href="combat-lab.css">
+</head>
 <body>
-<header><div><span>SPACESIM / TOOLS</span><h1>GEFECHTS-SIMULATION</h1></div><p id="serverState">LOCAL SIMULATION SERVER</p></header>
-<main>
-  <aside><button id="newBattle">+ NEUES GEFECHT</button><h2>GEFÜHRTE GEFECHTE</h2><div id="sessions"><p class="muted">Lade Läufe …</p></div></aside>
-  <section id="overview" class="content"><div class="empty"><h2>Gefechtslabor</h2><p>Wähle links einen gespeicherten Lauf oder starte ein neues Gefecht.</p></div></section>
-  <section id="formPanel" class="content hidden">
-    <div class="title-row"><div><span>NEUE KONFIGURATION</span><h2>Kestrel gegen Kestrel</h2></div><button class="ghost" id="cancel">ABBRECHEN</button></div>
-    <p class="hint">Beide Seiten nutzen die gleiche Kestrel-KI. Die Werte wirken nur auf den jeweiligen Flugkörper und ermöglichen direkte Vergleichsläufe.</p>
-    <label class="count">GEFECHTE <input id="battleCount" type="number" min="1" max="50" value="5"></label>
-    <div class="fighters"><fieldset data-side="nomad"><legend>NOMAD</legend></fieldset><fieldset data-side="enemy"><legend>GEGNER</legend></fieldset></div>
-    <button id="run">SIMULATION STARTEN</button><p id="runState" class="hint"></p>
-  </section>
-</main><script src="combat-lab.js"></script>
-</body></html>
+  <header>
+    <div><span>SPACESIM / TOOLS</span><h1>GEFECHTS-SIMULATION</h1></div>
+    <p id="serverState">LOCAL SIMULATION SERVER</p>
+  </header>
+  <main>
+    <aside>
+      <button id="newBattle">+ NEUES GEFECHT</button>
+      <h2>GEFÜHRTE GEFECHTE</h2>
+      <div id="sessions"><p class="muted">Lade Läufe …</p></div>
+    </aside>
+    <section id="overview" class="content">
+      <div class="empty"><h2>Gefechtslabor</h2><p>Wähle links einen gespeicherten Lauf oder starte ein neues Gefecht.</p></div>
+    </section>
+    <section id="formPanel" class="content hidden">
+      <div class="title-row">
+        <div><span>NEUE KONFIGURATION</span><h2>KI-DUELL</h2></div>
+        <button class="ghost" id="cancel">ABBRECHEN</button>
+      </div>
+      <p class="hint">Generate erstellt ein vollständiges, gültiges Schiff aus dem Loadout-Generator. Mit <b>SPERREN</b> bleibt der ausgewählte Eintrag beim nächsten Generate erhalten.</p>
+      <label class="count">GEFECHTE <input id="battleCount" type="number" min="1" max="50" value="5"></label>
+      <div class="fighters">
+        <fieldset data-side="nomad"><legend>SCHIFF 1</legend></fieldset>
+        <fieldset data-side="enemy"><legend>SCHIFF 2</legend></fieldset>
+      </div>
+      <button id="run">SIMULATION STARTEN</button>
+      <p id="runState" class="hint"></p>
+    </section>
+  </main>
+  <script src="combat-lab.js"></script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 using System.Numerics;
 using SpaceSim.Core.AI;
 using SpaceSim.Core.Combat;
+using SpaceSim.Core.Generation;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Simulation;
 
@@ -20,8 +21,8 @@ public sealed record EnemyDebugState(
     float ClosingSpeed,
     float RelativeSpeed,
     float EnemySpeed,
-    int Hull,
-    int MaximumHull,
+    float Hull,
+    float MaximumHull,
     float Shield,
     float MaximumShield,
     float PropulsionCondition,
@@ -43,7 +44,10 @@ public sealed record EnemyDebugState(
     float ShieldsDraw,
     long SimulationTick,
     FireControlDebug? EnemyFireControl = null,
-    FireControlDebug? PlayerFireControl = null);
+    FireControlDebug? PlayerFireControl = null)
+{
+    public EnemyLoadoutDebug? Loadout { get; init; }
+}
 
 /// <summary>
 /// Focused, read-only explanation of the live lance gates. It deliberately distinguishes
@@ -65,6 +69,20 @@ public sealed record FireControlDebug(
     public static FireControlDebug Unavailable { get; } = new(
         false, false, false, false, false, false, 0f, 0f, false, false, false);
 }
+
+/// <summary>Read-only manifest of the modules actually mounted in the active enemy ship.</summary>
+public sealed record EnemyLoadoutDebug(
+    string ShipClass,
+    string Source,
+    int? Seed,
+    string Subclass,
+    int Score,
+    float PeakPowerDemand,
+    float RequiredReactorOutput,
+    IReadOnlyList<LoadoutModuleDebug> Modules);
+
+/// <summary>One concise module row for the browser debug terminal.</summary>
+public sealed record LoadoutModuleDebug(string Slot, string Name, string Details);
 
 public static class EnemyDebugStateBuilder
 {
@@ -111,7 +129,45 @@ public static class EnemyDebugStateBuilder
             power.ShieldsDraw,
             world.Tick,
             BuildEnemyFireControl(world, enemy, ai, settings),
-            BuildPlayerFireControl(world, enemy, settings));
+            BuildPlayerFireControl(world, enemy, settings))
+        {
+            Loadout = BuildLoadout(enemy)
+        };
+    }
+
+    private static EnemyLoadoutDebug BuildLoadout(EnemyShipState enemy)
+    {
+        GeneratedShipLoadout? generated = enemy.GeneratedLoadout;
+        ShipTuning tuning = enemy.Ship.Tuning;
+        float peak = generated?.PeakPowerDemand ?? ShipLoadoutGenerator.PeakPowerDemand(
+            tuning.MainBooster, tuning.ReverseBooster, tuning.SideBooster, tuning.BowWeapon, tuning.Shield, enemy.Sensor);
+        float required = generated?.RequiredReactorOutputAtEightyPercent ??
+            peak * ShipLoadoutGenerator.RequiredPowerCoverage;
+        var modules = new List<LoadoutModuleDebug>
+        {
+            new("HULL", enemy.ShipClass.ToString().ToUpperInvariant(),
+                $"{enemy.Ship.MassKg / 1_000f:0.##} t | {enemy.Ship.Hull.MaximumHull:0.#} HP"),
+            new("BOARD COMPUTER", enemy.BoardComputer.Name,
+                $"update {enemy.BoardComputer.CommandUpdateIntervalTicks} ticks | delay {enemy.BoardComputer.ReactionDelayTicks} ticks | fire x{enemy.BoardComputer.FireAimToleranceMultiplier:0.##} | yaw {enemy.BoardComputer.YawAuthorityFactor * 100f:0.#}%"),
+            new("REACTOR", tuning.Reactor.Name,
+                $"{tuning.Reactor.MaximumOutputPower:0.#} PU | ramp {tuning.Reactor.RampUpSeconds:0.#} s | fuel {tuning.Reactor.MaximumFuelUsagePerMinute:0.#}/min"),
+            new("BOW WEAPON", tuning.BowWeapon.Name,
+                $"{tuning.BowWeapon.Damage:0.#} dmg | {tuning.BowWeapon.RangeMeters:0.#} m | {tuning.BowWeapon.ChargeSeconds:0.#} s | {tuning.BowWeapon.PowerDraw:0.#} PU"),
+            new("SHIELD", tuning.Shield.Name,
+                $"{tuning.Shield.MaximumHitPoints:0.#} HP | recharge {tuning.Shield.RechargeSeconds:0.#} s | reboot {tuning.Shield.RebootSeconds:0.#} s | {tuning.Shield.PowerDraw:0.#} PU"),
+            new("SENSOR", enemy.Sensor.Name,
+                $"{enemy.Sensor.MinimumRangeMeters:0.#}-{enemy.Sensor.MaximumRangeMeters:0.#} m | {enemy.Sensor.PowerUsage:0.#} PU"),
+            new("MAIN BOOSTER", tuning.MainBooster.Name,
+                $"{tuning.MainBooster.ThrustNewtons / 1_000f:0.#} kN | ramp {tuning.MainBooster.RampUpSeconds:0.#} s | {tuning.MainBooster.MaximumSpeedMetersPerSecond:0.#} m/s | {tuning.MainBooster.PowerDraw:0.#} PU"),
+            new("REVERSE BOOSTER", tuning.ReverseBooster.Name,
+                $"{tuning.ReverseBooster.ThrustNewtons / 1_000f:0.#} kN | {tuning.ReverseBooster.MaximumSpeedMetersPerSecond:0.#} m/s | {tuning.ReverseBooster.PowerDraw:0.#} PU"),
+            new("SIDE BOOSTER", tuning.SideBooster.Name,
+                $"{tuning.SideBooster.ThrustNewtons / 1_000f:0.#} kN | {tuning.SideBooster.MaximumRotationDegreesPerSecond:0.#} deg/s | {tuning.SideBooster.PowerDraw:0.#} PU")
+        };
+        return new EnemyLoadoutDebug(enemy.ShipClass.ToString().ToUpperInvariant(),
+            generated is null ? "STANDARD" : "PROCEDURAL", generated?.Seed,
+            generated?.Subclass.ToString().ToUpperInvariant() ?? "-", generated?.Score ?? 0,
+            peak, required, modules);
     }
 
     private static FireControlDebug BuildEnemyFireControl(WorldState world, EnemyShipState enemy,
@@ -122,13 +178,14 @@ public static class EnemyDebugStateBuilder
         Vector3 direction = distance > .0001f ? toPlayer / distance : enemy.Ship.Forward;
         float aimErrorDegrees = Degrees(SignedPlanarAngle(enemy.Ship.Forward, direction));
         float toleranceDegrees = Degrees(ai?.FireAimToleranceRadians ?? 0f);
-        bool inRange = distance <= (settings?.LanceRangeMeters ?? 1000f);
+        float weaponRange = enemy.Ship.Tuning.LanceRangeMeters;
+        bool inRange = distance <= weaponRange;
         bool inFront = Vector3.Dot(enemy.Ship.Forward, direction) > 0f;
         bool aimed = MathF.Abs(aimErrorDegrees) <= toleranceDegrees + .0001f;
         bool attackState = ai?.CurrentState == EnemyAiState.Attack;
         bool combatActive = ai?.IsPlayerDetected ?? false;
         bool rayWouldHit = RayWouldHit(enemy.Ship.Position, enemy.Ship.Forward, world.Ship.Position,
-            settings?.EnemyAi.ShipHitRadiusMeters ?? 16f, settings?.LanceRangeMeters ?? 1000f);
+            settings?.EnemyAi.ShipHitRadiusMeters ?? 16f, weaponRange);
         bool command = combatActive && attackState && enemy.Lance.IsReady && inRange && inFront && aimed;
         return new FireControlDebug(true, combatActive, attackState, enemy.Lance.IsReady, inRange, inFront,
             aimErrorDegrees, toleranceDegrees, aimed, rayWouldHit, command);
@@ -142,11 +199,12 @@ public static class EnemyDebugStateBuilder
         Vector3 direction = distance > .0001f ? toEnemy / distance : world.LanceDirection;
         float aimErrorDegrees = Degrees(SignedPlanarAngle(world.LanceDirection, direction));
         const float autopilotToleranceDegrees = AutopilotController.AimToleranceDegrees;
-        bool inRange = distance <= (settings?.LanceRangeMeters ?? 1000f);
+        float weaponRange = world.Ship.Tuning.LanceRangeMeters;
+        bool inRange = distance <= weaponRange;
         bool inFront = Vector3.Dot(world.LanceDirection, direction) > 0f;
         bool aimed = MathF.Abs(aimErrorDegrees) <= autopilotToleranceDegrees + .0001f;
         bool rayWouldHit = RayWouldHit(world.Ship.Position, world.LanceDirection, enemy.Ship.Position,
-            settings?.EnemyAi.ShipHitRadiusMeters ?? 16f, settings?.LanceRangeMeters ?? 1000f);
+            settings?.EnemyAi.ShipHitRadiusMeters ?? 16f, weaponRange);
         // The bridge can deliberately fire at any time. The other gates describe whether it will hit this contact.
         return new FireControlDebug(true, true, false, world.Lance.IsReady, inRange, inFront,
             aimErrorDegrees, autopilotToleranceDegrees, aimed, rayWouldHit, world.Lance.IsReady);

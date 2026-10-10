@@ -61,11 +61,11 @@ public partial class EnemyShipView : Node2D
     }
 
     public static bool HasVisual(EnemyShipClass shipClass) => shipClass is
-        EnemyShipClass.Transporter or EnemyShipClass.Corvette or EnemyShipClass.Frigate;
+        EnemyShipClass.Interceptor or EnemyShipClass.Corvette or EnemyShipClass.Frigate;
 
     private static ShipVisualConfig GetVisualConfig(EnemyShipClass shipClass) => shipClass switch
     {
-        EnemyShipClass.Transporter => new ShipVisualConfig(
+        EnemyShipClass.Interceptor => new ShipVisualConfig(
             "res://Assets/Sprites/Transporter/Frachter2.png",
             "res://Assets/Sprites/Transporter/AnimationPresets/Frachter Booster.json",
             "res://Assets/Sprites/Transporter/AnimationPresets/Frachter Lance.json"),

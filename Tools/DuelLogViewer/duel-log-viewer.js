@@ -4,7 +4,8 @@
     canvas: document.querySelector('#mapCanvas'), timeline: document.querySelector('#timeline'),
     play: document.querySelector('#playButton'), fit: document.querySelector('#fitButton'),
     time: document.querySelector('#timeLabel'), metrics: document.querySelector('#metrics'),
-    details: document.querySelector('#snapshotDetails'), events: document.querySelector('#eventList')
+    details: document.querySelector('#snapshotDetails'), events: document.querySelector('#eventList'),
+    playerLegend: document.querySelector('#playerLegend'), enemyLegend: document.querySelector('#enemyLegend')
   };
   const ctx = ui.canvas.getContext('2d');
   let sessions = [], current = null, index = 0, playing = false, timer = null;
@@ -15,7 +16,13 @@
   function eventsOf(snapshot) { return (snapshot?.events || []).map(e => typeof e === 'string' ? {type:e} : e); }
   function snapshots(session) { return session.records.filter(r => r.type === 'snapshot'); }
   function finished(session) { return session.records.find(r => r.type === 'session_finished'); }
-  function label(session) { const end = finished(session); return `${session.name} — ${snapshots(session).length} Snapshots${end ? ` — ${end.outcome}` : ''}`; }
+  function shipNames(session) {
+    const start=session.records.find(r=>r.type==='session_started')||{}, first=snapshots(session)[0]||{};
+    return {player:first.player?.name||start.nomad?.name||start.playerName||'SCHIFF 1',enemy:first.enemy?.name||start.enemy?.name||start.enemyName||'SCHIFF 2'};
+  }
+  function outcomeName(outcome,names) { return outcome==='player_victory'?`${names.player} Sieg`:outcome==='player_destroyed'?`${names.enemy} Sieg`:outcome||'läuft'; }
+  function sideName(owner,names) { return owner==='Player'?names.player:owner==='Enemy'?names.enemy:owner||'?'; }
+  function label(session) { const end = finished(session), names = shipNames(session); return `${session.name} — ${names.player} vs ${names.enemy} — ${snapshots(session).length} Snapshots${end ? ` — ${outcomeName(end.outcome,names)}` : ''}`; }
 
   async function loadFiles(files) {
     sessions = [];
@@ -33,6 +40,7 @@
     current = sessions[n]; index = 0; playing = false; clearInterval(timer); ui.play.textContent='▶';
     ui.select.value=n; const data = snapshots(current); ui.timeline.max=Math.max(0,data.length-1); ui.timeline.value=0;
     ui.timeline.disabled=!data.length; ui.play.disabled=!data.length; ui.fit.disabled=!data.length;
+    const names=shipNames(current); ui.playerLegend.textContent=names.player; ui.enemyLegend.textContent=names.enemy;
     fit(); refresh();
   }
   function clear() { current=null; ctx.clearRect(0,0,ui.canvas.width,ui.canvas.height); ui.metrics.innerHTML='<p>Keine lesbaren 1VS1-Logs geladen.</p>'; ui.details.innerHTML=''; ui.events.innerHTML='<p class="empty">Keine Daten geladen.</p>'; }
@@ -83,13 +91,21 @@
         else legacyHitMark(s, e.type);
       }
     }));
-    ship(now?.player?.position,now?.player?.forward,'#35d5f4','NOMAD'); ship(now?.enemy?.position,now?.enemy?.forward,'#ff9d4d',now?.enemy?.name||'GEGNER');
+    const names=shipNames(current);
+    ship(now?.player?.position,now?.player?.forward,'#35d5f4',now?.player?.name||names.player);
+    ship(now?.enemy?.position,now?.enemy?.forward,'#ff9d4d',now?.enemy?.name||names.enemy);
   }
   function metric(label,value,klass=''){return `<p class="metric"><span>${label}</span><b class="value ${klass}">${value}</b></p>`;}
-  function refresh() { if(!current)return; const data=snapshots(current), s=data[index], end=finished(current), all=data.flatMap(eventsOf), shots=all.filter(e=>e.type==='WeaponFired'), hits=shots.filter(e=>e.hitKind&&e.hitKind!=='None'); ui.time.textContent=formatTime(number(s?.simulationSeconds)); ui.timeline.value=index;
-    ui.metrics.innerHTML=metric('Ergebnis',end?.outcome||'läuft',end?.outcome==='player_victory'?'victory':end?.outcome==='player_destroyed'?'defeat':'')+metric('Dauer',`${formatTime(number(end?.simulationSeconds ?? data.at(-1)?.simulationSeconds))}`)+metric('Minimaldistanz',`${Math.min(...data.map(x=>number(x.aiContext?.distanceMeters,Infinity))).toFixed(1)} m`)+metric('Schüsse',`${shots.length}`)+metric('Treffer',`${hits.length}`)+metric('Snapshots',data.length);
-    const a=s?.aiContext||{}, e=s?.enemy||{}, p=s?.player||{}; ui.details.innerHTML=detail('Zeit',formatTime(number(s?.simulationSeconds)))+detail('AI State',e.state||'-')+detail('Distanz',`${number(a.distanceMeters).toFixed(1)} m`)+detail('Relativ',`${number(a.relativeSpeedMetersPerSecond).toFixed(1)} m/s`)+detail('Closing',`${number(a.closingSpeedMetersPerSecond).toFixed(1)} m/s`)+detail('Enemy Aim',`${number(a.enemyAimErrorDegrees).toFixed(2)}°`)+detail('Player Aim',`${number(a.playerAimErrorDegrees).toFixed(2)}°`)+detail('Enemy Lance',`${(number(e.lance?.charge)*100).toFixed(0)} %`)+detail('Player Lance',`${(number(p.lance?.charge)*100).toFixed(0)} %`)+detail('Enemy Hull / Shield',`${e.hull ?? '-'} / ${number(e.shield).toFixed(0)}`)+detail('Player Hull / Shield',`${p.hull ?? '-'} / ${number(p.shield).toFixed(0)}`);
-    const rows=data.flatMap((x,n)=>eventsOf(x).map(ev=>({...ev,time:number(x.simulationSeconds),n})));ui.events.innerHTML=rows.length?rows.map(ev=>`<div class="event" data-index="${ev.n}"><time>${formatTime(ev.time)}</time><span class="event-type">${ev.type}</span><span>${eventText(ev)}</span></div>`).join(''):'<p class="empty">Bislang keine Kampfereignisse.</p>';ui.events.querySelectorAll('.event').forEach(el=>el.onclick=()=>{index=+el.dataset.index;refresh();draw();});draw(); }
-  function detail(k,v){return `<dt>${k}</dt><dd>${v}</dd>`;} function formatTime(s){s=Math.max(0,s||0);return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toFixed(1).padStart(4,'0')}`;} function eventText(e){if(e.type==='WeaponFired')return `${e.owner||'?'} → ${e.hitKind||'?'}`;if(e.type==='ShieldHit')return `${e.targetOwner||'?'} Schild ${number(e.shieldBefore).toFixed(0)} → ${number(e.shieldAfter).toFixed(0)}`;if(e.type==='HullDamaged')return `${e.targetOwner||'?'} Hull ${e.hullBefore} → ${e.hullAfter}`;return '';}
+  function refresh() {
+    if(!current)return;
+    const data=snapshots(current), s=data[index], end=finished(current), all=data.flatMap(eventsOf), shots=all.filter(e=>e.type==='WeaponFired'), hits=shots.filter(e=>e.hitKind&&e.hitKind!=='None'), names=shipNames(current);
+    ui.time.textContent=formatTime(number(s?.simulationSeconds)); ui.timeline.value=index;
+    ui.metrics.innerHTML=metric('Ergebnis',outcomeName(end?.outcome,names),end?.outcome==='player_victory'?'victory':end?.outcome==='player_destroyed'?'defeat':'')+metric('Dauer',`${formatTime(number(end?.simulationSeconds ?? data.at(-1)?.simulationSeconds))}`)+metric('Minimaldistanz',`${Math.min(...data.map(x=>number(x.aiContext?.distanceMeters,Infinity))).toFixed(1)} m`)+metric('Schuesse',`${shots.length}`)+metric('Treffer',`${hits.length}`)+metric('Snapshots',data.length);
+    const a=s?.aiContext||{}, e=s?.enemy||{}, p=s?.player||{};
+    ui.details.innerHTML=detail('Zeit',formatTime(number(s?.simulationSeconds)))+detail(`${names.enemy} AI State`,e.state||'-')+detail('Distanz',`${number(a.distanceMeters).toFixed(1)} m`)+detail('Relativ',`${number(a.relativeSpeedMetersPerSecond).toFixed(1)} m/s`)+detail('Closing',`${number(a.closingSpeedMetersPerSecond).toFixed(1)} m/s`)+detail(`${names.enemy} Aim`,`${number(a.enemyAimErrorDegrees).toFixed(2)} deg`)+detail(`${names.player} Aim`,`${number(a.playerAimErrorDegrees).toFixed(2)} deg`)+detail(`${names.enemy} Lance`,`${(number(e.lance?.charge)*100).toFixed(0)} %`)+detail(`${names.player} Lance`,`${(number(p.lance?.charge)*100).toFixed(0)} %`)+detail(`${names.enemy} Hull / Shield`,`${e.hull ?? '-'} / ${number(e.shield).toFixed(0)}`)+detail(`${names.player} Hull / Shield`,`${p.hull ?? '-'} / ${number(p.shield).toFixed(0)}`);
+    const rows=data.flatMap((x,n)=>eventsOf(x).map(ev=>({...ev,time:number(x.simulationSeconds),n})));
+    ui.events.innerHTML=rows.length?rows.map(ev=>`<div class="event" data-index="${ev.n}"><time>${formatTime(ev.time)}</time><span class="event-type">${ev.type}</span><span>${eventText(ev,names)}</span></div>`).join(''):'<p class="empty">Bislang keine Kampfereignisse.</p>';
+    ui.events.querySelectorAll('.event').forEach(element=>element.onclick=()=>{index=+element.dataset.index;refresh();draw();}); draw();
+  }  function detail(k,v){return `<dt>${k}</dt><dd>${v}</dd>`;} function formatTime(s){s=Math.max(0,s||0);return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toFixed(1).padStart(4,'0')}`;} function eventText(e,names){if(e.type==='WeaponFired')return `${sideName(e.owner,names)} -> ${e.hitKind||'?'}`;if(e.type==='ShieldHit')return `${sideName(e.targetOwner,names)} Schild ${number(e.shieldBefore).toFixed(0)} -> ${number(e.shieldAfter).toFixed(0)}`;if(e.type==='HullDamaged')return `${sideName(e.targetOwner,names)} Hull ${e.hullBefore} -> ${e.hullAfter}`;if(e.type==='EnemyDestroyed')return `${names.enemy} zerstoert`;if(e.type==='PlayerDestroyed')return `${names.player} zerstoert`;return '';}
   ui.files.onchange=e=>loadFiles([...e.target.files]);ui.select.onchange=()=>choose(+ui.select.value);ui.timeline.oninput=()=>{index=+ui.timeline.value;refresh();};ui.play.onclick=()=>{playing=!playing;ui.play.textContent=playing?'Ⅱ':'▶';clearInterval(timer);if(playing)timer=setInterval(()=>{const d=snapshots(current);index=(index+1)%d.length;refresh();},100);};ui.fit.onclick=fit;ui.canvas.onwheel=e=>{if(!current)return;e.preventDefault();const before=world({x:e.offsetX,y:e.offsetY});view.scale*=e.deltaY<0?1.15:1/1.15;view.scale=Math.max(.002,Math.min(20,view.scale));const after=world({x:e.offsetX,y:e.offsetY});view.center.x+=before.x-after.x;view.center.z+=before.z-after.z;draw();};ui.canvas.onpointerdown=e=>{drag={p:{x:e.clientX,y:e.clientY},c:{...view.center}};ui.canvas.setPointerCapture(e.pointerId);ui.canvas.classList.add('dragging');};ui.canvas.onpointermove=e=>{if(!drag)return;const r=ui.canvas.getBoundingClientRect();view.center.x=drag.c.x-(e.clientX-drag.p.x)/view.scale;view.center.z=drag.c.z-(e.clientY-drag.p.y)/view.scale;draw();};ui.canvas.onpointerup=()=>{drag=null;ui.canvas.classList.remove('dragging');};window.onresize=()=>{if(current)draw();};window.onkeydown=e=>{if(e.key.toLowerCase()==='a'&&!['INPUT','SELECT'].includes(document.activeElement.tagName))fit();};
 })();

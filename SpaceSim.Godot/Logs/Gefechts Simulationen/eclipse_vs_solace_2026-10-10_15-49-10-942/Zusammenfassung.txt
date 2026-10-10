@@ -1,0 +1,20 @@
+SpaceSim Gefechts-Simulation
+Erstellt: 2026-10-10T15:49:10.9422122+02:00
+SCHIFF 1: ECLIPSE · Frigate · Assault · 20,00 t · Hull 45 HP
+  Boardcomputer: Military MK 3; Reaktor: MONOLITH T-200; Waffe: HELLSTORM
+  Schild: BULWARK; Sensor: RAVEN S-4
+  Booster: SKYFANG M-85 / ANCHOR R-30 / TALON S-2
+SCHIFF 2: SOLACE · Corvette · Patrol · 9,00 t · Hull 24 HP
+  Boardcomputer: Tactical MK 2; Reaktor: OVERDRIVE OD-140; Waffe: VIPER
+  Schild: PHANTOM VEIL; Sensor: NIGHTFALL
+  Booster: ATLAS M-100 / GRAVEBREAK R-60 / COLOSSUS S-4
+
+Gefechtslauf 01: gegner_sieg; Seed 955982219; Dauer 49,25 s; minimaler Abstand 589,7 m; gefecht_01.txt
+Gefechtslauf 02: gegner_sieg; Seed 955990138; Dauer 74,18 s; minimaler Abstand 623,1 m; gefecht_02.txt
+Gefechtslauf 03: nomad_sieg; Seed 955998057; Dauer 46,82 s; minimaler Abstand 279,0 m; gefecht_03.txt
+Gefechtslauf 04: nomad_sieg; Seed 956005976; Dauer 59,58 s; minimaler Abstand 351,4 m; gefecht_04.txt
+Gefechtslauf 05: gegner_sieg; Seed 956013895; Dauer 81,18 s; minimaler Abstand 494,8 m; gefecht_05.txt
+
+Schiff-1-Siege: 2
+Schiff-2-Siege: 3
+Timeouts: 0

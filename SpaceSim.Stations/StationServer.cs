@@ -254,9 +254,15 @@ public sealed class StationServer : IDisposable
             await stream.WriteAsync(Encoding.ASCII.GetBytes(redirect), cancellationToken);
             return;
         }
+        if (path == "/voltarium")
+        {
+            string redirect = "HTTP/1.1 302 Found\r\nLocation: /voltarium/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(redirect), cancellationToken);
+            return;
+        }
         string asset = path == "/armarium/" ? "armarium/index.html" : path.StartsWith("/armarium/", StringComparison.Ordinal)
             ? "armarium/" + path[10..] : path == "/voltarium/" ? "voltarium/index.html" :
-            path.StartsWith("/voltarium/", StringComparison.Ordinal) ? "voltarium/" + path[12..] :
+            path.StartsWith("/voltarium/", StringComparison.Ordinal) ? "voltarium/" + path[11..] :
             path == "/sensorium/" ? "sensorium/index.html" : path.StartsWith("/sensorium/", StringComparison.Ordinal)
                 ? "sensorium/" + path[11..] :
             path == "/debug/" ? "debug/index.html" : path.StartsWith("/debug/", StringComparison.Ordinal)
@@ -448,8 +454,8 @@ public sealed class StationServer : IDisposable
         public float ClosingSpeed => State.ClosingSpeed;
         public float RelativeSpeed => State.RelativeSpeed;
         public float EnemySpeed => State.EnemySpeed;
-        public int Hull => State.Hull;
-        public int MaximumHull => State.MaximumHull;
+        public float Hull => State.Hull;
+        public float MaximumHull => State.MaximumHull;
         public float Shield => State.Shield;
         public float MaximumShield => State.MaximumShield;
         public float PropulsionCondition => State.PropulsionCondition;
@@ -469,6 +475,7 @@ public sealed class StationServer : IDisposable
         public float PropulsionDraw => State.PropulsionDraw;
         public float WeaponsDraw => State.WeaponsDraw;
         public float ShieldsDraw => State.ShieldsDraw;
+        public EnemyLoadoutDebug? Loadout => State.Loadout;
         public FireControlDebug EnemyFireControl => State.EnemyFireControl ?? FireControlDebug.Unavailable;
         public FireControlDebug PlayerFireControl => State.PlayerFireControl ?? FireControlDebug.Unavailable;
         public long SimulationTick => State.SimulationTick;

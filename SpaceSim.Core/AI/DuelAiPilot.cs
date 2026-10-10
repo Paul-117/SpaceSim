@@ -1,4 +1,5 @@
 using SpaceSim.Core.Combat;
+using SpaceSim.Core.Generation;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Simulation;
 using SpaceSim.Core.Weapons;
@@ -17,13 +18,15 @@ public sealed class DuelAiPilot
     public EnemyAiContext LastContext => _controller.LastContext;
     public ShipCommand LastCommand => _controller.LastCommand;
     public EnemyAiModel Model => _controller.Model;
+    public BoardComputerProfile BoardComputer => _controller.BoardComputer;
 
     public DuelAiPilot(EnemyAiSettings settings, EnemyDifficulty difficulty, float nominalReverseAcceleration,
-        EnemyAiModel model = EnemyAiModel.Kestrel, int seed = 0)
+        EnemyAiModel model = EnemyAiModel.Kestrel, int seed = 0, BoardComputerProfile? boardComputer = null,
+        ShipSubclass subclass = ShipSubclass.Patrol)
     {
         ArgumentNullException.ThrowIfNull(settings);
         EnemyDifficultyProfile profile = EnemyDifficultyProfiles.Create(difficulty, settings);
-        _controller = new EnemyAiController(profile.Ai, difficulty, nominalReverseAcceleration, model, seed);
+        _controller = new EnemyAiController(profile.Ai, difficulty, nominalReverseAcceleration, model, seed, boardComputer, subclass);
         _controller.Alert();
     }
 

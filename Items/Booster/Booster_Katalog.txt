@@ -1,0 +1,53 @@
+SpaceSim - Booster-Katalog
+==========================
+
+Einbau
+------
+Jedes Schiff besitzt genau drei installierte Booster-Definitionen in ShipTuning:
+MainBooster, ReverseBooster und SideBooster. Daraus stammen Schub, Ramp-up,
+aktive Geschwindigkeits- beziehungsweise Rotationsgrenzen und PU-Bedarf.
+Alle vorhandenen Schiffe benutzen zunaechst die drei Standardmodelle:
+ATLAS M-100, ANCHOR R-30 und VECTOR S-1.
+
+Energie
+-------
+Main-, Reverse- und Side-Booster sind Komponenten der Brueckenstation. Der
+Main-Booster besitzt sein eigenes PU-Limit. Reverse und beide Seitentriebwerke
+verwenden eine gemeinsame Hilfstriebwerk-Reserve: Deren stationaerer Bedarf
+entspricht dem groesseren eingebauten Reverse- oder Side-Modul. Das verhindert,
+dass zwei spiegelbildliche Seitenduese unnoetig doppelt reserviert werden.
+Unterhalb dieser Reserve werden Reverse und Yaw weiterhin proportional
+begrenzt; erst danach erhaelt der Main-Booster Energie.
+
+Main Booster
+------------
+Name                 Leistung  Ramp-up  Max. Geschwindigkeit  Bedarf
+ATLAS M-100       100 kN    10 s     100 m/s                30 PU  (Standard)
+SKYFANG M-85            85 kN     3 s     120 m/s                40 PU
+DREADNOUGHT M-180           180 kN    18 s      85 m/s                48 PU
+STARLING M-70           70 kN     5 s     145 m/s                35 PU
+FIREBRAND M-150         150 kN     7 s     130 m/s                60 PU
+
+Reverse Booster
+---------------
+Name                 Leistung  Max. Geschwindigkeit  Bedarf
+ANCHOR R-30            30 kN     50 m/s                30 PU  (Standard)
+GRAVEBREAK R-60        60 kN     40 m/s                45 PU
+BACKDRAFT R-20           20 kN     80 m/s                24 PU
+
+Side Booster
+------------
+Name                 Leistung  Max. Rotation  Bedarf
+VECTOR S-1              1 kN     10 Grad/s     30 PU  (Standard)
+TALON S-2               2 kN     18 Grad/s     50 PU
+COLOSSUS S-4            4 kN      7 Grad/s     42 PU
+
+Hinweise
+--------
+- Die Side-Booster-Kraft wird mit dem aktuellen Hebelarm des Schiffs in
+  Drehmoment umgesetzt. Die maximale Rotationsrate kommt direkt aus dem Modul.
+- Bestehende Booster-Optionen der Bruecke bleiben als Entwicklungs-Override
+  erhalten. Sie erzeugen weiterhin ein angepasstes Standard-Loadout fuer die
+  Nomad und werden sofort auf neue Encounters angewandt.
+- Die KI, der Autopilot und der Spieler benutzen weiterhin ausschliesslich
+  normale ShipCommands und damit dieselbe Booster-Physik.

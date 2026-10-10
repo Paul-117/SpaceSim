@@ -1,7 +1,7 @@
 (() => {
   const protocolVersion = 9;
   const reconnectDelayMs = 1500;
-  const fields = ["enemy-id", "difficulty", "mode", "ai-state", "distance", "closing-speed", "relative-speed", "enemy-speed", "hull", "shield", "lance", "lance-ready", "reactor-level", "reactor-power", "fuel", "propulsion-power", "weapons-power", "shields-power", "enemy-combat-active", "enemy-attack-state", "enemy-lance-ready", "enemy-target-range", "enemy-target-front", "enemy-aim", "enemy-ray-hit", "enemy-fire-ready", "player-lance-ready", "player-target-range", "player-target-front", "player-aim", "player-ray-hit", "player-fire-ready", "tick"];
+  const fields = ["enemy-id", "difficulty", "mode", "ai-state", "distance", "closing-speed", "relative-speed", "enemy-speed", "hull", "shield", "lance", "lance-ready", "reactor-level", "reactor-power", "fuel", "propulsion-power", "weapons-power", "shields-power", "loadout-class", "loadout-subclass", "loadout-seed", "loadout-power", "enemy-combat-active", "enemy-attack-state", "enemy-lance-ready", "enemy-target-range", "enemy-target-front", "enemy-aim", "enemy-ray-hit", "enemy-fire-ready", "player-lance-ready", "player-target-range", "player-target-front", "player-aim", "player-ray-hit", "player-fire-ready", "tick"];
   const elements = Object.fromEntries(fields.map(id => [id, document.getElementById(id)]));
   const connection = document.getElementById("connection"), notice = document.getElementById("no-enemy"), dashboard = document.getElementById("dashboard");
   let socket = null;
@@ -18,6 +18,19 @@
     setText(`${prefix}-aim`, `${error}° / ${tolerance}°`); elements[`${prefix}-aim`].className = info.aimWithinTolerance === true ? "pass" : "fail";
     gate(`${prefix}-ray-hit`, info.rayWouldHit === true); gate(`${prefix}-fire-ready`, info.fireCommandWouldBeIssued === true);
   }
+  function renderLoadout(loadout) {
+    const modules = document.getElementById("loadout-modules");
+    if (!loadout) { setText("loadout-class", "-"); setText("loadout-subclass", "-"); setText("loadout-seed", "-"); setText("loadout-power", "-"); modules.replaceChildren(); return; }
+    setText("loadout-class", `${loadout.shipClass || "-"} / ${loadout.source || "-"}`);
+    setText("loadout-subclass", `${loadout.subclass || "-"} / ${loadout.score ?? 0}`);
+    setText("loadout-seed", loadout.seed ?? "-");
+    setText("loadout-power", `${number(loadout.peakPowerDemand)} / ${number(loadout.requiredReactorOutput)} PU`);
+    modules.replaceChildren(...(loadout.modules || []).map(module => {
+      const row = document.createElement("div"), slot = document.createElement("strong"), name = document.createElement("b"), details = document.createElement("span");
+      row.className = "loadout-module"; slot.textContent = module.slot || "MODULE"; name.textContent = module.name || "-"; details.textContent = module.details || "-";
+      row.append(slot, name, details); return row;
+    }));
+  }
   function update(state) {
     const available = state.enemyAvailable === true; notice.hidden = available; dashboard.hidden = !available; setText("tick", `TICK ${state.simulationTick ?? "—"}`); if (!available) return;
     setText("enemy-id", `#${state.enemyId}`); setText("difficulty", state.difficulty); setText("mode", state.playerDetected ? "COMBAT / DETECTED" : "PATROL / UNAWARE"); setText("ai-state", state.aiState);
@@ -26,6 +39,7 @@
     condition("propulsion", state.propulsionCondition); condition("weapons", state.weaponsCondition); condition("shields", state.shieldsCondition);
     setText("reactor-level", `${number(state.reactorTargetOperatingLevelPercent)} / ${number(state.reactorOperatingLevelPercent)} %`); setText("reactor-power", `${number(state.reactorAvailablePower)} / ${number(state.reactorCurrentDraw)} PU`); setText("fuel", `${number(state.reactorFuel)} / ${number(state.reactorFuelCapacity)}`);
     setText("propulsion-power", `${number(state.propulsionRequested)} / ${number(state.propulsionDraw)} PU`); setText("weapons-power", `${number(state.weaponsRequested)} / ${number(state.weaponsDraw)} PU`); setText("shields-power", `${number(state.shieldsRequested)} / ${number(state.shieldsDraw)} PU`);
+    renderLoadout(state.loadout);
     fireDiagnostics("enemy", state.enemyFireControl, true); fireDiagnostics("player", state.playerFireControl, false);
   }
   function connect() { const scheme = location.protocol === "https:" ? "wss" : "ws"; socket = new WebSocket(`${scheme}://${location.host}/station`); socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "hello", station: "debug", protocolVersion }))); socket.addEventListener("message", event => { const message = JSON.parse(event.data); if (message.type === "welcome") setConnection(true); if (message.type === "enemy_debug_state") update(message); }); socket.addEventListener("close", () => { setConnection(false); window.setTimeout(connect, reconnectDelayMs); }); socket.addEventListener("error", () => socket.close()); }

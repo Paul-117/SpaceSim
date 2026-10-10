@@ -1,0 +1,83 @@
+{
+  "Id": "orion_vs_vanguard_2026-10-10_15-37-39-180",
+  "CreatedAt": "2026-10-10T15:37:39.180565+02:00",
+  "Nomad": null,
+  "Enemy": null,
+  "Battles": [
+    {
+      "Number": 1,
+      "Seed": 1107293634,
+      "Outcome": "nomad_sieg",
+      "DurationSeconds": 57.53333333333333,
+      "MinimumDistanceMeters": 581.71875,
+      "LogFile": "gefecht_01.txt"
+    },
+    {
+      "Number": 2,
+      "Seed": 1107301553,
+      "Outcome": "nomad_sieg",
+      "DurationSeconds": 50.78333333333333,
+      "MinimumDistanceMeters": 613.1505,
+      "LogFile": "gefecht_02.txt"
+    },
+    {
+      "Number": 3,
+      "Seed": 1107309472,
+      "Outcome": "nomad_sieg",
+      "DurationSeconds": 72.53333333333333,
+      "MinimumDistanceMeters": 578.729,
+      "LogFile": "gefecht_03.txt"
+    },
+    {
+      "Number": 4,
+      "Seed": 1107317391,
+      "Outcome": "nomad_sieg",
+      "DurationSeconds": 87.63333333333334,
+      "MinimumDistanceMeters": 586.4674,
+      "LogFile": "gefecht_04.txt"
+    },
+    {
+      "Number": 5,
+      "Seed": 1107325310,
+      "Outcome": "nomad_sieg",
+      "DurationSeconds": 108.13333333333334,
+      "MinimumDistanceMeters": 573.5029,
+      "LogFile": "gefecht_05.txt"
+    }
+  ],
+  "NomadWins": 5,
+  "EnemyWins": 0,
+  "Timeouts": 0,
+  "NomadShip": {
+    "Name": "ORION",
+    "ShipClass": 0,
+    "Subclass": 1,
+    "MassKg": 6500,
+    "MaximumHull": 18,
+    "Reactor": 9,
+    "BowWeapon": 9,
+    "Shield": 5,
+    "Sensor": 1,
+    "MainBooster": 0,
+    "ReverseBooster": 0,
+    "SideBooster": 0,
+    "BoardComputerClass": 1,
+    "BoardComputerMark": 2
+  },
+  "EnemyShip": {
+    "Name": "VANGUARD",
+    "ShipClass": 2,
+    "Subclass": 0,
+    "MassKg": 13000,
+    "MaximumHull": 30,
+    "Reactor": 2,
+    "BowWeapon": 3,
+    "Shield": 4,
+    "Sensor": 4,
+    "MainBooster": 1,
+    "ReverseBooster": 0,
+    "SideBooster": 1,
+    "BoardComputerClass": 3,
+    "BoardComputerMark": 5
+  }
+}

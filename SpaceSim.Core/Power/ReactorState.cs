@@ -3,6 +3,7 @@ namespace SpaceSim.Core.Power;
 /// <summary>Authoritative reactor output, ramp and fuel state.</summary>
 public sealed class ReactorState
 {
+    public ReactorDefinition Definition { get; }
     public float MaximumOutputPower { get; }
     public float FuelCapacity { get; }
     /// <summary>The requested reactor level from the Voltarium, in percent.</summary>
@@ -15,9 +16,12 @@ public sealed class ReactorState
     public float FuelUsagePerMinute { get; internal set; }
     public bool IsFuelDepleted => Fuel <= 0f;
 
-    internal ReactorState(float maximumOutputPower, float operatingLevelPercent, float fuelCapacity)
+    internal ReactorState(ReactorDefinition definition, float operatingLevelPercent, float fuelCapacity)
     {
-        MaximumOutputPower = maximumOutputPower;
+        ArgumentNullException.ThrowIfNull(definition);
+        definition.Validate();
+        Definition = definition;
+        MaximumOutputPower = definition.MaximumOutputPower;
         FuelCapacity = fuelCapacity;
         TargetOperatingLevelPercent = operatingLevelPercent;
         OperatingLevelPercent = operatingLevelPercent;

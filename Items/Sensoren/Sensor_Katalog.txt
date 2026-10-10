@@ -1,0 +1,53 @@
+SpaceSim - Gegner-Sensoren
+==========================
+
+Geltungsbereich
+---------------
+Diese passiven Sensoren gehoeren ausschliesslich zu Gegnern. Sie bestimmen,
+ab welcher Entfernung ein Gegner die Nomad entdeckt und von der Patrouille in
+die Kampf-KI wechselt. Das Spieler-Sensorium bleibt davon getrennt.
+
+Detektionsregel
+---------------
+Die Reichweite wird aus der tatsaechlich gelieferten Reaktorleistung der Nomad
+in PU berechnet, nicht aus ihrem Prozentwert:
+
+- bis einschliesslich 50 PU: Min.-Reichweite;
+- zwischen 50 und 100 PU: lineare Interpolation;
+- ab 100 PU: Max.-Reichweite.
+
+Formel im Intervall 50..100 PU:
+Min + (Max - Min) * ((PlayerReactorOutputPU - 50) / 50)
+
+Die Tabelle ist damit die exakte, einfache lineare Abbildung der beiden
+Stuetzzahlen. Ein Reaktorschaden oder eine niedrigere Reaktorstufe der Nomad
+verkleinert folglich die Entdeckungsdistanz. Aktives Sonar alarmiert einen
+Gegner weiterhin unmittelbar.
+
+Power Usage
+-----------
+Der Wert ist die Leistungsanforderung der gegnerischen Sensorsuite. Im normalen
+Encounter wird sie sowohl waehrend der Patrouille als auch im Kampf als Teil
+der gegnerischen Leistungsnachfrage beruecksichtigt. 1vs1-Duelle deaktivieren
+diesen Verbrauch bewusst, weil dort laut Spielregel alle Systeme voll versorgt
+sind und beide Seiten einander bereits kennen.
+
+Katalog
+-------
+Name                 Min. Reichweite  Max. Reichweite  Bedarf
+ARGUS S-200           1.000 m          2.500 m          20 PU  (Standard)
+GHOST EYE               500 m          1.400 m           8 PU
+RAVEN S-4               750 m          1.800 m          12 PU
+ECHOSHROUD V-7             650 m          2.300 m          18 PU
+ORACLE X-9            1.200 m          3.000 m          45 PU
+HAWKEYE M-3           1.100 m          2.700 m          32 PU
+VOIDSEEKER              900 m          3.000 m          38 PU
+WATCHTOWER            1.500 m          2.200 m          28 PU
+NIGHTFALL               500 m          2.000 m          15 PU
+OMNISCIENT            1.400 m          3.000 m          55 PU
+
+Aktueller Standard
+------------------
+Alle bestehenden Encounter-Gegner verwenden vorerst ARGUS S-200. Die weiteren
+Definitionen sind zentral im Core vorbereitet und koennen beim Erzeugen eines
+Gegners pro Schiff ausgeruestet werden.

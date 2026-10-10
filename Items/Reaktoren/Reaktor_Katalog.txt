@@ -1,0 +1,42 @@
+SpaceSim – Reaktor-Katalog
+===========================
+
+Stand: Alle bestehenden Schiffe tragen den CORE-X125.
+
+Die Reaktorwerte liegen zentral in:
+SpaceSim.Core/Power/ReactorDefinition.cs
+
+Der pro Schiff montierte Reaktor gehoert zu ShipTuning und bestimmt:
+- maximale erzeugbare Leistung in PU
+- maximalen Treibstoffverbrauch bei 100 % Leistung
+- Ramp-up von 0 auf 100 %
+
+Name             Max Output  Fuel Usage Max  Ramp Up (0–100 %)
+--------------------------------------------------------------
+CORE-X125            125 PU      7,0 U/min          60 s
+SWIFTCORE R-90            90 PU      6,5 U/min          15 s
+MONOLITH T-200           200 PU     13,0 U/min         110 s
+ECOFLUX P-110         110 PU      4,0 U/min          45 s
+INFERNO X-175         175 PU     15,0 U/min          25 s
+HORIZON A-150           150 PU      8,5 U/min          65 s
+ENDURANCE W-80            80 PU      2,5 U/min          90 s
+OVERDRIVE OD-140      140 PU     12,0 U/min          10 s
+LEVIATHAN L-250       250 PU     19,0 U/min         150 s
+HELIX N-115            115 PU      5,5 U/min          30 s
+
+Regeln
+------
+- Der Voltarium-Sollwert bleibt ein Prozentwert. Der Reaktor folgt ihm mit seiner eigenen Ramp-up-Zeit.
+- Aktuell gilt weiterhin die vorhandene Fuel-Kapazitaet des Szenarios (standardmaessig 100 U).
+- Der Fuelverbrauch folgt weiter der bestehenden Kennlinie aus Idle-Verbrauch und dem Maximalverbrauch des installierten Reaktors.
+- Reaktorschaden reduziert die tatsaechlich lieferbare Leistung weiterhin auf 2/3.
+- 0 Fuel setzt die Reaktorleistung auf 0 PU.
+
+Noch nicht Teil dieses Schritts
+-------------------------------
+- Ausruestungs- oder Shop-UI
+- Wechsel des Reaktors im laufenden Spiel
+- individuelle Fuel-Kapazitaeten oder Reaktorwaerme
+
+Alle zehn Modelle sind als validierte Definitionen vorhanden.
+Ein kuenftiger Loadout muss ShipTuning lediglich die gewuenschte ReactorDefinition geben.

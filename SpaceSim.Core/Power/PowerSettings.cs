@@ -14,13 +14,18 @@ public sealed record PowerSettings
     public float ReactorIdleFuelUsagePerMinute { get; init; } = 0.2f;
     /// <summary>Fuel use per minute at 100 percent physical reactor output.</summary>
     public float ReactorMaximumFuelUsagePerMinute { get; init; } = 7f;
-    public float MaximumPropulsionDraw { get; init; } = 50f;
-    /// <summary>Reserved draw for each of reverse, left yaw and right yaw thrusters.</summary>
-    public float AuxiliaryThrusterDraw { get; init; } = 10f;
+    /// <summary>Legacy aggregate bridge maximum. Standard boosters total 120 PU.</summary>
+    public float MaximumPropulsionDraw { get; init; } = 120f;
+    /// <summary>Legacy shared auxiliary draw; used when no individual booster loadout is supplied.</summary>
+    public float AuxiliaryThrusterDraw { get; init; } = 30f;
+    public float MaximumMainThrusterDraw => MaximumPropulsionDraw - AuxiliaryThrusterDraw * 3f;
+    public float MaximumReverseThrusterDraw => AuxiliaryThrusterDraw;
+    public float MaximumSideThrusterDrawPerAxis => AuxiliaryThrusterDraw;
     public float MaximumWeaponsDraw { get; init; } = 40f;
-    public float MaximumShieldsDraw { get; init; } = 35f;
+    /// <summary>Fallback for legacy callers; installed shield generators normally provide their own PU limit.</summary>
+    public float MaximumShieldsDraw { get; init; } = 30f;
     /// <summary>Seconds for the bridge main thruster (W) to ramp from zero to full thrust.</summary>
-    public float BridgeMainThrottleRiseSeconds { get; set; } = 5f;
+    public float BridgeMainThrottleRiseSeconds { get; set; } = 10f;
     /// <summary>Seconds for the bridge main thruster (W) to decay from full thrust after release.</summary>
     public float BridgeMainThrottleFallSeconds { get; init; } = 3f;
 

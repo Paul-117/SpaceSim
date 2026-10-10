@@ -23,7 +23,8 @@ internal static class EnemyExplosionSystem
         }
 
         if (Within(distance, thresholds.ShieldDepletionDistanceMeters))
-            ShieldSystem.Deplete(world.Ship.Shield, WeaponOwner.Player, null, world.Ship.Position, settings.Shield, events);
+            ShieldSystem.Deplete(world.Ship.Shield, WeaponOwner.Player, null, world.Ship.Position, settings.Shield, events,
+                world.Ship.Tuning.Shield);
 
         int disabledSubsystems = Within(distance, thresholds.TwoSubsystemsDisabledDistanceMeters) ? 2 :
             Within(distance, thresholds.OneSubsystemDisabledDistanceMeters) ? 1 : 0;
@@ -33,7 +34,7 @@ internal static class EnemyExplosionSystem
     private static void DisableSubsystems(SubsystemState systems, int count, int enemyId, Vector3 position,
         Random random, List<SimulationEvent> events)
     {
-        ShipSubsystem[] choices = Enum.GetValues<ShipSubsystem>().Where(system => systems.Get(system) > 0f).ToArray();
+        ShipSubsystem[] choices = SubsystemState.DamageableSubsystems.Where(system => systems.Get(system) > 0f).ToArray();
         for (int index = 0; index < count && choices.Length > 0; index++)
         {
             int choiceIndex = random.Next(choices.Length);

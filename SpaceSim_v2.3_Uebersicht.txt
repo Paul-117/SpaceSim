@@ -1,0 +1,153 @@
+SpaceSim V2.3 - Implementierungsuebersicht
+Stand: 2026-10-10
+
+Zweck
+-----
+V2.3 macht die bisher modulare Schiffsausstattung unmittelbar taktisch relevant.
+Kestrel bleibt das gemeinsame Flugmodell. Die Subklasse eines generierten Schiffs
+waehlt jetzt eine eigene Kampfdoktrin, deren Distanzen und Geschwindigkeiten aus
+den tatsaechlich eingebauten Modulen entstehen.
+
+Projektarchitektur
+------------------
+- SpaceSim.Core bleibt autoritativ fuer Physik, Treffer, Schilde, Hull, Energie,
+  Reaktoren, Module und KI-Befehle.
+- Godot stellt Spiel, Bridge-UI, 1vs1-Auswahl und Darstellung bereit.
+- Alle KI-Varianten erzeugen ausschliesslich ShipCommands. Sie setzen niemals
+  Position, Geschwindigkeit oder Rotation direkt.
+- Tools/GefechtsSimulation verwendet dieselbe Simulation und dieselben
+  Loadout- und KI-Regeln fuer KI-gegen-KI-Auswertungen.
+
+Modulare Schiffe
+----------------
+ShipTuning bindet je Schiff die folgenden installierten Module:
+- Bow Weapon: Schaden, Reichweite, Ladezeit, Schwenkfenster, Schwenkrate, PU.
+- Shield Generator: Schild-HP, Ladezeit, Rebootzeit, PU.
+- Reactor: maximale Ausgabe, Fuelverbrauch, Ramp-up.
+- Enemy Sensor: passive Entdeckungsreichweite und PU.
+- Main, Reverse und Side Booster: Schub, Geschwindigkeit bzw. Drehgeschwindigkeit,
+  Ramp-up und PU.
+- Boardcomputer: Befehlstakt, Reaktionsverzoegerung, Feuerdisziplin,
+  Schubkalibrierung und Drehautoritaet.
+
+Die Kataloge enthalten jeweils die vorbereiteten Varianten. Nomad und die bisherigen
+Standard-Schiffe behalten PEREGRINE L-1000, GUARDIAN S-20, CORE-X125, ATLAS M-100,
+ANCHOR R-30 und VECTOR S-1, sofern kein generiertes oder explizites Loadout vorliegt.
+
+Prozeduraler Loadout-Generator
+-------------------------------
+Unter SpaceSim.Core/Generation erzeugt ShipLoadoutGenerator komplette Schiffe.
+
+Klassen und erlaubte Reaktorbereiche:
+- Interceptor: 90 bis 120 PU, 5 bis 8 t, 10 bis 25 Hull-HP.
+- Corvette: 110 bis 150 PU, 7 bis 15 t, 20 bis 35 Hull-HP.
+- Frigate: 150 bis 250 PU, 13 bis 20 t, 30 bis 45 Hull-HP.
+
+Der Generator:
+1. waehlt eine Klasse, einen passenden Reaktor und eine Subklasse;
+2. sampled rollengewichtete Waffen, Schilde, Sensoren und Booster;
+3. erzwingt die harte Regel, dass der Reaktor mindestens 80 Prozent des
+   gleichzeitigen maximalen Leistungsbedarfs decken kann;
+4. bewertet weiche Kombinationen, etwa Reichweite plus Sensoren, starke Main-
+   gegen schwache Reverse-Booster, enge Waffenwinkel gegen Drehgeschwindigkeit,
+   Effizienz und Boardcomputer-Komplexitaet;
+5. erzeugt Masse und Hull innerhalb des Klassenbereichs passend zum Loadout.
+
+Kestrel mit Subklassen-Doktrinen
+--------------------------------
+Kestrel nutzt weiterhin ACQUIRE, APPROACH, ATTACK und REPOSITION. EVADE bleibt
+entfernt. Der Boardcomputer ist nur die Ausfuehrungsschicht; die Subklasse waehlt
+die taktischen Abstands- und Bewegungsziele.
+
+Ranged
+~~~~~~
+- Liest die Reichweite der installierten Waffe.
+- Plant die Ankunft bei 90 Prozent der Reichweite.
+- Beginnt ab 80 Prozent Reichweite, mit Reverse Thrust Distanz aufzubauen.
+- Berechnet zusaetzlich den notwendigen Reverse-Bremsweg aus aktueller
+  Relativgeschwindigkeit, verfuegbarer Reverse-Beschleunigung und Systemzustand.
+  Bei hoher Annnaeherung wird daher bereits vor der 80-Prozent-Grenze gebremst.
+- Haltet die Nase auf dem Gegner und versucht eine geringe Relativgeschwindigkeit
+  sowie eine lange Feuerzeit im eigenen Reichweitenkorridor zu erreichen.
+
+Assault
+~~~~~~~
+- Berechnet einen absichtlich seitlich versetzten Angriffspass.
+- Der geplante Passabstand ist mindestens 250 m und sonst 55 Prozent der
+  eigenen Waffenreichweite.
+- Die Passgeschwindigkeit richtet sich nach der kleineren von Schiffsdreh- und
+  Waffen-Schwenkgeschwindigkeit. Sie ist damit hoch genug fuer einen kurzen
+  Angriff, aber niedrig genug fuer eine stabile eigene Feuerloesung.
+- Im Pass wird nicht mit Reverse Thrust abgebremst. Die vorhandene Geschwindigkeit
+  traegt das Schiff durch den Bogen; nur die normale Kollisionsvermeidung greift
+  bei direkter Gefahr ein.
+- Nach einem Pass wird der naechste Anflug eingeleitet.
+
+Patrol
+~~~~~~
+- Bildet die ausgewogene Standarddoktrin.
+- Der Kampfbereich wird aus der installierten Reichweite abgeleitet:
+  Untergrenze 40 Prozent, mindestens 250 m; Zielabstand 70 Prozent;
+  Obergrenze 90 Prozent.
+- Ausserhalb des Korridors gleicht Patrol die Zielbewegung an und plant die
+  Annnaeherung mit begrenzter Relativgeschwindigkeit und Bremsweg.
+- Innerhalb des Korridors bleibt das Schiff auf das Ziel ausgerichtet und nutzt
+  Main- und Reverse-Thrust fuer eine stabile mittlere Feuerposition.
+- Sichere, unvermeidbare Vorbeifluege bleiben moeglich, werden aber nicht wie bei
+  Assault bewusst erzwungen.
+
+Kollisionsschutz
+----------------
+- Physische Kollision: unter 50 m werden beide Schiffe zerstoert.
+- KI-Mindestabstand bei direktem Kollisionskurs: 100 m.
+- Geplante Manoverdistanz: 250 m.
+- Direkte Kollisionskorrektur beginnt erst innerhalb von 350 m.
+- Die KI vermeidet innerhalb von 2 km weiterhin eine 180-Grad-Wende mit
+  Main-Thrust zum Bremsen.
+
+1vs1 und Gefechtslabor
+----------------------
+- Das 1vs1-Menue generiert ein steuerbares Schiff 1 und ein Kestrel-Schiff 2.
+  Beide Karten zeigen Klasse, Subklasse, Masse, Hull und vollstaendige
+  Modulkennzahlen.
+- Ein Neustart im 1vs1 bringt zurueck zur Auswahl statt unmittelbar denselben
+  Lauf zu starten.
+- Das Gefechtslabor kann pro Schiff ein Loadout generieren. Einzelne Werte koennen
+  per Dropdown gewaehlt und per Lock gehalten werden; Generate ersetzt nur
+  nicht gesperrte Elemente.
+- Logs, Statistik und der Duell-Log-Viewer verwenden die tatsaechlich generierten
+  Schiffsnamen statt fester Namen wie Nomad oder Gegner.
+- DuelAiPilot uebernimmt die Subklasse auch fuer die KI-gegen-KI-Simulation.
+
+Tests und Build
+---------------
+- 100 von 100 SpaceSim.Core-Tests bestanden.
+- dotnet build SpaceSim.Godot/SpaceSim.Godot.csproj --nologo erfolgreich.
+- Tests pruefen explizit die Ranged-Bremsweglogik, den Assault-Fly-by ohne
+  ranged-artiges Reverse-Braking und den dynamischen Patrol-Korridor.
+
+Bekannte Einschraenkungen
+-------------------------
+- Die KI kennt fuer diese erste Fassung nur das eigene Loadout. Sie leitet ihre
+  Doktrin nicht aus bekannter gegnerischer Bewaffnung ab.
+- Die Gegnerwaffe feuert derzeit nach Schiffsbugausrichtung. Die in die
+  Passplanung einbezogene Waffen-Schwenkgeschwindigkeit ist deshalb bereits
+  fuer die kuenftige vollstaendige Gegnerturmsteuerung vorbereitet.
+- Die neuen Fraktionen verwenden noch keine unterschiedlichen Energieprofile;
+  sie nutzen die vorhandene Energie- und Reaktorlogik.
+- Die taktischen Konstanten sind zentral in EnemyAiSettings abgelegt und muessen
+  mit Gefechtslabor-Laeufen weiter abgestimmt werden.
+
+Wichtige Dateien
+---------------
+- SpaceSim.Core/AI/EnemyAiController.cs
+- SpaceSim.Core/AI/EnemyAiSettings.cs
+- SpaceSim.Core/AI/DuelAiPilot.cs
+- SpaceSim.Core/Generation/ShipLoadoutGenerator.cs
+- SpaceSim.Core/Generation/BoardComputerLoadoutSelector.cs
+- SpaceSim.Core/Generation/ShipHullLoadoutSelector.cs
+- SpaceSim.Core/Ships/ShipTuning.cs
+- SpaceSim.Core/Simulation/Simulation.cs
+- SpaceSim.Godot/UI/MainMenuOverlay.cs
+- Tools/GefechtsSimulation/CombatBatchRunner.cs
+- Tools/GefechtsSimulation/CombatShipLoadouts.cs

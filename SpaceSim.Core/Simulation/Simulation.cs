@@ -6,6 +6,7 @@ using SpaceSim.Core.Navigation;
 using SpaceSim.Core.Combat;
 using SpaceSim.Core.AI;
 using SpaceSim.Core.Power;
+using SpaceSim.Core.Generation;
 
 namespace SpaceSim.Core.Simulation;
 
@@ -25,8 +26,12 @@ public sealed class Simulation
         ShipInitialState? enemyInitial = null,
         bool spawnEnemy = true,
         bool duelMode = false,
-        EnemyAiModel duelAiModel = EnemyAiModel.Basic,
-        ShipTuning? playerTuning = null, ShipTuning? enemyTuning = null)
+        EnemyAiModel duelAiModel = EnemyAiModel.Kestrel,
+        ShipTuning? playerTuning = null, ShipTuning? enemyTuning = null,
+        BoardComputerProfile? duelBoardComputer = null,
+        EnemyShipClass duelEnemyShipClass = EnemyShipClass.Corvette,
+        float? duelPlayerMassKg = null, float? duelPlayerMaximumHull = null,
+        GeneratedShipLoadout? duelEnemyLoadout = null, string? duelEnemyName = null)
     {
         Settings = settings ?? new SimulationSettings();
         Settings.Validate();
@@ -43,7 +48,8 @@ public sealed class Simulation
         };
         playerTuning?.Validate();
         enemyTuning?.Validate();
-        World = new WorldState(CreateShip(initialShip, tuning: playerTuning), encounters);
+        World = new WorldState(CreateShip(initialShip, tuning: playerTuning,
+            massKg: duelPlayerMassKg, maximumHull: duelPlayerMaximumHull), encounters);
         if (Settings.StartWarpReady)
         {
             World.WarpDrive.ChargedSeconds = Settings.WarpChargeSeconds;
@@ -63,9 +69,12 @@ public sealed class Simulation
         {
             if (!spawnEnemy) throw new ArgumentException("A duel requires an opponent.", nameof(spawnEnemy));
             AddEnemy(encounters[0], 1, enemyInitial ?? CreatePatrolInitial(randomSeed + 10_007),
-                EnemyDifficulty.Hard, randomSeed + 10_007, duelAiModel, enemyTuning);
+                EnemyDifficulty.Hard, randomSeed + 10_007, duelAiModel, enemyTuning,
+                duelBoardComputer, enableSensorPowerUsage: false,
+                generateProceduralLoadout: duelEnemyLoadout is null, shipClassOverride: duelEnemyShipClass,
+                generatedLoadout: duelEnemyLoadout, nameOverride: duelEnemyName);
             EnemyShipState opponent = encounters[0].Enemies.Single();
-            opponent.Ship.Shield.CurrentShield = opponent.Ship.Shield.MaximumShield;
+            ShieldSystem.RestoreFull(opponent.Ship.Shield);
             encounters[0].GetEnemyAi(opponent.EnemyId)!.Alert();
             World.RequireSensoriumConfirmationForBridgeContacts = false;
             return;
@@ -75,7 +84,10 @@ public sealed class Simulation
             AddEnemy(encounters[1], 1, CreatePatrolInitial(randomSeed + 10_007),
                 EnemyDifficulty.Easy, randomSeed + 10_007);
             ShipInitialState mediumStart = enemyInitial ?? CreatePatrolInitial(randomSeed + 10_008);
-            AddEnemy(encounters[2], 2, mediumStart, EnemyDifficulty.Medium, randomSeed + 10_008);
+            // A caller can explicitly supply a medium-opponent tuning for deterministic tests
+            // and scenario prototypes; ordinary encounters use the generated Corvette loadout.
+            AddEnemy(encounters[2], 2, mediumStart, EnemyDifficulty.Medium, randomSeed + 10_008,
+                tuning: enemyTuning, generateProceduralLoadout: true);
             AddEnemy(encounters[3], 3, CreatePatrolInitial(randomSeed + 10_009), EnemyDifficulty.Hard, randomSeed + 10_009);
         }
     }
@@ -111,9 +123,9 @@ public sealed class Simulation
 
         PowerDistributionSystem.StepReactor(World.Ship.Reactor, Settings.Power);
         PowerDistributionSystem.ApplyPlayerDemand(World.Ship, World.Lance, command);
-        ShieldSystem.Recharge(World.Ship.Shield, World.Ship.Power.ShieldsPowerFactor * World.Ship.Systems.ShieldsCondition, Settings.Shield, World.Ship.Tuning.ShieldRechargePerSecond);
+        ShieldSystem.Recharge(World.Ship.Shield, World.Ship.Power.ShieldsPowerFactor * World.Ship.Systems.ShieldsCondition, Settings.Shield, World.Ship.Tuning.Shield);
         LanceSystem.Charge(World.Lance, World.Ship.Tuning.LanceChargeSeconds, World.Ship.Power.WeaponsPowerFactor * World.Ship.Systems.WeaponsCondition);
-        LanceAimSystem.Step(World.LanceAim, command, Settings);
+        LanceAimSystem.Step(World.LanceAim, command, World.Ship.Tuning.BowWeapon);
         EnemyShipState[] enemies = World.CurrentEnemies.ToArray();
         var enemyCommands = new Dictionary<int, ShipCommand>(enemies.Length);
         foreach (EnemyShipState enemy in enemies)
@@ -124,9 +136,9 @@ public sealed class Simulation
             if (ai is not null)
                 PowerDistributionSystem.SetReactorOperatingLevel(enemy.Ship.Reactor, ai.DesiredReactorOperatingLevelPercent);
             PowerDistributionSystem.StepReactor(enemy.Ship.Reactor, Settings.Power);
-            if (ai?.IsPlayerDetected == true) PowerDistributionSystem.ApplyEnemyCombatDemand(enemy.Ship);
-            else if (ai is not null) PowerDistributionSystem.ApplyEnemyPatrolDemand(enemy.Ship, Settings.EnemyAi.PatrolPropulsionDraw);
-            ShieldSystem.Recharge(enemy.Ship.Shield, enemy.Ship.Power.ShieldsPowerFactor * enemy.Ship.Systems.ShieldsCondition, Settings.Shield, enemy.Ship.Tuning.ShieldRechargePerSecond);
+            if (ai?.IsPlayerDetected == true) PowerDistributionSystem.ApplyEnemyCombatDemand(enemy.Ship, enemy.SensorPowerUsage);
+            else if (ai is not null) PowerDistributionSystem.ApplyEnemyPatrolDemand(enemy.Ship, Settings.EnemyAi.PatrolPropulsionDraw, enemy.SensorPowerUsage);
+            ShieldSystem.Recharge(enemy.Ship.Shield, enemy.Ship.Power.ShieldsPowerFactor * enemy.Ship.Systems.ShieldsCondition, Settings.Shield, enemy.Ship.Tuning.Shield);
             LanceSystem.Charge(enemy.Lance, enemy.Ship.Tuning.LanceChargeSeconds, enemy.Ship.Power.WeaponsPowerFactor * enemy.Ship.Systems.WeaponsCondition);
         }
         ShipPhysics.Step(World.Ship, command, Settings);
@@ -175,36 +187,64 @@ public sealed class Simulation
             if (ai is not null)
                 PowerDistributionSystem.SetReactorOperatingLevel(enemy.Ship.Reactor, ai.DesiredReactorOperatingLevelPercent);
             PowerDistributionSystem.StepReactor(enemy.Ship.Reactor, Settings.Power);
-            if (ai?.IsPlayerDetected == true) PowerDistributionSystem.ApplyEnemyCombatDemand(enemy.Ship);
-            else if (ai is not null) PowerDistributionSystem.ApplyEnemyPatrolDemand(enemy.Ship, Settings.EnemyAi.PatrolPropulsionDraw);
-            ShieldSystem.Recharge(enemy.Ship.Shield, enemy.Ship.Power.ShieldsPowerFactor * enemy.Ship.Systems.ShieldsCondition, Settings.Shield, enemy.Ship.Tuning.ShieldRechargePerSecond);
+            if (ai?.IsPlayerDetected == true) PowerDistributionSystem.ApplyEnemyCombatDemand(enemy.Ship, enemy.SensorPowerUsage);
+            else if (ai is not null) PowerDistributionSystem.ApplyEnemyPatrolDemand(enemy.Ship, Settings.EnemyAi.PatrolPropulsionDraw, enemy.SensorPowerUsage);
+            ShieldSystem.Recharge(enemy.Ship.Shield, enemy.Ship.Power.ShieldsPowerFactor * enemy.Ship.Systems.ShieldsCondition, Settings.Shield, enemy.Ship.Tuning.Shield);
             LanceSystem.Charge(enemy.Lance, enemy.Ship.Tuning.LanceChargeSeconds, enemy.Ship.Power.WeaponsPowerFactor * enemy.Ship.Systems.WeaponsCondition);
             ShipPhysics.Step(enemy.Ship, command, Settings);
         }
         WarpDriveSystem.Step(World, navigation, Settings, _events, _navigationRandom);
     }
 
-    private ShipState CreateShip(ShipInitialState initial, float? reactorOperatingLevelPercent = null, ShipTuning? tuning = null) => new(Settings.ShipMassKg, Settings.YawMomentOfInertia,
-        PowerDistributionSystem.CreateReactor(Settings.Power, reactorOperatingLevelPercent), PowerDistributionSystem.Create(Settings.Power), ShieldSystem.Create(Settings.Shield),
-        HullSystem.Create(Settings.Hull), new SubsystemState(), tuning ?? ShipTuning.From(Settings))
+    private ShipState CreateShip(ShipInitialState initial, float? reactorOperatingLevelPercent = null, ShipTuning? tuning = null,
+        float maximumSensorsDraw = 0f, float? massKg = null, float? maximumHull = null)
     {
-        Position = initial.Position,
-        Velocity = initial.Velocity,
-        Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, initial.YawRadians),
-        AngularVelocity = Vector3.UnitY * initial.YawRateRadiansPerSecond
-    };
+        ShipTuning selectedTuning = tuning ?? ShipTuning.From(Settings);
+        return new ShipState(massKg ?? Settings.ShipMassKg, Settings.YawMomentOfInertia,
+            PowerDistributionSystem.CreateReactor(Settings.Power, selectedTuning.Reactor, reactorOperatingLevelPercent),
+            PowerDistributionSystem.Create(Settings.Power, selectedTuning.BowWeapon.PowerDraw, selectedTuning.Shield.PowerDraw,
+                maximumSensorsDraw, selectedTuning.MainBooster.PowerDraw, selectedTuning.ReverseBooster.PowerDraw,
+                selectedTuning.SideBooster.PowerDraw), ShieldSystem.Create(selectedTuning.Shield),
+            maximumHull is { } hull ? HullSystem.Create(hull) : HullSystem.Create(Settings.Hull), new SubsystemState(), selectedTuning)
+        {
+            Position = initial.Position,
+            Velocity = initial.Velocity,
+            Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, initial.YawRadians),
+            AngularVelocity = Vector3.UnitY * initial.YawRateRadiansPerSecond
+        };
+    }
 
     private void AddEnemy(EncounterState encounter, int enemyId, ShipInitialState initial, EnemyDifficulty difficulty, int seed,
-        EnemyAiModel model = EnemyAiModel.Basic, ShipTuning? tuning = null)
+        EnemyAiModel model = EnemyAiModel.Kestrel, ShipTuning? tuning = null, BoardComputerProfile? boardComputer = null,
+        bool enableSensorPowerUsage = true, bool generateProceduralLoadout = false,
+        EnemyShipClass? shipClassOverride = null, GeneratedShipLoadout? generatedLoadout = null,
+        string? nameOverride = null)
     {
         ValidateInitial(initial);
         EnemyDifficultyProfile profile = EnemyDifficultyProfiles.Create(difficulty, Settings.EnemyAi);
         profile.Ai.Validate();
-        ShipState ship = CreateShip(initial, profile.Ai.PatrolReactorOperatingLevelPercent, tuning);
-        ship.Shield.CurrentShield = 0f;
-        PowerDistributionSystem.ApplyEnemyPatrolDemand(ship, profile.Ai.PatrolPropulsionDraw);
-        encounter.AddEnemy(new EnemyShipState(enemyId, $"{profile.Name}-{enemyId:00}", profile.ShipClass, ship, difficulty),
-            new EnemyAiController(profile.Ai, difficulty, ship.Tuning.ReverseThrustNewtons / Settings.ShipMassKg, model, seed));
+        EnemyShipClass shipClass = shipClassOverride ?? profile.ShipClass;
+        GeneratedShipLoadout? generated = generatedLoadout ?? (tuning is null && generateProceduralLoadout
+            ? ShipLoadoutGenerator.Generate(shipClass, seed)
+            : null);
+        ShipTuning selectedTuning = tuning ?? generated?.Tuning ?? ShipTuning.From(Settings);
+        ShipHullLoadoutSelection hull = Settings.UseClassHullProfiles
+            ? generated?.Hull ?? ShipHullLoadoutSelector.Select(ShipClassGenerationProfiles.Get(shipClass), ShipSubclass.Patrol, selectedTuning)
+            : new ShipHullLoadoutSelection(Settings.ShipMassKg, Settings.Hull.MaximumHull, Array.Empty<LoadoutScoreRule>());
+        EnemySensorDefinition sensor = generated?.Sensor ?? EnemySensorDefinitions.ArgusS200;
+        float sensorPowerUsage = enableSensorPowerUsage ? sensor.PowerUsage : 0f;
+        ShipState ship = CreateShip(initial, profile.Ai.PatrolReactorOperatingLevelPercent, selectedTuning, sensorPowerUsage,
+            hull.MassKg, hull.MaximumHull);
+        ShieldSystem.BeginReboot(ship.Shield, ship.Tuning.Shield);
+        PowerDistributionSystem.ApplyEnemyPatrolDemand(ship, profile.Ai.PatrolPropulsionDraw, sensorPowerUsage);
+        BoardComputerProfile computer = boardComputer ??
+            (Settings.UseGeneratedBoardComputers && generated is not null
+                ? generated.BoardComputer
+                : Settings.BoardComputers.For(difficulty));
+        string enemyName = nameOverride ?? (shipClassOverride is null ? profile.Name : shipClass.ToString());
+        encounter.AddEnemy(new EnemyShipState(enemyId, enemyName, shipClass, ship, difficulty, computer, sensor, sensorPowerUsage, generated),
+            new EnemyAiController(profile.Ai, difficulty, ship.Tuning.ReverseThrustNewtons / ship.MassKg, model, seed, computer,
+                generated?.Subclass ?? ShipSubclass.Patrol));
     }
 
     private ShipInitialState CreatePatrolInitial(int seed)

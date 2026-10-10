@@ -1,0 +1,258 @@
+SpaceSim - Aktuelle Implementierungsübersicht
+Stand: nach V2.1 - Kestrel-KI und Gefechtslabor
+Erstellt: 2026-10-09
+
+Zweck dieses Dokuments
+----------------------
+Diese Übersicht beschreibt den aktuellen technischen Stand nach der Erweiterung um mehrere Gegner-KI-Modelle, das 1vs1-Duell und das browserbasierte Gefechtslabor. Sie dient als Übergabe- und Kontextdokument für die nächste SpaceSim-Version.
+
+Projektarchitektur
+------------------
+- SpaceSim.Core bleibt die autoritative Simulation für Physik, Treffer, Schilde, Hülle und Waffen.
+- SpaceSim.Godot setzt Darstellung, lokale Eingabe, HUD und die spielbaren Duelle um.
+- Die KI erzeugt ausschließlich normale ShipCommands. Sie setzt weder Position noch Geschwindigkeit oder Rotation direkt.
+- Die Werkzeuge unter Tools sind eigenständige Entwicklungsanwendungen. Sie greifen auf dieselbe Core-Simulation zu und ändern die Regeln des Basisspiels nicht.
+
+Gegner-KI
+---------
+Die vorhandenen Modelle bleiben erhalten und können weiterhin ausgewählt werden:
+
+- Basic AI: ursprüngliche FSM.
+- Aegis: erste überarbeitete Kampflogik.
+- Vanguard: stärkerer Ansatz für Annäherung und Feuerfenster.
+- Kestrel: aktuelles Standardmodell für neue 1vs1-Duelle und KI-gegen-KI-Gefechte.
+
+Kestrel verwendet weiterhin die FSM ACQUIRE, APPROACH, ATTACK, REPOSITION und DESTROYED. Ein EVADE-Zustand ist nicht mehr Teil des aktiven Kampfmodells.
+
+Kestrel-Verhalten
+-----------------
+1. ACQUIRE
+   Der Gegner übernimmt das bekannte Ziel und wechselt unmittelbar in APPROACH.
+
+2. APPROACH
+   Der Gegner plant die Annäherung mit relativer Geschwindigkeit. Außerhalb des Kampfraums wird seitliche Relativbewegung aktiv reduziert und eine begrenzte radiale Annäherung aufgebaut. Dadurch sollen beide Schiffe nicht dauerhaft in einem symmetrischen Orbit umeinander kreisen.
+
+   Zielwerte:
+   - bevorzugte Kampfdistanz: 600 m
+   - Angriffsentfernung: 250 bis 900 m
+   - gewünschter Manöverabstand: 250 m
+   - harte Kollisionsgrenze im Spiel: 50 m
+   - Kollisionskorrektur der KI: bei direktem Kollisionskurs unter 350 m
+   - die KI versucht, nie näher als 100 m auf direktem Kollisionskurs zu gelangen.
+
+   Die KI vermeidet eine 180-Grad-Wende mit Vorwärtsschub zum Abbremsen innerhalb von 2 km. Stattdessen begrenzt sie die Annäherung frühzeitig, nutzt Rückwärtsschub zum Bremsen und akzeptiert bei Bedarf einen Fly-by mit passender Feuerausrichtung.
+
+3. ATTACK
+   Im Kampfbereich richtet Kestrel Nase und Turm auf das Ziel aus, hält seine Bewegung kontrollierbar und feuert nur nach den normalen Lanzenregeln: Lanze bereit, Ziel in Reichweite, Ziel vor der Waffe und Aim-Fehler innerhalb der Modell-Toleranz. Es gelten dieselben Waffen- und Physikregeln wie für den Spieler.
+
+4. REPOSITION
+   REPOSITION wird nur verwendet, wenn die aktuelle Bewegungsgeometrie wirklich ungünstig ist, etwa bei sehr hoher relativer Geschwindigkeit, drohender Kollision, zu geringem Abstand oder einem deutlichen Vorbeiflug. Der Zustand soll wieder in ATTACK oder APPROACH zurückführen, nicht in eine Flucht.
+
+Der Spielerautopilot verwendet im Duell denselben Kestrel-Controller über DuelAiPilot. Damit entstehen die Steuerbefehle für Nomad und Gegner aus derselben Physik und derselben Kampflogik.
+
+Direktes 1vs1-Duell
+-------------------
+Das Hauptmenü enthält den Modus 1vs1. Beide Schiffe starten 2 km voneinander entfernt, jeweils mit zufälligem Kurs und 0 bis 100 m/s Startgeschwindigkeit.
+
+Für dieses isolierte Duell gelten vereinfachte Regeln:
+- beide Seiten kennen die Position des jeweils anderen;
+- alle Systeme erhalten volle Leistung;
+- Sensorium und Voltarium spielen keine Rolle;
+- Systemschäden und Reaktor-Hochfahren sind deaktiviert;
+- jedes Schiff besitzt 30 Hull-Punkte und 20 Schild-HP; ein Lanzenschuss verursacht 20 Schaden;
+- ein normaler Treffer beschädigt direkt die Hülle;
+- bei Sieg oder Niederlage erscheinen Main Menu, Restart und Quit.
+
+Jeder 1vs1-Lauf schreibt detaillierte KI-Logs. Die Ausgabeverzeichnisse unterscheiden die Modelle, damit alte Referenzläufe erhalten bleiben.
+
+Logging und Auswertung
+----------------------
+DuelAiLogger schreibt zeitaufgelöste Snapshots von beiden Schiffen, deren KI-Zuständen, Bewegungsdaten, Zielwinkel, Feuerereignissen und Treffern. Die Simulation läuft gegenwärtig mit dem zentralen Simulationstakt von 60 Hz; dadurch können Trajektorien und Lanzenereignisse detailliert ausgewertet werden.
+
+Der vorhandene Duell-Log-Viewer zeigt die aufgezeichneten Trajektorien, Lanzenstrahlen und Treffer. Er bleibt die passende Anwendung für die visuelle Auswertung eines einzelnen Laufs.
+
+Neue Gefechtssimulation
+------------------------
+Unter Tools/GefechtsSimulation liegt ein browserbasiertes Gefechtslabor. Es startet eine schnelle KI-gegen-KI-Simulation ohne Godot-Fenster.
+
+Start unter Windows:
+  Tools/Gefechts-Simulation_Windows.cmd
+
+Danach steht die Oberfläche unter:
+  http://127.0.0.1:41871
+
+Die Oberfläche besitzt:
+- links eine Liste vergangener Simulationssitzungen;
+- einen Button Neues Gefecht;
+- rechts oben die Parameter der gewählten Sitzung;
+- darunter die Statistik und Einzelergebnisse.
+
+Für jede Seite können getrennt eingestellt werden:
+- Haupttriebwerksleistung in kN;
+- Rückwärtstriebwerksleistung in kN;
+- Seitenboosterleistung in kN;
+- Schildaufladezeit;
+- Lanzenreichweite;
+- Lanzenladezeit.
+
+Die Konfiguration erzeugt pro Sitzung eine Metadatei sowie Detail-Logs pro Gefecht. Standardmäßig werden fünf Gefechte ausgeführt. Die Zahl kann in der Oberfläche auf 1 bis 50 geändert werden. Jede Partie verwendet eine eigene Zufalls-Startlage mit 2 km Abstand, zufälligem Kurs und 0 bis 100 m/s Startgeschwindigkeit. Ein Lauf endet spätestens nach 180 Simulationssekunden.
+
+Alle Gefechtslabor-Logs liegen getrennt unter:
+  SpaceSim.Godot/Logs/Gefechts Simulationen/
+
+Eine Sitzung enthält mindestens:
+- session.json mit Konfiguration und Statistik;
+- summary.txt;
+- einen Detail-Log pro Gefecht.
+
+Das Werkzeug akzeptiert außerdem einen Batch-Modus für einen Standardlauf ohne Browseroberfläche.
+
+Individuelles Schiffstuning
+---------------------------
+ShipTuning wurde ergänzt, damit Nomad und Gegner im Gefechtslabor unterschiedliche Werte besitzen können. Die Werte gehören zum jeweiligen ShipState und wirken auf:
+
+- Haupt-, Rückwärts- und Seiten-/Yaw-Schub;
+- maximale Vorwärts-, Rückwärts- und Drehgeschwindigkeit;
+- Lanzenladezeit und Lanzenreichweite;
+- Schildregeneration.
+
+Das Basisspiel erhält weiterhin ShipTuning.From(SimulationSettings) und behält mit den Standardwerten sein bisheriges Verhalten.
+
+Im Gefechtslabor bleibt die Hebelarm-Annahme für Seitenbooster derzeit auf die Nomad-Geometrie (11,53 m) festgelegt. Masse, Hull-Werte, Lanzen-Schaden und die maximalen Geschwindigkeitsgrenzen sind noch nicht separat pro Schiff konfigurierbar.
+
+Fairness und aktuelle Erkenntnisse
+----------------------------------
+Kestrel hat die zuvor häufigen Timeouts in den standardisierten Testläufen deutlich reduziert. Ein deterministischer Fünferlauf nach der Überarbeitung endete 3:2 ohne Timeout. Zufällige Starts können weiterhin andere Verteilungen liefern; das Gefechtslabor ist genau für diese Auswertung vorgesehen.
+
+Beim simultanen, perfekten Feuerfenster wird der Spieler-/Nomad-Feuerbefehl im aktuellen Tick zuerst verarbeitet. Das kann bei exakt gleichzeitigen Schüssen eine kleine systematische Seite begünstigen. Für eine strengere 50/50-Auswertung wären gespiegelt wiederholte Seeds oder eine abwechselnde Feuerauflösungsreihenfolge sinnvoll.
+
+Wichtige Dateien
+---------------
+Core:
+- SpaceSim.Core/AI/EnemyAiController.cs
+- SpaceSim.Core/AI/EnemyAiSettings.cs
+- SpaceSim.Core/AI/EnemyAiContext.cs
+- SpaceSim.Core/AI/DuelAiPilot.cs
+- SpaceSim.Core/AI/EnemyAiModel.cs
+- SpaceSim.Core/Ships/ShipTuning.cs
+- SpaceSim.Core/Ships/ShipState.cs
+- SpaceSim.Core/Ships/ShipPhysics.cs
+- SpaceSim.Core/Weapons/LanceSystem.cs
+- SpaceSim.Core/Shields/ShieldSystem.cs
+
+Godot:
+- SpaceSim.Godot/Flight.cs
+- SpaceSim.Godot/Logging/DuelAiLogger.cs
+- SpaceSim.Godot/Logs/Basic AI/
+- SpaceSim.Godot/Logs/Aegis/
+- SpaceSim.Godot/Logs/Vanguard/
+- SpaceSim.Godot/Logs/Kestrel/
+- SpaceSim.Godot/Logs/Gefechts Simulationen/
+
+Werkzeuge:
+- Tools/Duell-Log-Viewer_Windows.cmd
+- Tools/Gefechts-Simulation_Windows.cmd
+- Tools/GefechtsSimulation/GefechtsSimulation.csproj
+- Tools/GefechtsSimulation/Program.cs
+- Tools/GefechtsSimulation/CombatBatchRunner.cs
+- Tools/GefechtsSimulation/Ui/index.html
+- Tools/GefechtsSimulation/Ui/combat-lab.css
+- Tools/GefechtsSimulation/Ui/combat-lab.js
+
+Validierung dieses Standes
+--------------------------
+Vor dem Commit des aktuellen Gefechtslabor-Stands wurden folgende Prüfungen erfolgreich ausgeführt:
+
+- alle 85 SpaceSim.Core-Tests bestanden;
+- dotnet build SpaceSim.Godot/SpaceSim.Godot.csproj --nologo erfolgreich;
+- dotnet build Tools/GefechtsSimulation/GefechtsSimulation.csproj --nologo erfolgreich;
+- Gefechtslabor-HTTP-Endpunkte und ein konfigurierter Einzelkampf wurden lokal geprüft;
+- JavaScript-Syntaxprüfung des Webclients erfolgreich.
+
+Bekannte Einschränkungen
+------------------------
+- Der Simulations- und Logtakt beträgt derzeit 60 Hz, nicht 100 Hz.
+- Das Gefechtslabor erstellt Statistiken und Detail-Logs, aber noch keine Diagramme oder Konfidenzintervalle.
+- Der Duellmodus prüft keine Sensor-, Reaktor- oder Energieverteilungstaktik.
+- Der lokale Server verwendet den festen Port 41871; parallel kann nur eine Instanz laufen.
+- Die gespeicherten Detail-Logs sind umfangreich und vergrößern das Git-Repository deutlich.
+
+Sinnvolle nächste Schritte
+--------------------------
+1. Seed in der Oberfläche sichtbar und wiederholbar machen.
+2. Gespiegelte Seed-Läufe und abwechselnde Feuerauflösung für robuste Fairness-Tests ergänzen.
+3. Statistik um Trefferquote, mittlere Kampfdauer, Mindestabstand und Diagramme erweitern.
+4. Weitere pro-Schiff-Parameter ergänzen, etwa Masse, Höchstgeschwindigkeiten, Yaw-Grenze, Hull und Lanzen-Schaden.
+5. Kestrel-Konstanten im Gefechtslabor optional pro Versuch konfigurierbar machen.
+6. Große, erzeugte Logs mittelfristig aus Git auslagern oder gezielt nur Referenzläufe versionieren.
+Aktuelles Schadensmodell (nach V2.2)
+-------------------------------------
+- Nomad und Standardgegner besitzen 30 Hull-HP und 20 Schild-HP; ein Lanzentreffer verursacht 20 Schaden.
+- Nach einem Hull-Treffer besteht eine 50%-Chance auf einen zufaelligen Debuff eines noch intakten Subsystems.
+- Schaden moeglich an Main Booster, Reverse Booster, Side Left, Side Right, Lance, Shields und Reactor.
+- Booster und Lance arbeiten danach mit 50 Prozent. Schilde laden mit 50 Prozent und absorbieren hoechstens die Haelfte eines Lanzentreffers. Der Reaktor liefert 2/3 seiner Leistung.
+- Sensorium bleibt aktuell von diesen Debuffs ausgenommen. Warp repariert alle Subsystem-Debuffs; Hull bleibt beschaedigt.
+
+Kestrel-KI und Boardcomputer (nach V2.2)
+-----------------------------------------
+- Kestrel ist nun das produktive taktische Modell fuer alle normalen Encounter, 1vs1-Duelle und Gefechtssimulationen. Basic, Aegis und Vanguard bleiben nur als Vergleichsmodelle erhalten.
+- Der Boardcomputer ist von Kestrel getrennt. Kestrel entscheidet ueber APPROACH, ATTACK und REPOSITION; der Boardcomputer setzt diese Entscheidung ausschliesslich durch normale ShipCommands um.
+- Boardcomputer beeinflussen Befehlsfrequenz, Reaktionsverzoegerung, Feuerdisziplin, Schubkalibrierung und Drehautoritaet. Sie setzen nie direkt Position, Geschwindigkeit oder Rotation.
+- Vier Klassen mit Mk I bis Mk V sind zentral konfigurierbar: Civilian, Standard, Tactical und Military.
+- Civilian bevorzugt mit steigender Mk-Stufe gute Geschwindigkeitskontrolle, bleibt aber beim Feuern ungenau. Standard ist ausgewogen. Tactical feuert praeziser, manoevriert aber etwas schwaecher als Standard. Military Mk V setzt die Kestrel-Befehle unverfaelscht um.
+- Standardzuordnung im Basisspiel: Interceptor = Civilian Mk IV, Corvette = Standard Mk III, Frigatte = Tactical Mk IV. 1vs1 und Gefechtssimulation verwenden Military Mk V auf beiden Seiten fuer eine reine Kestrel-Referenz.
+
+Bugwaffen (modularer Ausruestungsschritt)
+------------------------------------------
+- SpaceSim.Core/Weapons/BowWeaponDefinition.cs definiert einen zentralen Katalog mit zehn Bugwaffen: PEREGRINE L-1000, Raptor, Doomhammer, Longspear, Hellstorm, Ravager, Spectre, Oblivion, Viper und Wraith.
+- Eine BowWeaponDefinition enthaelt Schaden, Gameplay-Reichweite, Ladezeit, Schwenkfenster, Schwenkrate und Leistungsbedarf. DPS und die dreifache visuelle Strahllaenge werden daraus abgeleitet.
+- ShipTuning besitzt jetzt die montierte BowWeapon. Ladezeit, Trefferreichweite, Strahlvisualisierung, Turretbewegung, Treffer-Schaden und das Waffen-PU-Limit stammen ausschliesslich aus dieser Ausruestung.
+- Alle bestehenden Schiffe – Nomad, Encounter-Gegner, 1vs1 und Gefechtssimulation – erhalten vorerst die PEREGRINE L-1000 (20 Schaden, 1.000 m, 5 s, +/-5 Grad, 3,33 Grad/s, 40 PU).
+- Die Gefechtssimulation kann Reichweite und Ladezeit weiterhin pro Seite variieren; sie erzeugt dafuer eine Vanguard-Variante und veraendert keine globale Waffendefinition.
+- Der Debug-Station-Feuerindikator verwendet die reale, pro Schiff montierte Waffenreichweite.
+- 88 Core-Tests bestanden nach der Umstellung, einschliesslich eines Katalogtests fuer alle zehn Waffen und des PEREGRINE-L-1000-Standards.
+
+Schildgeneratoren (modularer Ausruestungsschritt)
+--------------------------------------------------
+- SpaceSim.Core/Combat/ShieldDefinition.cs definiert zehn zentrale Schildgeneratoren mit HP, Aufladezeit, Rebootzeit und PU-Bedarf.
+- ShipTuning besitzt jetzt den montierten Schildgenerator. ShieldState, Schild-PU-Limit und Aufladerate werden aus dieser Definition erzeugt.
+- Alle bisherigen Schiffe verwenden den GUARDIAN S-20: 20 HP, 5 s Aufladezeit, 10 s Reboot, 30 PU.
+- Bei 0 Schild-HP muss der Generator rebooten. Der Reboot braucht gelieferte Schildenergie und skaliert mit Leistung und Schildgeneratorzustand. Erst danach beginnt die normale Aufladung.
+- Ein nicht entleerter Schild behaelt die bisherige Trefferpause von 3 s. Warp fuellt Schilde und beendet aktive Reboots.
+- Bridge-UI zeigt waehrend des Reboots `REBOOT <Restzeit>s` am Schildsystem. Der Sound `shield_charge` wird nicht mehr verwendet; Treffer- und Depletion-Sounds bleiben bestehen.
+- 90 Core-Tests bestanden nach der Umstellung, inklusive Katalog- und Aegis-Reboot-Test.
+
+Reaktoren (modularer Ausruestungsschritt)
+------------------------------------------
+- SpaceSim.Core/Power/ReactorDefinition.cs definiert zehn zentrale Reaktoren mit maximaler PU-Leistung, maximalem Fuelverbrauch und Ramp-up-Zeit.
+- ShipTuning besitzt jetzt den montierten Reaktor. ReactorState, Voltarium-Ausgabe, Fuelverbrauch und Ramp-up verwenden dessen Definition.
+- Alle bisherigen Schiffe verwenden den CORE-X125: 125 PU, 7,0 U/min bei 100 %, 60 s von 0 auf 100 %.
+- Die neun weiteren Reaktoren sind vorbereitet, aber noch nicht ueber eine Ausruestungsoberflaeche waehlbar.
+- Reaktorschaden bleibt ein separater Debuff und reduziert die effektiv lieferbare Leistung auf 2/3.
+- 91 Core-Tests bestanden nach der Umstellung, inklusive Katalog- und RAPTOR-R-90-Ramp-up-Test.
+
+Gegner-Sensoren (modularer Ausruestungsschritt)
+------------------------------------------------
+- SpaceSim.Core/AI/EnemySensorDefinition.cs definiert zehn gegnerische passive Sensorsuiten mit Min.-/Max.-Entdeckungsreichweite und Leistungsbedarf.
+- Nur Gegner verwenden diese Komponenten. Der normale Encounter-Standard ist ARGUS S-200 (1.000 m bei <= 50 PU Nomad-Reaktorleistung, 2.500 m bei >= 100 PU, 20 PU Eigenbedarf).
+- Zwischen 50 und 100 PU wird die Reichweite linear aus der tatsaechlich gelieferten Nomad-Reaktorleistung interpoliert. Niedrige Leistung oder Reaktorschaden an der Nomad verringert somit ihre passive Sichtbarkeit; ab 100 PU steigt die Reichweite nicht weiter.
+- Der Sensorbedarf wird in normalen Encountern in die gegnerische Leistungsnachfrage eingerechnet. Aktives Sonar alarmiert Gegner weiterhin sofort. 1vs1-Duelle bleiben absichtlich ohne Sensorbedarf und mit gegenseitiger Kenntnis der Position.
+- Alle zehn Varianten sowie die genaue Regel sind in Items/Sensoren/Sensor_Katalog.txt dokumentiert.
+- 92 Core-Tests bestanden nach der Umstellung, inklusive Katalog-, Stützpunkt- und Standardausruestungstest.
+
+Booster (modularer Ausruestungsschritt)
+----------------------------------------
+- SpaceSim.Core/Ships/BoosterDefinition.cs definiert fuenf Main-, drei Reverse- und drei Side-Booster mit Schub, Ramp-up beziehungsweise Rotationsgrenze, Geschwindigkeitsgrenze und PU-Bedarf.
+- ShipTuning besitzt jetzt MainBooster, ReverseBooster und SideBooster. Die zentrale Schiffphysik und der Leistungsbedarf leiten ihre Werte aus diesen drei Komponenten ab.
+- Alle bestehenden Schiffe verwenden ATLAS M-100 (100 kN, 10 s, 100 m/s, 30 PU), ANCHOR R-30 (30 kN, 50 m/s, 30 PU) und VECTOR S-1 (1 kN, 10 Grad/s, 30 PU).
+- Die Hilfstriebwerke nutzen eine gemeinsame Reserve fuer Reverse- und Seitenschub. Reicht deren Energie nicht, werden diese Befehle linear begrenzt; der Main-Booster erhaelt erst die verbleibende Leistung.
+- Kestrel nutzt beim kritischen Kollisionsausweichen nun zusaetzlich den Reverse-Booster, waehrend sich die langsameren Standard-Seitenduesen in die seitliche Ausweichbahn drehen. Das bewahrt die Vorgabe, nicht fuer eine Main-Engine-Bremsung zu wenden.
+- 93 Core-Tests pruefen den Stand, darunter ein Katalog- und Standardausruestungstest fuer Booster.
+
+Prozeduraler Schiffsgenerator
+------------------------------
+- SpaceSim.Core/Generation/ShipLoadoutGenerator.cs erstellt deterministische, vollstaendige ShipLoadouts aus Reaktor, Bugwaffe, Schildgenerator, Sensorarray und drei Booster-Modulen.
+- Klassenprofile: Interceptor 90-120 PU, Corvette 110-150 PU, Frigate 150-250 PU. Die bisherige leichte Kontaktklasse heisst nun Interceptor; die vorhandene Transporter-Grafik bleibt ihre Darstellung.
+- Der Generator waehlt Ranged, Patrol oder Assault, prueft die harte 80-Prozent-Regel und vergleicht 48 gueltige, gewichtete Kandidaten mit einem transparenten Soft-Score.
+- PeakDemand = MainPU + max(ReversePU, SidePU) + WeaponPU + ShieldPU + SensorPU. Der Reaktor muss mindestens 80 Prozent dieses Werts liefern koennen.
+- Score, Einzelbegruendungen und Regelkatalog sind unter Items/Schiffsgenerator/Loadout_Generator_Design.txt dokumentiert.

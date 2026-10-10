@@ -247,8 +247,16 @@ public partial class BridgeUi : Control
     {
         SetSystemStatus(_amariumState, World.Ship.Power.WeaponsAvailable, World.Ship.Power.MaximumWeaponsDraw,
             World.Ship.Systems.WeaponsCondition);
-        SetSystemStatus(_shieldsState, World.Ship.Power.ShieldsAvailable, World.Ship.Power.MaximumShieldsDraw,
-            World.Ship.Systems.ShieldsCondition);
+        if (World.Ship.Shield.IsRebooting)
+        {
+            _shieldsState.Text = $"REBOOT {World.Ship.Shield.RebootRemaining:0.0}s";
+            SetLabelColor(_shieldsState, Yellow);
+        }
+        else
+        {
+            SetSystemStatus(_shieldsState, World.Ship.Power.ShieldsAvailable, World.Ship.Power.MaximumShieldsDraw,
+                World.Ship.Systems.ShieldsCondition);
+        }
         SetSystemStatus(_voltariumState, World.Ship.Power.EffectiveReactorOutput,
             World.Ship.Reactor.MaximumOutputPower, World.Ship.Systems.ReactorCondition);
         // The Sensorium currently has no additional gameplay penalty, but it uses
@@ -266,22 +274,22 @@ public partial class BridgeUi : Control
         float energyRatio = Ratio(energy, World.Ship.Power.MaximumPropulsionDraw);
         _energyValue.Text = $"{energy:0.0} PU";
         SetSegments(_energySegments, energyRatio);
-        SetThrusterStatus(_starboardState, energyRatio, World.Ship.Systems.PropulsionCondition);
-        SetThrusterStatus(_portState, energyRatio, World.Ship.Systems.PropulsionCondition);
-        SetThrusterStatus(_reverseState, energyRatio, World.Ship.Systems.PropulsionCondition);
-        SetThrusterStatus(_mainState, energyRatio, World.Ship.Systems.PropulsionCondition);
+        SetThrusterStatus(_starboardState, energyRatio, World.Ship.Systems.SideRightCondition);
+        SetThrusterStatus(_portState, energyRatio, World.Ship.Systems.SideLeftCondition);
+        SetThrusterStatus(_reverseState, energyRatio, World.Ship.Systems.ReverseBoosterCondition);
+        SetThrusterStatus(_mainState, energyRatio, World.Ship.Systems.MainBoosterCondition);
     }
 
     private void UpdateFlight()
     {
         float mainInput = Command.MainThrust ? Math.Clamp(Command.MainThrustIntensity, 0f, 1f) : 0f;
-        float thrust = mainInput * World.Ship.Power.MainThrusterPowerFactor * World.Ship.Systems.PropulsionCondition;
+        float thrust = mainInput * World.Ship.Power.MainThrusterPowerFactor * World.Ship.Systems.MainBoosterCondition;
         _velocity.Text = $"{World.Ship.Velocity.Length():0.0} m/s";
         _angularVelocity.Text = $"{World.Ship.AngularVelocity.Y:+0.000;-0.000;0.000} rad/s";
         _thrust.Text = $"{thrust * 100:0}%";
         SetSegments(_thrustSegments, thrust);
         _encounter.Text = $"/ {World.CurrentEncounter.Name}";
-        _version.Text = $"FlightLab / Version {ProjectSettings.GetSetting("application/config/version", "2.1.2").AsString()}";
+        _version.Text = $"FlightLab / Version {ProjectSettings.GetSetting("application/config/version", "2.3.0").AsString()}";
     }
 
     private void UpdateBoardComputer()

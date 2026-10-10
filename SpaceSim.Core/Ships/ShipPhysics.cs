@@ -8,16 +8,18 @@ internal static class ShipPhysics
     public static void Step(ShipState ship, ShipCommand command, SimulationSettings settings)
     {
         const float dt = SimulationSettings.FixedDeltaSeconds;
-        float mainPowerFactor = ship.Power.MainThrusterPowerFactor * ship.Systems.PropulsionCondition;
-        float auxiliaryPowerFactor = ship.Power.AuxiliaryThrusterPowerFactor * ship.Systems.PropulsionCondition;
+        float mainPowerFactor = ship.Power.MainThrusterPowerFactor * ship.Systems.MainBoosterCondition;
+        float reversePowerFactor = ship.Power.AuxiliaryThrusterPowerFactor * ship.Systems.ReverseBoosterCondition;
+        float leftPowerFactor = ship.Power.AuxiliaryThrusterPowerFactor * ship.Systems.SideLeftCondition;
+        float rightPowerFactor = ship.Power.AuxiliaryThrusterPowerFactor * ship.Systems.SideRightCondition;
         float mainInput = command.MainThrust ? Intensity(command.MainThrustIntensity) : 0f;
         float reverseInput = command.ReverseThrust ? Intensity(command.ReverseThrustIntensity) : 0f;
         float leftInput = command.YawLeft ? Intensity(command.YawIntensity) : 0f;
         float rightInput = command.YawRight ? Intensity(command.YawIntensity) : 0f;
         float force = (ship.Tuning.MainThrustNewtons * mainPowerFactor * mainInput)
-                    - (ship.Tuning.ReverseThrustNewtons * auxiliaryPowerFactor * reverseInput);
+                    - (ship.Tuning.ReverseThrustNewtons * reversePowerFactor * reverseInput);
         // Positive rotation about +Y turns the nose (-Z) left in the X/Z view.
-        float angularAcceleration = (leftInput - rightInput) * ship.Tuning.YawTorqueNewtonMeters * auxiliaryPowerFactor /
+        float angularAcceleration = (leftInput * leftPowerFactor - rightInput * rightPowerFactor) * ship.Tuning.YawTorqueNewtonMeters /
             ship.YawMomentOfInertia;
         angularAcceleration = LimitAngularAcceleration(ship.AngularVelocity.Y, angularAcceleration,
             ship.Tuning.MaximumYawAngularVelocityRadiansPerSecond, dt);
@@ -25,7 +27,7 @@ internal static class ShipPhysics
         float speedLimit = ship.Tuning.MaximumForwardSpeedMetersPerSecond * mainPowerFactor;
         if (mainInput > 0f && Vector3.Dot(ship.Velocity, acceleration) > 0f)
             acceleration = LimitAcceleration(ship.Velocity, acceleration, speedLimit, dt);
-        float reverseSpeedLimit = ship.Tuning.MaximumReverseSpeedMetersPerSecond * auxiliaryPowerFactor;
+        float reverseSpeedLimit = ship.Tuning.MaximumReverseSpeedMetersPerSecond * reversePowerFactor;
         if (reverseInput > 0f && Vector3.Dot(ship.Velocity, acceleration) > 0f)
             acceleration = LimitAcceleration(ship.Velocity, acceleration, reverseSpeedLimit, dt);
         ship.Velocity += acceleration * dt;

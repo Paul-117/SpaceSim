@@ -20,7 +20,7 @@ public sealed record EnemyExplosion(int EnemyId, Vector3 Position, float Distanc
 public sealed record ShieldHit(WeaponOwner TargetOwner, int? TargetEnemyId, float Damage,
     float ShieldBefore, float ShieldAfter, Vector3 Position) : SimulationEvent;
 public sealed record ShieldDepleted(WeaponOwner TargetOwner, int? TargetEnemyId, Vector3 Position) : SimulationEvent;
-public sealed record HullDamaged(WeaponOwner TargetOwner, int? TargetEnemyId, int HullBefore, int HullAfter, Vector3 Position) : SimulationEvent;
+public sealed record HullDamaged(WeaponOwner TargetOwner, int? TargetEnemyId, float HullBefore, float HullAfter, Vector3 Position) : SimulationEvent;
 public sealed record SubsystemDamaged(WeaponOwner TargetOwner, int? TargetEnemyId, ShipSubsystem Subsystem,
     float ConditionBefore, float ConditionAfter, Vector3 Position) : SimulationEvent;
 public sealed record SubsystemDisabled(WeaponOwner TargetOwner, int? TargetEnemyId, ShipSubsystem Subsystem, Vector3 Position) : SimulationEvent;

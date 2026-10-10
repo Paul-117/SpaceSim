@@ -17,19 +17,21 @@ internal sealed class DuelAiLogger : IDisposable
 {
     private readonly StreamWriter _writer;
     private readonly JsonSerializerOptions _json = new() { WriteIndented = false };
+    private readonly string _playerName;
     private bool _completed;
 
     public string Path { get; }
 
-    public DuelAiLogger(EnemyAiModel model)
+    public DuelAiLogger(EnemyAiModel model, string playerName = "SCHIFF 1", string enemyName = "SCHIFF 2")
     {
+        _playerName = string.IsNullOrWhiteSpace(playerName) ? "SCHIFF 1" : playerName;
         string modelFolder = model == EnemyAiModel.Basic ? "Basic AI" : model.ToString();
         string directory = ProjectSettings.GlobalizePath($"res://Logs/{modelFolder}");
         Directory.CreateDirectory(directory);
         Path = System.IO.Path.Combine(directory, $"ai_1vs1_{DateTime.Now:yyyy-MM-dd_HH-mm-ss-fff}.txt");
         _writer = new StreamWriter(Path, append: false) { AutoFlush = true };
-        Write(new { type = "session_started", createdAt = DateTimeOffset.Now, model = model.ToString(),
-            sampleIntervalSeconds = SimulationSettings.FixedDeltaSeconds, sampleRateHz = SimulationSettings.TickRate });
+        Write(new { type = "session_started", createdAt = DateTimeOffset.Now, model = model.ToString(), playerName = _playerName,
+            enemyName, sampleIntervalSeconds = SimulationSettings.FixedDeltaSeconds, sampleRateHz = SimulationSettings.TickRate });
     }
 
     public void WriteSnapshot(WorldState world, SimulationSettings settings, ShipCommand playerCommand,
@@ -69,6 +71,7 @@ internal sealed class DuelAiLogger : IDisposable
             },
             player = new
             {
+                name = _playerName,
                 position = Vector(world.Ship.Position),
                 velocity = Vector(world.Ship.Velocity),
                 speedMetersPerSecond = world.Ship.Velocity.Length(),

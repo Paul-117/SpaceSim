@@ -8,7 +8,6 @@ namespace SpaceSim.GodotClient.Audio;
 public partial class SoundEffects : Node
 {
     private AudioStreamPlayer _booster = null!;
-    private AudioStreamPlayer _shieldCharge = null!;
     private AudioStreamPlayer _lanceReady = null!;
     private AudioStreamPlayer _lanceShot = null!;
     private AudioStreamPlayer _shieldHit = null!;
@@ -17,12 +16,10 @@ public partial class SoundEffects : Node
     private AudioStreamPlayer _warpJump = null!;
     private bool _lanceWasReady;
     private bool _boosterLoopRequested;
-    private bool _shieldChargePlayedForCurrentRecharge;
 
     public override void _Ready()
     {
         _booster = CreatePlayer("res://Assets/Sfx/Booster.wav", volumeDb: -6f);
-        _shieldCharge = CreatePlayer("res://Assets/Sfx/shield_charge.wav", volumeDb: -2f);
         _lanceReady = CreatePlayer("res://Assets/Sfx/Lance_ready.mp3", volumeDb: -4f);
         _lanceShot = CreatePlayer("res://Assets/Sfx/Lance_shot.wav", volumeDb: -5f);
         _shieldHit = CreatePlayer("res://Assets/Sfx/shield_hit.wav", volumeDb: -4f);
@@ -43,8 +40,6 @@ public partial class SoundEffects : Node
                     Restart(_lanceShot);
                     break;
                 case ShieldHit { TargetOwner: WeaponOwner.Player }:
-                    _shieldCharge.Stop();
-                    _shieldChargePlayedForCurrentRecharge = false;
                     Restart(_shieldHit);
                     break;
                 case ShieldDepleted { TargetOwner: WeaponOwner.Player }:
@@ -71,14 +66,12 @@ public partial class SoundEffects : Node
 
         _boosterLoopRequested = command.MainThrust || command.ReverseThrust;
         SyncLoop(_booster, _boosterLoopRequested);
-        TriggerShieldFullWarning(world, settings);
     }
 
     public void ResetForNewSession()
     {
         StopContinuous();
         _lanceWasReady = false;
-        _shieldChargePlayedForCurrentRecharge = false;
     }
 
     public override void _ExitTree()
@@ -114,34 +107,11 @@ public partial class SoundEffects : Node
     {
         _boosterLoopRequested = false;
         _booster.Stop();
-        _shieldCharge.Stop();
-    }
-
-    private void TriggerShieldFullWarning(WorldState world, SimulationSettings settings)
-    {
-        var shield = world.Ship.Shield;
-        float rechargePerSecond = settings.Shield.RechargePerSecond * world.Ship.Power.ShieldsPowerFactor *
-            world.Ship.Systems.ShieldsCondition;
-        bool regenerating = shield.CurrentShield < shield.MaximumShield && !shield.IsRechargeDelayed &&
-            rechargePerSecond > 0f;
-        if (!regenerating)
-        {
-            if (shield.CurrentShield >= shield.MaximumShield) _shieldChargePlayedForCurrentRecharge = false;
-            return;
-        }
-
-        float secondsUntilFull = (shield.MaximumShield - shield.CurrentShield) / rechargePerSecond;
-        if (!_shieldChargePlayedForCurrentRecharge && secondsUntilFull <= AudioSettings.ShieldChargeLeadSeconds)
-        {
-            _shieldChargePlayedForCurrentRecharge = true;
-            Restart(_shieldCharge);
-        }
     }
 
     private IEnumerable<AudioStreamPlayer> Players()
     {
         if (_booster is not null) yield return _booster;
-        if (_shieldCharge is not null) yield return _shieldCharge;
         if (_lanceReady is not null) yield return _lanceReady;
         if (_lanceShot is not null) yield return _lanceShot;
         if (_shieldHit is not null) yield return _shieldHit;
