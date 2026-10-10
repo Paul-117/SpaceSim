@@ -5,7 +5,7 @@ nur Bedienabsichten und erhalten kleine, stationsspezifische Snapshots.
 
 ## Transport
 
-- HTTP: `http://<host>:47870/armarium/`, `http://<host>:47870/voltarium/`, `http://<host>:47870/sensorium/` oder `http://<host>:47870/debug/`
+- HTTP: `http://<host>:47870/armarium/`, `http://<host>:47870/voltarium/`, `http://<host>:47870/sensorium/`, `http://<host>:47870/debug/` oder `http://<host>:47870/commands/`
 - WebSocket: `ws://<host>:47870/station`
 - Protokollversion: `9`
 - Textnachrichten: UTF-8 JSON mit camelCase-Feldern
@@ -23,7 +23,7 @@ Muss die erste WebSocket-Nachricht sein.
 | Feld | Typ | Bedeutung |
 | --- | --- | --- |
 | `type` | string | Immer `hello`. |
-| `station` | string | `armarium`, `voltarium`, `sensorium` oder `debug`. |
+| `station` | string | `armarium`, `voltarium`, `sensorium`, `debug` oder `commands`. |
 | `protocolVersion` | integer | Muss `9` sein. |
 
 Bei falscher Stationskennung oder Version sendet der Server `error` und beendet die
@@ -298,3 +298,44 @@ KI-Daten oder einen vollstaendigen `WorldState`. Das Frontend zeigt aktivem Sona
 alle Kontakte. In der passiven Peilung muss die Spektrometerachse innerhalb von
 ±10 Grad auf einen Kontakt zeigen; die passende Bibliothek und `Enter` bestaetigen
 die Identifikation lokal in der Station.
+
+## Command Console
+
+Die Command Console liegt unter `http://<host>:47870/commands/` und meldet sich mit
+`station: "commands"` an. Sie sendet nur eine rohe Befehlszeile. Parsing, Validierung
+und Ausfuehrung erfolgen ausschliesslich im autoritativen Godot-Simulationstick.
+
+### Client zu Server: `command_line`
+
+```json
+{ "type": "command_line", "command": "REACTOR 80%" }
+```
+
+Aktuell unterstuetzte Befehle:
+
+- `AUTOPILOT ON`
+- `AUTOPILOT OFF`
+- `REACTOR <0-100%>`
+- `SONAR ON`
+- `SONAR OFF`
+
+`SONAR ON` sendet eine aktive Sonar-Emission. Wie beim Sensorium selbst werden
+dadurch lokale Kontakte sichtbar und Gegner alarmiert. `SONAR OFF` stellt die
+Command Console auf Standby; eine bereits erfolgte Emission kann nicht zurueckgenommen
+werden.
+
+### Server zu Client: `command_state`
+
+```json
+{
+  "type": "command_state",
+  "lastCommand": "REACTOR 80%",
+  "message": "REACTOR RAMPING TO 80%",
+  "accepted": true,
+  "simulationTick": 1234,
+  "connectionSequence": 77
+}
+```
+
+`accepted` und `message` stammen vom Haupt-PC. Der Browser darf deshalb einen
+Befehl nicht selbst als erfolgreich darstellen, bevor dieser Zustand eintrifft.

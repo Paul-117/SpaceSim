@@ -1,4 +1,5 @@
 using Godot;
+using System.Globalization;
 using SpaceSim.Core.Ships;
 using SpaceSim.Core.Simulation;
 using SpaceSim.Core.Navigation;
@@ -12,11 +13,13 @@ using SpaceSim.GodotClient.UI;
 using SpaceSim.GodotClient.Testing;
 using SpaceSim.GodotClient.Audio;
 using SpaceSim.GodotClient.Logging;
+using SpaceSim.GodotClient.Voice;
 using SpaceSim.Stations;
 using SpaceSim.Stations.Armarium;
 using SpaceSim.Stations.Debug;
 using SpaceSim.Stations.Voltarium;
 using SpaceSim.Stations.Sensorium;
+using SpaceSim.Stations.Commands;
 using NVector3 = System.Numerics.Vector3;
 using NQuaternion = System.Numerics.Quaternion;
 
@@ -40,9 +43,13 @@ public partial class Flight : Node
     private readonly MainMenuOverlay _mainMenu = new();
     private readonly GameOverOverlay _gameOver = new();
     private readonly SoundEffects _sounds = new();
+    private readonly VoiceCommandRecorder _voiceCommandRecorder = new();
+    private readonly LocalIntentService _localIntentService = new();
+    private readonly PiperNotificationSpeechService _notificationSpeech = new();
     private readonly ArmariumCommandBuffer _armariumCommands = new();
     private readonly VoltariumCommandBuffer _voltariumCommands = new();
     private readonly SensoriumCommandBuffer _sensoriumCommands = new();
+    private readonly CommandConsoleCommandBuffer _commandConsoleCommands = new();
     private StationServer? _stationServer;
     private NavigationCommand _pendingNavigation;
     private NVector3 _previousPosition;
@@ -80,6 +87,15 @@ public partial class Flight : Node
     private DuelShipSelection? _duelEnemyLoadout;
     private DuelAiLogger? _duelLogger;
     private BoosterConfiguration _boosterConfiguration = BoosterConfiguration.Default;
+    private bool _notificationStateInitialized;
+    private bool _wasAutopilotActive;
+    private bool _wasWarpDriveReady;
+    private bool _wasShieldFull;
+    private bool _wasShieldRebooting;
+    private readonly HashSet<int> _knownBridgeContactIds = [];
+    private string? _pendingVoiceCommand;
+    private string? _pendingVoiceTranscript;
+    private float? _pendingReactorCompletionLevel;
 
     public override void _Ready()
     {
@@ -102,6 +118,7 @@ public partial class Flight : Node
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
         _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
         BindWorld();
+        InitializeNotificationState();
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
         _hud.WarpMapRequested += () =>
@@ -137,6 +154,10 @@ public partial class Flight : Node
         AddChild(_camera);
         _camera.Enabled = true;
         AddChild(_sounds);
+        _voiceCommandRecorder.StatusChanged += UpdateVoiceCommandStatus;
+        _voiceCommandRecorder.TranscriptionCompleted += HandleVoiceTranscription;
+        AddChild(_voiceCommandRecorder);
+        AddChild(_notificationSpeech);
         var cockpit = new CanvasLayer { Layer = 10 };
         AddChild(cockpit);
         cockpit.AddChild(_hud);
@@ -151,7 +172,7 @@ public partial class Flight : Node
         if (!_smokeTest && !_warpSmokeTest && !_enemySmokeTest && !_quickStartEnabled && !_startDuelDirect)
             _mainMenu.ShowMain();
         if (_warpSmokeTest) _warpScenario = new WarpSmokeScenario(_simulation.World, _hud, _starMap);
-        GD.Print("SpaceSim " + ProjectSettings.GetSetting("application/config/version", "2.3.0").AsString() +
+        GD.Print("SpaceSim " + ProjectSettings.GetSetting("application/config/version", "2.4.0").AsString() +
             " | Core 60 Hz | Armarium, Voltarium and Sensorium station server enabled");
     }
 
@@ -239,6 +260,275 @@ public partial class Flight : Node
         _starMap.World = _simulation.World;
     }
 
+    private void InitializeNotificationState()
+    {
+        _wasAutopilotActive = _autopilot is not null;
+        _wasWarpDriveReady = _simulation.World.WarpDrive.IsReady;
+        _wasShieldFull = IsShieldFull();
+        _wasShieldRebooting = _simulation.World.Ship.Shield.IsRebooting;
+        _pendingReactorCompletionLevel = null;
+        _knownBridgeContactIds.Clear();
+        _notificationSpeech.Clear();
+        if (_simulation.World.IsPlayerInRealSpace && _sensoriumEnabled && !_duelMode)
+            _knownBridgeContactIds.UnionWith(_simulation.World.VisibleEnemies.Select(enemy => enemy.EnemyId));
+        _notificationStateInitialized = true;
+    }
+
+    /// <summary>
+    /// Adapts authoritative simulation events and state transitions to the presentation-only
+    /// Bridge queue. It never changes the simulation state or station commands.
+    /// </summary>
+    private void ProcessBridgeNotifications(SensoriumCommand sensoriumCommand)
+    {
+        if (!_notificationStateInitialized) return;
+
+        foreach (SimulationEvent item in _simulation.Events)
+        {
+            switch (item)
+            {
+                case SubsystemDamaged { TargetOwner: WeaponOwner.Player, Subsystem: ShipSubsystem.Reactor }:
+                    Notify(BridgeNotificationStation.Voltarium, "REACTOR DAMAGED", BridgeNotificationSeverity.Critical);
+                    break;
+                case SubsystemDamaged { TargetOwner: WeaponOwner.Player, Subsystem: ShipSubsystem.Lance }:
+                    Notify(BridgeNotificationStation.Armarium, "WEAPON SYSTEM DAMAGED", BridgeNotificationSeverity.Warning);
+                    break;
+                case SubsystemDisabled { TargetOwner: WeaponOwner.Player, Subsystem: ShipSubsystem.Lance }:
+                    Notify(BridgeNotificationStation.Armarium, "LANCE OFFLINE", BridgeNotificationSeverity.Critical);
+                    break;
+                case ShieldDepleted { TargetOwner: WeaponOwner.Player }:
+                    Notify(BridgeNotificationStation.Shields, "SHIELDS COLLAPSED", BridgeNotificationSeverity.Critical);
+                    Notify(BridgeNotificationStation.Shields, "SHIELD REBOOT STARTED", BridgeNotificationSeverity.Warning);
+                    break;
+                case EnteredHyperspace:
+                case EncounterChanged:
+                    // Contacts belong to an encounter. Re-entry must not report every old
+                    // contact as "lost" after the player has left local space.
+                    _knownBridgeContactIds.Clear();
+                    _notificationSpeech.Clear();
+                    break;
+            }
+        }
+
+        bool autopilotActive = _autopilot is not null;
+        if (autopilotActive != _wasAutopilotActive)
+            Notify(BridgeNotificationStation.Bridge,
+                autopilotActive ? "AUTOPILOT ENGAGED" : "AUTOPILOT DISENGAGED",
+                BridgeNotificationSeverity.InfoNeutral);
+        _wasAutopilotActive = autopilotActive;
+
+        bool warpReady = _simulation.World.WarpDrive.IsReady;
+        if (warpReady && !_wasWarpDriveReady)
+            Notify(BridgeNotificationStation.Bridge, "WARP DRIVE READY", BridgeNotificationSeverity.InfoGood);
+        _wasWarpDriveReady = warpReady;
+
+        bool shieldFull = IsShieldFull();
+        if (shieldFull && !_wasShieldFull)
+            Notify(BridgeNotificationStation.Shields, "SHIELDS CHARGED", BridgeNotificationSeverity.InfoGood);
+        _wasShieldFull = shieldFull;
+
+        bool shieldRebooting = _simulation.World.Ship.Shield.IsRebooting;
+        if (!shieldRebooting && _wasShieldRebooting)
+            Notify(BridgeNotificationStation.Shields, "SHIELD REBOOT COMPLETE", BridgeNotificationSeverity.InfoGood);
+        _wasShieldRebooting = shieldRebooting;
+
+        ProcessReactorCommandConfirmation();
+        ProcessSensoriumNotifications(sensoriumCommand);
+    }
+
+    /// <summary>
+    /// A Bridge reactor command is only confirmed after the physical ramp has reached its requested level.
+    /// A newer Voltarium change supersedes the outstanding confirmation.
+    /// </summary>
+    private void ProcessReactorCommandConfirmation()
+    {
+        if (_pendingReactorCompletionLevel is not float requestedLevel) return;
+
+        var reactor = _simulation.World.Ship.Reactor;
+        const float tolerance = .05f;
+        if (MathF.Abs(reactor.TargetOperatingLevelPercent - requestedLevel) > tolerance)
+        {
+            _pendingReactorCompletionLevel = null;
+            return;
+        }
+
+        if (MathF.Abs(reactor.OperatingLevelPercent - requestedLevel) > tolerance) return;
+
+        Notify(BridgeNotificationStation.Voltarium, $"REACTOR AT {requestedLevel:0.#}%", BridgeNotificationSeverity.InfoNeutral);
+        _pendingReactorCompletionLevel = null;
+    }
+
+    private void ProcessSensoriumNotifications(SensoriumCommand sensoriumCommand)
+    {
+        if (!_sensoriumEnabled || _duelMode) return;
+
+        if (sensoriumCommand.ActiveSonarPing)
+            Notify(BridgeNotificationStation.Sensorium, "ACTIVE SONAR ENABLED", BridgeNotificationSeverity.Warning);
+
+        if (sensoriumCommand.ConfirmedEnemyId is int identifiedId)
+        {
+            EnemyShipState? identified = _simulation.World.CurrentEnemies
+                .FirstOrDefault(enemy => enemy.EnemyId == identifiedId);
+            if (identified is not null)
+                Notify(BridgeNotificationStation.Sensorium, $"CONTACT IDENTIFIED: {identified.Name}",
+                    BridgeNotificationSeverity.InfoGood);
+        }
+
+        if (!_simulation.World.IsPlayerInRealSpace) return;
+
+        HashSet<int> visibleContactIds = _simulation.World.VisibleEnemies
+            .Select(enemy => enemy.EnemyId)
+            .ToHashSet();
+        foreach (int lostId in _knownBridgeContactIds.Except(visibleContactIds).ToArray())
+        {
+            Notify(BridgeNotificationStation.Sensorium, "CONTACT LOST", BridgeNotificationSeverity.Warning);
+            _knownBridgeContactIds.Remove(lostId);
+        }
+
+        foreach (int newId in visibleContactIds.Except(_knownBridgeContactIds))
+        {
+            Notify(BridgeNotificationStation.Sensorium, "NEW CONTACT DETECTED", BridgeNotificationSeverity.InfoNeutral);
+            _knownBridgeContactIds.Add(newId);
+        }
+    }
+
+    private bool IsShieldFull()
+    {
+        var shield = _simulation.World.Ship.Shield;
+        return shield.CurrentShield >= shield.MaximumShield - .001f;
+    }
+
+    private void Notify(BridgeNotificationStation station, string text, BridgeNotificationSeverity severity)
+    {
+        _bridgeUi.PostNotification(station, text, severity);
+        _notificationSpeech.Speak(text);
+    }
+
+    private void ProcessCommandConsole()
+    {
+        while (_commandConsoleCommands.TryRead(out string input))
+        {
+            string command = NormalizeConsoleCommand(input);
+            (bool accepted, string message) result = ExecuteConsoleCommand(command);
+            bool isVoiceCommand = string.Equals(command, _pendingVoiceCommand, StringComparison.Ordinal);
+            string message = isVoiceCommand
+                ? $"VOICE '{_pendingVoiceTranscript}' — {result.message}"
+                : result.message;
+            if (isVoiceCommand)
+            {
+                _pendingVoiceCommand = null;
+                _pendingVoiceTranscript = null;
+            }
+            _stationServer?.UpdateCommandConsoleState(new CommandConsoleState(command, message, result.accepted,
+                _simulation.World.Tick));
+        }
+    }
+
+    private void UpdateVoiceCommandStatus(string message) =>
+        _stationServer?.UpdateCommandConsoleState(new CommandConsoleState("VOICE", message, true, _simulation.World.Tick));
+
+    private async void HandleVoiceTranscription(VoiceTranscriptionResult result)
+    {
+        if (!result.Success)
+        {
+            _stationServer?.UpdateCommandConsoleState(new CommandConsoleState("VOICE", result.Message, false,
+                _simulation.World.Tick));
+            return;
+        }
+
+        if (!VoiceCommandNormalizer.TryToCanonicalCommand(result.Transcript, out string command))
+        {
+            _stationServer?.UpdateCommandConsoleState(new CommandConsoleState("VOICE", "VOICE INTENT ANALYZING…", true,
+                _simulation.World.Tick));
+            IntentInterpretation interpretation = await _localIntentService.InterpretAsync(result.Transcript);
+            if (!interpretation.Resolved || string.IsNullOrWhiteSpace(interpretation.Command))
+            {
+                _stationServer?.UpdateCommandConsoleState(new CommandConsoleState("VOICE", interpretation.Message, false,
+                    _simulation.World.Tick));
+                return;
+            }
+            command = interpretation.Command;
+        }
+
+        _pendingVoiceCommand = command;
+        _pendingVoiceTranscript = result.Transcript;
+        _commandConsoleCommands.Request(command);
+        _stationServer?.UpdateCommandConsoleState(new CommandConsoleState(command,
+            $"VOICE RECOGNIZED: {result.Transcript}", true, _simulation.World.Tick));
+    }
+
+    private (bool accepted, string message) ExecuteConsoleCommand(string command)
+    {
+        if (command == "AUTOPILOT ON")
+        {
+            if (TryEnableAutopilot(out string message)) return (true, message);
+            return (false, message);
+        }
+        if (command == "AUTOPILOT OFF")
+        {
+            bool wasActive = _autopilot is not null;
+            _autopilot = null;
+            _autopilotTargetId = null;
+            return (true, wasActive ? "AUTOPILOT DISENGAGED" : "AUTOPILOT ALREADY OFF");
+        }
+        if (command == "SONAR ON")
+        {
+            if (!_sensoriumEnabled) return (false, "SENSORIUM DISABLED");
+            if (!_simulation.World.IsPlayerInRealSpace) return (false, "SONAR UNAVAILABLE IN HYPERSPACE");
+            _sensoriumCommands.RequestActiveSonarPing();
+            return (true, "ACTIVE SONAR PING SENT");
+        }
+        if (command == "SONAR OFF")
+            return (true, "SONAR STANDBY");
+        if (command.StartsWith("REACTOR ", StringComparison.Ordinal))
+        {
+            if (_duelMode || !_simulation.Settings.Power.ReactorSimulationEnabled)
+                return (false, "REACTOR CONTROL UNAVAILABLE");
+            if (!_simulation.World.IsPlayerInRealSpace) return (false, "REACTOR CONTROL UNAVAILABLE IN HYPERSPACE");
+
+            string value = command[8..].Trim().TrimEnd('%').Replace(',', '.');
+            if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float level) ||
+                !float.IsFinite(level) || level < 0f || level > 100f)
+                return (false, "REACTOR VALUE MUST BE 0-100%");
+
+            _voltariumCommands.SetOperatingLevel(level);
+            _pendingReactorCompletionLevel = level;
+            return (true, $"REACTOR RAMPING TO {level:0.#}%");
+        }
+        return (false, "UNKNOWN COMMAND — TRY: AUTOPILOT, REACTOR, SONAR");
+    }
+
+    private static string NormalizeConsoleCommand(string input) => string.Join(' ', input.Trim().ToUpperInvariant()
+        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private bool TryEnableAutopilot(out string message)
+    {
+        if (_autopilot is not null)
+        {
+            message = "AUTOPILOT ALREADY ACTIVE";
+            return true;
+        }
+        if (!_simulation.World.IsPlayerInRealSpace)
+        {
+            message = "AUTOPILOT UNAVAILABLE IN HYPERSPACE";
+            return false;
+        }
+        EnemyShipState? target = _simulation.World.VisibleEnemies
+            .FirstOrDefault(enemy => enemy.EnemyId == _selectedEnemyId) ??
+            _simulation.World.VisibleEnemies.FirstOrDefault();
+        if (target is null)
+        {
+            message = "AUTOPILOT REQUIRES A CONTACT";
+            return false;
+        }
+
+        _autopilot = new AutopilotController(_simulation.Settings.EnemyAi,
+            _simulation.Settings.ReverseThrustNewtons / _simulation.Settings.ShipMassKg);
+        _autopilotTargetId = target.EnemyId;
+        _keyboard.Clear();
+        message = $"AUTOPILOT ENGAGED: {target.Name}";
+        return true;
+    }
+
     private void StartStationServer()
     {
         try
@@ -256,19 +546,24 @@ public partial class Flight : Node
                 ["sensorium/sensorium.js"] = Godot.FileAccess.GetFileAsString("res://Sensorium/sensorium.js"),
                 ["debug/index.html"] = Godot.FileAccess.GetFileAsString("res://Debug/index.html"),
                 ["debug/debug.css"] = Godot.FileAccess.GetFileAsString("res://Debug/debug.css"),
-                ["debug/debug.js"] = Godot.FileAccess.GetFileAsString("res://Debug/debug.js")
+                ["debug/debug.js"] = Godot.FileAccess.GetFileAsString("res://Debug/debug.js"),
+                ["commands/index.html"] = Godot.FileAccess.GetFileAsString("res://Commands/index.html"),
+                ["commands/commands.css"] = Godot.FileAccess.GetFileAsString("res://Commands/commands.css"),
+                ["commands/commands.js"] = Godot.FileAccess.GetFileAsString("res://Commands/commands.js")
             };
             _stationServer = new StationServer(new StationServerOptions(), assets, _armariumCommands, _voltariumCommands,
-                _sensoriumCommands, GD.Print);
+                _sensoriumCommands, _commandConsoleCommands, GD.Print);
             _stationServer.Start();
             PublishArmariumState();
             _stationServer.UpdateVoltariumState(VoltariumStateBuilder.Build(_simulation.World));
             _stationServer.UpdateSensoriumState(SensoriumStateBuilder.Build(_simulation.World));
             _stationServer.UpdateEnemyDebugState(EnemyDebugStateBuilder.Build(_simulation.World, _simulation.Settings));
+            _stationServer.UpdateCommandConsoleState(CommandConsoleState.Waiting);
             GD.Print($"Armarium available at {_stationServer.ArmariumUrl}");
             GD.Print($"Voltarium available at {_stationServer.VoltariumUrl}");
             GD.Print($"Sensorium available at {_stationServer.SensoriumUrl}");
             GD.Print($"Enemy AI debug station available at {_stationServer.DebugUrl}");
+            GD.Print($"Command console available at {_stationServer.CommandsUrl}");
         }
         catch (Exception exception)
         {
@@ -279,6 +574,8 @@ public partial class Flight : Node
     public override void _ExitTree()
     {
         CompleteDuelLog("aborted");
+        _localIntentService.Dispose();
+        _notificationSpeech.Clear();
         _stationServer?.Dispose();
         _stationServer = null;
     }
@@ -293,6 +590,14 @@ public partial class Flight : Node
                 _mainMenu.HandleEscape();
                 GetViewport().SetInputAsHandled();
             }
+            return;
+        }
+        if (_simulation.World.IsPlayerInRealSpace && !_starMap.Visible && input is InputEventKey voiceKey &&
+            (voiceKey.PhysicalKeycode == Key.V || voiceKey.Keycode == Key.V))
+        {
+            if (voiceKey.Pressed && !voiceKey.Echo) _voiceCommandRecorder.StartRecording();
+            else if (!voiceKey.Pressed) _ = _voiceCommandRecorder.StopRecordingAsync();
+            GetViewport().SetInputAsHandled();
             return;
         }
         if (_simulation.World.IsPlayerInRealSpace && !_starMap.Visible &&
@@ -404,6 +709,7 @@ public partial class Flight : Node
             _lastCommand = default;
             if (_simulation.World.Tick == 600) _pendingNavigation = new NavigationCommand(3);
         }
+        ProcessCommandConsole();
         if (_simulation.World.IsPlayerInRealSpace)
         {
             ApplyAutopilotControl();
@@ -417,6 +723,7 @@ public partial class Flight : Node
         _simulation.Step(_lastCommand, _pendingNavigation, reactorCommand,
             new SensorCommand(sensoriumCommand.ActiveSonarPing, sensoriumCommand.ConfirmedEnemyId));
         _pendingNavigation = default;
+        ProcessBridgeNotifications(sensoriumCommand);
         if (_duelMode && _duelLogger is not null)
             _duelLogger.WriteSnapshot(_simulation.World, _simulation.Settings, _lastCommand, _simulation.Events);
         RecordArmariumTargetHit();
@@ -651,6 +958,8 @@ public partial class Flight : Node
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
         _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
         BindWorld();
+        _bridgeUi.ClearNotifications();
+        InitializeNotificationState();
         _previousPosition = _simulation.World.Ship.Position;
         _previousRotation = _simulation.World.Ship.Rotation;
         _lastCommand = default;
@@ -667,6 +976,7 @@ public partial class Flight : Node
         _gameOver.Hide();
         _enemyGameOverFrames = 0;
         _armariumCommands.Clear();
+        _commandConsoleCommands.Clear();
         _hyperspaceEntryPoint = null;
         _lastHyperspacePhase = _simulation.World.HyperspacePhase;
         if (_enemySmokeTest) _enemySmokeRestarted = true;
@@ -875,14 +1185,7 @@ public partial class Flight : Node
             _autopilotTargetId = null;
             return;
         }
-        EnemyShipState? target = _simulation.World.VisibleEnemies
-            .FirstOrDefault(enemy => enemy.EnemyId == _selectedEnemyId) ??
-            _simulation.World.VisibleEnemies.FirstOrDefault();
-        if (target is null) return;
-        _autopilot = new AutopilotController(_simulation.Settings.EnemyAi,
-            _simulation.Settings.ReverseThrustNewtons / _simulation.Settings.ShipMassKg);
-        _autopilotTargetId = target.EnemyId;
-        _keyboard.Clear();
+        TryEnableAutopilot(out _);
     }
 
     private void ApplyAutopilotControl()

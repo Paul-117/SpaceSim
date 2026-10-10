@@ -184,6 +184,18 @@ Verbindung. Lokal wird die Station im Browser unter
 `http://127.0.0.1:47870/armarium/` geoeffnet. Im LAN wird dieselbe URL mit der
 LAN-IP des Haupt-PCs verwendet, beispielsweise `http://192.168.x.x:47870/armarium/`.
 
+Die **Command Console** ist unter `http://127.0.0.1:47870/commands/` erreichbar.
+Sie nimmt Befehlszeilen entgegen und zeigt erst das vom Haupt-PC bestaetigte Ergebnis.
+Aktuell verfuegbar sind `AUTOPILOT ON`, `AUTOPILOT OFF`, `REACTOR <0-100%>`,
+`SONAR ON` und `SONAR OFF`.
+
+Sprachbefehle werden lokal am Haupt-PC mit Whisper transkribiert. Der optionale lokale
+Qwen3-Intentdienst versteht zusätzlich freie deutsche Formulierungen und übersetzt sie
+über ein eng begrenztes JSON-Schema zurück in dieselben fünf autoritativen Commands.
+Die verbindliche Command-/Notification-Tabelle liegt in
+`docs/Commands_Notifications/Commands_Notifications.xlsx`; technische Details stehen in
+`docs/LocalIntent.md` und `docs/NotificationSpeech.md`.
+
 Das Armarium ist eine reine HTML/CSS/Vanilla-JavaScript-Canvas-Anwendung. Es zeigt
 den horizontalen Bearing des ersten aktiven Gegners relativ zur Bugwaffe, den
 Lanzenladestand und den Verbindungsstatus. Das obere Fenster heisst **ZIELHILFE**.

@@ -8,6 +8,7 @@ using SpaceSim.Stations.Armarium;
 using SpaceSim.Stations.Debug;
 using SpaceSim.Stations.Voltarium;
 using SpaceSim.Stations.Sensorium;
+using SpaceSim.Stations.Commands;
 
 namespace SpaceSim.Stations;
 
@@ -30,6 +31,7 @@ public sealed class StationServer : IDisposable
     private readonly ArmariumCommandBuffer _armariumCommands;
     private readonly VoltariumCommandBuffer _voltariumCommands;
     private readonly SensoriumCommandBuffer _sensoriumCommands;
+    private readonly CommandConsoleCommandBuffer _commandConsoleCommands;
     private readonly Action<string>? _log;
     private readonly ConcurrentDictionary<int, StationConnection> _connections = new();
     private readonly CancellationTokenSource _stopping = new();
@@ -41,6 +43,7 @@ public sealed class StationServer : IDisposable
     private EnemyDebugState _latestEnemyDebugState = new(false, 0, "NONE", false, "NONE",
         0f, 0f, 0f, 0f, 0, 0, 0f, 0f, 0f, 0f, 0f, 0f, false,
         0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0);
+    private CommandConsoleState _latestCommandConsoleState = CommandConsoleState.Waiting;
     private Task? _acceptTask;
     private Task? _broadcastTask;
     private int _nextConnectionId;
@@ -54,6 +57,13 @@ public sealed class StationServer : IDisposable
     public StationServer(StationServerOptions options, IReadOnlyDictionary<string, string> assets,
         ArmariumCommandBuffer armariumCommands, VoltariumCommandBuffer voltariumCommands,
         SensoriumCommandBuffer sensoriumCommands, Action<string>? log = null)
+        : this(options, assets, armariumCommands, voltariumCommands, sensoriumCommands,
+            new CommandConsoleCommandBuffer(), log) { }
+
+    public StationServer(StationServerOptions options, IReadOnlyDictionary<string, string> assets,
+        ArmariumCommandBuffer armariumCommands, VoltariumCommandBuffer voltariumCommands,
+        SensoriumCommandBuffer sensoriumCommands, CommandConsoleCommandBuffer commandConsoleCommands,
+        Action<string>? log = null)
     {
         _options = options;
         _options.Validate();
@@ -61,6 +71,7 @@ public sealed class StationServer : IDisposable
         _armariumCommands = armariumCommands;
         _voltariumCommands = voltariumCommands;
         _sensoriumCommands = sensoriumCommands;
+        _commandConsoleCommands = commandConsoleCommands;
         _log = log;
         _listener = new TcpListener(IPAddress.Any, options.Port);
     }
@@ -74,11 +85,13 @@ public sealed class StationServer : IDisposable
     public string VoltariumUrl => $"http://127.0.0.1:{Port}/voltarium/";
     public string SensoriumUrl => $"http://127.0.0.1:{Port}/sensorium/";
     public string DebugUrl => $"http://127.0.0.1:{Port}/debug/";
+    public string CommandsUrl => $"http://127.0.0.1:{Port}/commands/";
     /// <summary>True once an Armarium browser has completed its protocol handshake.</summary>
     public bool IsArmariumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.ArmariumStation);
     public bool IsVoltariumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.VoltariumStation);
     public bool IsSensoriumOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.SensoriumStation);
     public bool IsDebugOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.DebugStation);
+    public bool IsCommandsOnline => _connections.Values.Any(connection => connection.IsAccepted && connection.Station == StationProtocol.CommandsStation);
 
     public void Start()
     {
@@ -94,6 +107,7 @@ public sealed class StationServer : IDisposable
     public void UpdateVoltariumState(VoltariumState state) => Volatile.Write(ref _latestVoltariumState, state);
     public void UpdateSensoriumState(SensoriumState state) => Volatile.Write(ref _latestSensoriumState, state);
     public void UpdateEnemyDebugState(EnemyDebugState state) => Volatile.Write(ref _latestEnemyDebugState, state);
+    public void UpdateCommandConsoleState(CommandConsoleState state) => Volatile.Write(ref _latestCommandConsoleState, state);
 
     public void Dispose()
     {
@@ -181,7 +195,8 @@ public sealed class StationServer : IDisposable
                 bool knownStation = string.Equals(command.Station, StationProtocol.ArmariumStation, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(command.Station, StationProtocol.VoltariumStation, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(command.Station, StationProtocol.SensoriumStation, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(command.Station, StationProtocol.DebugStation, StringComparison.OrdinalIgnoreCase);
+                    string.Equals(command.Station, StationProtocol.DebugStation, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(command.Station, StationProtocol.CommandsStation, StringComparison.OrdinalIgnoreCase);
                 if (command.Type != "hello" || !knownStation || command.ProtocolVersion != StationProtocol.Version)
                 {
                     await connection.SendJsonAsync(new StationError("protocol_mismatch",
@@ -211,6 +226,8 @@ public sealed class StationServer : IDisposable
             else if (connection.Station == StationProtocol.SensoriumStation && command.Type == "identify_contact" &&
                 command.EnemyId is int enemyId)
                 _sensoriumCommands.RequestContactIdentification(enemyId);
+            else if (connection.Station == StationProtocol.CommandsStation && command.Type == "command_line")
+                _commandConsoleCommands.Request(command.Command);
         }
     }
 
@@ -229,6 +246,7 @@ public sealed class StationServer : IDisposable
                         StationProtocol.VoltariumStation => new VoltariumStateMessage(Volatile.Read(ref _latestVoltariumState), Interlocked.Increment(ref _sequence)),
                         StationProtocol.SensoriumStation => new SensoriumStateMessage(Volatile.Read(ref _latestSensoriumState), Interlocked.Increment(ref _sequence)),
                         StationProtocol.DebugStation => new EnemyDebugStateMessage(Volatile.Read(ref _latestEnemyDebugState), Interlocked.Increment(ref _sequence)),
+                        StationProtocol.CommandsStation => new CommandConsoleStateMessage(Volatile.Read(ref _latestCommandConsoleState), Interlocked.Increment(ref _sequence)),
                         _ => new ArmariumStateMessage(Volatile.Read(ref _latestState), Interlocked.Increment(ref _sequence))
                     };
                     try { await connection.SendJsonAsync(message, cancellationToken); }
@@ -260,13 +278,21 @@ public sealed class StationServer : IDisposable
             await stream.WriteAsync(Encoding.ASCII.GetBytes(redirect), cancellationToken);
             return;
         }
+        if (path == "/commands")
+        {
+            string redirect = "HTTP/1.1 302 Found\r\nLocation: /commands/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(redirect), cancellationToken);
+            return;
+        }
         string asset = path == "/armarium/" ? "armarium/index.html" : path.StartsWith("/armarium/", StringComparison.Ordinal)
             ? "armarium/" + path[10..] : path == "/voltarium/" ? "voltarium/index.html" :
             path.StartsWith("/voltarium/", StringComparison.Ordinal) ? "voltarium/" + path[11..] :
             path == "/sensorium/" ? "sensorium/index.html" : path.StartsWith("/sensorium/", StringComparison.Ordinal)
                 ? "sensorium/" + path[11..] :
             path == "/debug/" ? "debug/index.html" : path.StartsWith("/debug/", StringComparison.Ordinal)
-                ? "debug/" + path[7..] : string.Empty;
+                ? "debug/" + path[7..] :
+            path == "/commands/" ? "commands/index.html" : path.StartsWith("/commands/", StringComparison.Ordinal)
+                ? "commands/" + path[10..] : string.Empty;
         if (!_assets.TryGetValue(asset, out string? content) && asset.StartsWith("armarium/", StringComparison.Ordinal))
             _assets.TryGetValue(asset[9..], out content);
         if (content is null)
@@ -395,7 +421,7 @@ public sealed class StationServer : IDisposable
     private sealed record HttpRequest(string Path, IReadOnlyDictionary<string, string> Headers, bool IsWebSocket);
     private sealed record StationClientMessage(string? Type, string? Station, int? ProtocolVersion,
         string? Direction, bool? Active, float? LevelPercent, float? BridgePercent, float? ShieldsPercent,
-        float? ArmariumPercent, int? EnemyId);
+        float? ArmariumPercent, int? EnemyId, string? Command);
     private sealed record StationWelcome(string Station, int ProtocolVersion) { public string Type { get; } = "welcome"; }
     private sealed record StationError(string Code, string Message) { public string Type { get; } = "error"; }
     private sealed record ArmariumStateMessage(ArmariumState State, long ConnectionSequence)
@@ -478,6 +504,14 @@ public sealed class StationServer : IDisposable
         public EnemyLoadoutDebug? Loadout => State.Loadout;
         public FireControlDebug EnemyFireControl => State.EnemyFireControl ?? FireControlDebug.Unavailable;
         public FireControlDebug PlayerFireControl => State.PlayerFireControl ?? FireControlDebug.Unavailable;
+        public long SimulationTick => State.SimulationTick;
+    }
+    private sealed record CommandConsoleStateMessage(CommandConsoleState State, long ConnectionSequence)
+    {
+        public string Type { get; } = "command_state";
+        public string LastCommand => State.LastCommand;
+        public string Message => State.Message;
+        public bool Accepted => State.Accepted;
         public long SimulationTick => State.SimulationTick;
     }
 }

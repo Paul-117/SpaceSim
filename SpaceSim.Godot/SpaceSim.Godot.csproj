@@ -12,5 +12,12 @@
     <None Update="Armarium/**" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Voltarium/**" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Sensorium/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Commands/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Voice/Runtime/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Voice/Models/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Voice/IntentRuntime/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Voice/IntentModels/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Voice/PiperRuntime/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Voice/PiperModels/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,131 @@
+SpaceSim V2.4 – Command Console, lokale Sprachsteuerung und Bridge-Notifications
+=============================================================================
+
+Stand: 10.10.2026
+Projektversion: 2.4.0
+
+Ziel
+----
+V2.4 verbindet die neue Bridge-Notification-Anzeige mit einer browserbasierten
+Command Console und lokaler Sprachverarbeitung. Der Haupt-PC bleibt in jedem
+Schritt autoritativ: Browser, Whisper, Qwen und Piper erzeugen nur Eingaben
+oder Darstellung. Kein externer Prozess darf WorldState, Treffer, Energie oder
+Physik direkt verändern.
+
+1. Bridge Notifications
+-----------------------
+- Die Brücken-UI besitzt ein Notification-Fenster mit maximal vier sichtbaren
+  Meldungen, Stationssymbol und Severity-Farbe.
+- Meldungen laufen nach fünf Sekunden aus; bei voller Liste fällt die älteste
+  Meldung weg.
+- Die Stationen Bridge, Voltarium, Armarium, Shields und Sensorium liefern
+  Nachrichtentext und Severity. Die Brücke visualisiert sie nur.
+- Aktive Meldungen:
+  * AUTOPILOT ENGAGED / AUTOPILOT DISENGAGED
+  * WARP DRIVE READY
+  * REACTOR DAMAGED / REACTOR AT <X>%
+  * LANCE OFFLINE / WEAPON SYSTEM DAMAGED
+  * SHIELDS CHARGED / SHIELDS COLLAPSED / SHIELD REBOOT STARTED /
+    SHIELD REBOOT COMPLETE
+  * NEW CONTACT DETECTED / CONTACT IDENTIFIED: [NAME] / CONTACT LOST /
+    ACTIVE SONAR ENABLED
+- Die vom Nutzer entfernten Meldungen LANCE READY und LANCE CHARGING werden
+  nicht mehr erzeugt oder gesprochen.
+- Die aktuelle, verbindliche Übersicht liegt in:
+  docs/Commands_Notifications/Commands_Notifications.xlsx
+
+2. Command Console Station
+--------------------------
+URL lokal: http://127.0.0.1:47870/commands/
+Station-ID: commands
+Protokollversion: 9
+
+Die Console ist ein HTML/CSS/Vanilla-JavaScript-Frontend. Sie sendet lediglich
+eine rohe command_line-Nachricht über WebSocket. StationServer puffert die
+Zeile; Flight verarbeitet und validiert sie im normalen Godot-Simulationstick.
+Erst danach erhält der Browser command_state mit accepted, message und Tick.
+
+Unterstützte Commands:
+- AUTOPILOT ON
+- AUTOPILOT OFF
+- REACTOR <0-100>%
+- SONAR ON
+- SONAR OFF
+
+Reaktor-Confirm
+---------------
+REACTOR 50% akzeptiert den Sollwert zunächst mit "REACTOR RAMPING TO 50%".
+Die Bridge-Notification "REACTOR AT 50%" entsteht erst, wenn der reale,
+träge OperatingLevelPercent des Reaktors den angeforderten Wert erreicht.
+Ein späterer Voltarium-Befehl ersetzt eine noch ausstehende Bestätigung.
+
+3. Lokale Spracheingabe
+-----------------------
+- Die Aufnahme erfolgt ausschließlich am Mikrofon des Haupt-PCs.
+- V gedrückt halten: aufnehmen; V loslassen: lokale Transkription.
+- Whisper.cpp mit dem multilingualen ggml-base-Modell transkribiert lokal.
+- Der direkte deutsche Parser erkennt einfache Formen wie "Autopilot an",
+  "Sonar aus" und "Reaktor auf achtzig Prozent".
+- Nicht direkt erkennbare Formulierungen gehen optional an einen lokalen
+  Qwen3-1.7B-Q8-Intentdienst auf 127.0.0.1:47921.
+- Qwen darf ausschließlich eines von fünf validierten Ergebnissen liefern:
+  AUTOPILOT ON/OFF, SONAR ON/OFF, REACTOR <0-100>% oder unknown.
+- Danach gilt wieder derselbe autoritative Command-Pfad wie beim Browser.
+- Details: docs/LocalIntent.md.
+
+4. Lokale Text-to-Speech-Ausgabe
+--------------------------------
+- Jede neue Bridge-Notification wird nach der Darstellung lokal mit Piper
+  gesprochen.
+- Verwendet wird Piper mit en_US-amy-medium (Amy medium).
+- Gleichlautende Meldungen innerhalb von 0,75 Sekunden werden unterdrückt.
+- Höchstens sechs wartende Meldungen werden gepuffert.
+- Szenen- und Encounterwechsel stoppen die Wiedergabe und verwerfen alte
+  Warteschlangenmeldungen.
+- Piper erhält nur den fertigen Notification-Text und besitzt keine Verbindung
+  zur Simulation oder zum Netzwerk.
+- Details und Installation: docs/NotificationSpeech.md.
+
+5. Lokale, nicht versionierte Komponenten
+------------------------------------------
+Die folgenden Downloads werden absichtlich nicht ins Repository aufgenommen:
+- Whisper Runtime und ggml-base-Modell
+- llama.cpp Runtime und Qwen3-1.7B-Q8-Modell
+- Piper Runtime und en_US-amy-medium-Modell
+
+Installationsskripte:
+- Tools/Voice/Install-Whisper_Windows.ps1
+- Tools/Voice/Install-QwenIntent_Windows.ps1
+- Tools/Voice/Install-Piper_AmyMedium_Windows.ps1
+
+6. Relevante neue bzw. geänderte Dateien
+-----------------------------------------
+- SpaceSim.Godot/Commands/: Browser-Frontend der Command Console
+- SpaceSim.Stations/Commands/: thread-sicherer Command-Puffer und Status
+- SpaceSim.Godot/Voice/: Whisper, Qwen und Piper-Adapter
+- SpaceSim.Godot/UI/Bridge/BridgeUi.cs: Notification-Liste
+- SpaceSim.Godot/Flight.cs: autoritative Command-Ausführung, Ereignisadapter,
+  Reaktor-Completion-Confirm und TTS-Aufruf
+- docs/StationProtocol.md: Command-Station-Protokoll
+- docs/Commands_Notifications/Commands_Notifications.xlsx: aktuelle Matrix
+- docs/LocalIntent.md und docs/NotificationSpeech.md: lokale Modelle
+
+7. Validierung
+--------------
+- dotnet build SpaceSim.Godot/SpaceSim.Godot.csproj: erfolgreich, 0 Warnungen,
+  0 Fehler.
+- SpaceSim.Core.Tests: 100/100 Tests bestanden.
+- Piper Amy medium erzeugte lokal erfolgreich eine Test-WAV.
+- Der normale Godot-Smoke-Test bestand.
+- Der vollständige Godot-Testlauf meldet weiterhin beim Warp-Smoke-Test bei
+  Tick 601 einen Fehler beim erwarteten Öffnen der Sternenkarte. Der Fehler
+  betrifft den bestehenden Warp-Szenarioablauf, nicht den TTS- oder Command-
+  Pfad, und sollte separat untersucht werden.
+
+Bekannte Einschränkungen
+------------------------
+- Piper Amy medium ist eine englische Stimme; die aktuellen Notification-Texte
+  sind deshalb bewusst englisch.
+- Es gibt noch keine Lautstärke-, Stimm- oder Sprach-Auswahl in den Optionen.
+- Voice-Input und TTS sind für den Windows-Haupt-PC vorbereitet; die
+  Browserstationen selbst benötigen weder Mikrofon noch TTS-Runtime.

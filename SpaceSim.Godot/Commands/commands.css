@@ -1,0 +1,24 @@
+:root { color-scheme: dark; font-family: "Courier New", monospace; background: #050a0d; color: #d8edeb; }
+* { box-sizing: border-box; }
+body { min-height: 100vh; margin: 0; background: radial-gradient(circle at 50% 0%, #112a2b 0, #081216 45%, #030607 100%); }
+.console-shell { width: min(1000px, calc(100% - 32px)); min-height: 100vh; margin: auto; padding: 30px 0 22px; display: grid; grid-template-rows: auto 1fr auto auto; gap: 18px; }
+.topbar, .terminal, .help-panel { border: 1px solid #315f60; background: rgba(6, 18, 22, .92); box-shadow: 0 0 28px rgba(43, 208, 194, .08), inset 0 0 20px rgba(0, 190, 180, .025); }
+.topbar { min-height: 94px; display: flex; align-items: center; justify-content: space-between; padding: 16px 22px; border-left: 5px solid #65d8c4; }
+.topbar p, h1, h2 { margin: 0; }
+.topbar p { color: #7fa7a3; font-size: 12px; letter-spacing: .13em; }
+h1 { margin-top: 4px; color: #bbf9e6; font-size: clamp(22px, 4vw, 36px); letter-spacing: .08em; }
+.connection { font-size: 13px; letter-spacing: .08em; color: #85dfbd; }
+.connection i { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+.connection.offline { color: #ef7772; }
+.terminal { min-height: 410px; display: grid; grid-template-rows: auto 1fr auto; }
+.terminal-heading { display: flex; justify-content: space-between; padding: 11px 15px; color: #8cdbb8; border-bottom: 1px solid #315f60; font-size: 12px; letter-spacing: .1em; }
+.history { overflow-y: auto; min-height: 0; padding: 17px 18px; font-size: 15px; line-height: 1.65; }
+.history p { margin: 0 0 7px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.history .command { color: #c9f7ee; }.history .accepted { color: #82e5ad; }.history .rejected { color: #ff9a72; }.history .system { color: #83c8e5; }.history .hint { color: #7f9695; font-size: 12px; }
+.command-form { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; border-top: 1px solid #315f60; padding: 12px 14px; color: #65d8c4; font-size: 22px; }
+#command-input { min-width: 0; border: 0; outline: 0; background: transparent; color: #f2fffb; font: inherit; font-size: 16px; text-transform: uppercase; }
+#command-input::placeholder { color: #53706e; }
+button { cursor: pointer; border: 1px solid #4da995; padding: 8px 12px; background: #103a36; color: #b9f6e2; font: 12px "Courier New", monospace; letter-spacing: .08em; }
+button:hover { background: #175148; }
+.help-panel { padding: 15px 18px; }.help-panel h2 { color: #8cdbb8; font-size: 14px; letter-spacing: .1em; }.help-panel dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 12px 0 0; }.help-panel div { border-left: 2px solid #315f60; padding-left: 10px; }.help-panel dt { color: #d6f7ed; font-size: 13px; }.help-panel dd { margin: 7px 0 0; color: #8da5a2; font: 12px/1.35 system-ui, sans-serif; }footer { color: #5f8580; text-align: center; font-size: 11px; letter-spacing: .12em; }
+@media (max-width: 720px) { .console-shell { width: min(100% - 18px, 1000px); padding-top: 10px; }.topbar { padding: 14px; }.help-panel dl { grid-template-columns: 1fr; }.connection { font-size: 11px; }.terminal { min-height: 360px; } }

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpaceSim Command Console</title>
+  <link rel="stylesheet" href="commands.css">
+</head>
+<body>
+  <main class="console-shell">
+    <header class="topbar">
+      <div>
+        <p>SPACESIM / STATION 05</p>
+        <h1>COMMAND CONSOLE</h1>
+      </div>
+      <div id="connection" class="connection offline"><i></i> OFFLINE</div>
+    </header>
+
+    <section class="terminal" aria-label="Command console">
+      <div class="terminal-heading"><span>BRIDGE COMMAND UPLINK</span><span id="tick">TICK ------</span></div>
+      <div id="history" class="history" aria-live="polite">
+        <p class="system">COMMAND CONSOLE READY</p>
+        <p class="hint">AUTOPILOT ON | AUTOPILOT OFF | REACTOR 80% | SONAR ON | SONAR OFF</p>
+      </div>
+      <form id="command-form" class="command-form">
+        <label for="command-input">&gt;</label>
+        <input id="command-input" autocomplete="off" autocapitalize="characters" spellcheck="false"
+          placeholder="ENTER COMMAND" aria-label="Command input" maxlength="160">
+        <button type="submit">EXECUTE</button>
+      </form>
+    </section>
+
+    <section class="help-panel" aria-label="Available commands">
+      <h2>AVAILABLE COMMANDS</h2>
+      <dl>
+        <div><dt>AUTOPILOT ON / OFF</dt><dd>Enable or disengage the bridge flight computer.</dd></div>
+        <div><dt>REACTOR &lt;0–100%&gt;</dt><dd>Set the Voltarium reactor target.</dd></div>
+        <div><dt>SONAR ON / OFF</dt><dd>Send an active-sonar ping or return the console to standby.</dd></div>
+      </dl>
+    </section>
+    <footer>AUTHORITATIVE COMMAND PATH / PROTOCOL 9</footer>
+  </main>
+  <script src="commands.js"></script>
+</body>
+</html>

@@ -9,3 +9,16 @@ Godot_v*-mono_win64/
 Godot_v*_mono_win64/
 *.user
 *.tmp
+.~lock.*#
+/SpaceSim.Godot/Voice/Runtime/*
+!/SpaceSim.Godot/Voice/Runtime/.gitkeep
+/SpaceSim.Godot/Voice/Models/*
+!/SpaceSim.Godot/Voice/Models/.gitkeep
+/SpaceSim.Godot/Voice/IntentRuntime/*
+!/SpaceSim.Godot/Voice/IntentRuntime/.gitkeep
+/SpaceSim.Godot/Voice/IntentModels/*
+!/SpaceSim.Godot/Voice/IntentModels/.gitkeep
+/SpaceSim.Godot/Voice/PiperRuntime/*
+!/SpaceSim.Godot/Voice/PiperRuntime/.gitkeep
+/SpaceSim.Godot/Voice/PiperModels/*
+!/SpaceSim.Godot/Voice/PiperModels/.gitkeep

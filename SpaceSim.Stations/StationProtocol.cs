@@ -7,4 +7,5 @@ public static class StationProtocol
     public const string VoltariumStation = "voltarium";
     public const string SensoriumStation = "sensorium";
     public const string DebugStation = "debug";
+    public const string CommandsStation = "commands";
 }

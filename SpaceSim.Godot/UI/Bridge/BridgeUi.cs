@@ -8,6 +8,11 @@ namespace SpaceSim.GodotClient.UI;
 
 public partial class BridgeUi : Control
 {
+    private const string NotificationPanelId = "asset-1791645577805";
+    private const string NotificationTitleId = "text-1791646188596";
+    private const int MaximumNotifications = 4;
+    private const double NotificationLifetimeSeconds = 5d;
+    private const double NotificationFadeSeconds = 1d;
     private static readonly Color Cyan = new("8bdcff");
     private static readonly Color LabelBlue = new("8eb7d2");
     private static readonly Color Value = new("e8f5ff");
@@ -27,6 +32,8 @@ public partial class BridgeUi : Control
     private readonly Dictionary<string, Label> _labels = new();
     private readonly Dictionary<string, ColorRect[]> _bars = new();
     private readonly Dictionary<string, Sprite2D> _assets = new();
+    private readonly List<BridgeNotification> _notifications = [];
+    private readonly List<NotificationRow> _notificationRows = [];
     private Font _font = ThemeDB.FallbackFont;
     private TextureRect _referenceOverlay = null!;
     private Button _warpButton = null!;
@@ -88,6 +95,7 @@ public partial class BridgeUi : Control
         UpdateEnergy();
         UpdateFlight();
         UpdateBoardComputer();
+        UpdateNotifications();
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -108,6 +116,11 @@ public partial class BridgeUi : Control
 
         foreach (LayoutItem item in items)
         {
+            // The layout contains four visual preview rows. Runtime rows are built below so
+            // notifications can be added, expire and reuse the matching severity treatment.
+            if (item.ParentId == NotificationPanelId && item.Id != NotificationTitleId)
+                continue;
+
             switch (item.Type)
             {
                 case "asset" when item.Id != "chassis":
@@ -124,7 +137,112 @@ public partial class BridgeUi : Control
                     break;
             }
         }
+
+        BuildNotificationRows(root);
     }
+
+    /// <summary>
+    /// Adds a short-lived Bridge notification. Stations own the meaning of the message;
+    /// the Bridge only presents it with the station icon and severity treatment.
+    /// </summary>
+    public void PostNotification(BridgeNotificationStation station, string message, BridgeNotificationSeverity severity)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+
+        double now = CurrentTimeSeconds();
+        _notifications.RemoveAll(notification => notification.ExpiresAt <= now);
+        while (_notifications.Count >= MaximumNotifications) _notifications.RemoveAt(0);
+        _notifications.Add(new BridgeNotification(station, message.Trim(), severity, now));
+        UpdateNotifications();
+    }
+
+    public void ClearNotifications()
+    {
+        _notifications.Clear();
+        UpdateNotifications();
+    }
+
+    private void BuildNotificationRows(Control parent)
+    {
+        // The supplied layout uses a 322 × 75 row every 44–45 pixels, giving four
+        // readable entries inside the new Notifications frame.
+        float[] rowOffsets = [793f, 836f, 880f, 925f];
+        for (int index = 0; index < MaximumNotifications; index++)
+        {
+            var root = new Control
+            {
+                Name = $"NotificationRow{index + 1}",
+                Position = new Vector2(1183, rowOffsets[index]),
+                Size = new Vector2(322, 75),
+                MouseFilter = MouseFilterEnum.Ignore,
+                Visible = false
+            };
+            parent.AddChild(root);
+
+            Sprite2D background = AddNotificationSprite(root, "row", "24.png", Vector2.Zero, new Vector2(322, 75));
+            Sprite2D icon = AddNotificationSprite(root, "station", "Icon Brücke.png", new Vector2(18, 18), new Vector2(40, 35));
+            Sprite2D indicator = AddNotificationSprite(root, "severity", "28.png", new Vector2(247, 19), new Vector2(64, 24));
+            var text = new Label
+            {
+                Name = "Message",
+                Position = new Vector2(59, 20),
+                Size = new Vector2(182, 30),
+                MouseFilter = MouseFilterEnum.Ignore,
+                VerticalAlignment = VerticalAlignment.Center,
+                AutowrapMode = TextServer.AutowrapMode.Off,
+                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis
+            };
+            text.AddThemeFontOverride("font", _font);
+            text.AddThemeFontSizeOverride("font_size", 17);
+            root.AddChild(text);
+            _notificationRows.Add(new NotificationRow(root, background, icon, indicator, text));
+        }
+    }
+
+    private static Sprite2D AddNotificationSprite(Node parent, string name, string file, Vector2 position, Vector2 size)
+    {
+        Texture2D texture = Load(file);
+        var sprite = new Sprite2D
+        {
+            Name = name,
+            Texture = texture,
+            Position = position,
+            Centered = false,
+            Scale = new Vector2(size.X / texture.GetWidth(), size.Y / texture.GetHeight())
+        };
+        parent.AddChild(sprite);
+        return sprite;
+    }
+
+    private void UpdateNotifications()
+    {
+        if (_notificationRows.Count == 0) return;
+
+        double now = CurrentTimeSeconds();
+        _notifications.RemoveAll(notification => notification.ExpiresAt <= now);
+        BridgeNotification[] visibleNotifications = _notifications
+            .OrderByDescending(notification => notification.CreatedAt)
+            .ToArray();
+
+        for (int index = 0; index < _notificationRows.Count; index++)
+        {
+            NotificationRow row = _notificationRows[index];
+            if (index >= visibleNotifications.Length)
+            {
+                row.Root.Visible = false;
+                continue;
+            }
+
+            BridgeNotification notification = visibleNotifications[index];
+            row.Apply(notification);
+            double remaining = notification.ExpiresAt - now;
+            float alpha = (float)Math.Clamp(remaining / NotificationFadeSeconds, 0d, 1d);
+            row.Root.Modulate = new Color(1f, 1f, 1f, alpha);
+            row.Root.Visible = true;
+        }
+    }
+
+    private static double CurrentTimeSeconds() => Time.GetTicksMsec() / 1000d;
 
     private void BindDynamicLabels()
     {
@@ -434,6 +552,7 @@ public partial class BridgeUi : Control
         public string Id { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public string File { get; set; } = string.Empty;
+        public string? ParentId { get; set; }
         public string? Text { get; set; }
         public string? Color { get; set; }
         public float X { get; set; }
@@ -465,4 +584,91 @@ public partial class BridgeUi : Control
         Damaged,
         Offline
     }
+
+    private sealed class BridgeNotification
+    {
+        public BridgeNotificationStation Station { get; }
+        public string Message { get; }
+        public BridgeNotificationSeverity Severity { get; }
+        public double CreatedAt { get; }
+        public double ExpiresAt => CreatedAt + NotificationLifetimeSeconds;
+
+        public BridgeNotification(BridgeNotificationStation station, string message,
+            BridgeNotificationSeverity severity, double createdAt)
+        {
+            Station = station;
+            Message = message;
+            Severity = severity;
+            CreatedAt = createdAt;
+        }
+    }
+
+    private sealed class NotificationRow
+    {
+        public Control Root { get; }
+        private readonly Sprite2D _background;
+        private readonly Sprite2D _stationIcon;
+        private readonly Sprite2D _severityIndicator;
+        private readonly Label _message;
+
+        public NotificationRow(Control root, Sprite2D background, Sprite2D stationIcon,
+            Sprite2D severityIndicator, Label message)
+        {
+            Root = root;
+            _background = background;
+            _stationIcon = stationIcon;
+            _severityIndicator = severityIndicator;
+            _message = message;
+        }
+
+        public void Apply(BridgeNotification notification)
+        {
+            (string background, string indicator, Color color) = notification.Severity switch
+            {
+                BridgeNotificationSeverity.Critical => ("21.png", "25.png", Red),
+                BridgeNotificationSeverity.Warning => ("22.png", "26.png", Yellow),
+                BridgeNotificationSeverity.InfoGood => ("23.png", "27.png", Green),
+                _ => ("24.png", "28.png", Cyan)
+            };
+            SetTexture(_background, background, new Vector2(322, 75));
+            SetTexture(_severityIndicator, indicator, new Vector2(64, 24));
+            SetTexture(_stationIcon, StationIcon(notification.Station), new Vector2(40, 35));
+            _message.Text = notification.Message;
+            SetLabelColor(_message, color);
+        }
+
+        private static void SetTexture(Sprite2D sprite, string file, Vector2 size)
+        {
+            Texture2D texture = Load(file);
+            sprite.Texture = texture;
+            sprite.Scale = new Vector2(size.X / texture.GetWidth(), size.Y / texture.GetHeight());
+        }
+
+        private static string StationIcon(BridgeNotificationStation station) => station switch
+        {
+            BridgeNotificationStation.Shields => "Schilde Icon.png",
+            BridgeNotificationStation.Armarium => "Amarium Icon.png",
+            // Dedicated Sensorium and Voltarium artwork can replace this neutral station
+            // icon later without changing notification producers or the queue API.
+            BridgeNotificationStation.Sensorium or BridgeNotificationStation.Voltarium => "board_computer_icon.png",
+            _ => "Icon Brücke.png"
+        };
+    }
+}
+
+public enum BridgeNotificationSeverity
+{
+    Critical,
+    Warning,
+    InfoNeutral,
+    InfoGood
+}
+
+public enum BridgeNotificationStation
+{
+    Bridge,
+    Sensorium,
+    Voltarium,
+    Armarium,
+    Shields
 }
