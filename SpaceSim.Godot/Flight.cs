@@ -79,6 +79,8 @@ public partial class Flight : Node
     private HyperspacePhase _lastHyperspacePhase;
     private bool _sensoriumEnabled = true;
     private bool _quickStartEnabled;
+    private bool _voiceInputEnabled = true;
+    private bool _voiceOutputEnabled = true;
     private bool _startDuelDirect;
     private bool _duelMode;
     private bool _duelFinished;
@@ -106,6 +108,8 @@ public partial class Flight : Node
         _startDuelDirect = OS.GetCmdlineUserArgs().Contains("--duel");
         _capturePath = OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith("--capture="))?[10..];
         _quickStartEnabled = LoadQuickStartEnabled();
+        _voiceInputEnabled = LoadVoiceInputEnabled();
+        _voiceOutputEnabled = LoadVoiceOutputEnabled();
         _boosterConfiguration = LoadBoosterConfiguration();
         _duelMode = _startDuelDirect;
         _simulation = !_smokeTest && !_warpSmokeTest && !_enemySmokeTest && _startDuelDirect
@@ -135,6 +139,10 @@ public partial class Flight : Node
         _mainMenu.SensoriumEnabledChanged += SetSensoriumEnabled;
         _mainMenu.QuickStartEnabled = _quickStartEnabled;
         _mainMenu.QuickStartEnabledChanged += SetQuickStartEnabled;
+        _mainMenu.VoiceInputEnabled = _voiceInputEnabled;
+        _mainMenu.VoiceInputEnabledChanged += SetVoiceInputEnabled;
+        _mainMenu.VoiceOutputEnabled = _voiceOutputEnabled;
+        _mainMenu.VoiceOutputEnabledChanged += SetVoiceOutputEnabled;
         _mainMenu.BoosterConfiguration = _boosterConfiguration;
         _mainMenu.BoosterConfigurationChanged += SetBoosterConfiguration;
         _mainMenu.StartRequested += StartFromMainMenu;
@@ -220,6 +228,7 @@ public partial class Flight : Node
         GeneratedShipLoadout? enemyLoadout = _duelEnemyLoadout?.Loadout;
         return new Simulation(settings, player, random.Next(), enemyInitial: enemy, duelMode: true,
             duelAiModel: EnemyAiModel.Kestrel, playerTuning: playerLoadout?.Tuning, enemyTuning: enemyLoadout?.Tuning,
+            playerBoardComputer: playerLoadout?.BoardComputer, playerSubclass: playerLoadout?.Subclass ?? ShipSubclass.Patrol,
             duelBoardComputer: enemyLoadout?.BoardComputer, duelEnemyShipClass: enemyLoadout?.ShipClass ?? _duelEnemyShipClass,
             duelPlayerMassKg: playerLoadout?.Hull.MassKg, duelPlayerMaximumHull: playerLoadout?.Hull.MaximumHull,
             duelEnemyLoadout: enemyLoadout, duelEnemyName: _duelEnemyLoadout?.Name);
@@ -400,7 +409,7 @@ public partial class Flight : Node
     private void Notify(BridgeNotificationStation station, string text, BridgeNotificationSeverity severity)
     {
         _bridgeUi.PostNotification(station, text, severity);
-        _notificationSpeech.Speak(text);
+        if (_voiceOutputEnabled) _notificationSpeech.Speak(text);
     }
 
     private void ProcessCommandConsole()
@@ -428,6 +437,7 @@ public partial class Flight : Node
 
     private async void HandleVoiceTranscription(VoiceTranscriptionResult result)
     {
+        if (!_voiceInputEnabled) return;
         if (!result.Success)
         {
             _stationServer?.UpdateCommandConsoleState(new CommandConsoleState("VOICE", result.Message, false,
@@ -522,7 +532,9 @@ public partial class Flight : Node
         }
 
         _autopilot = new AutopilotController(_simulation.Settings.EnemyAi,
-            _simulation.Settings.ReverseThrustNewtons / _simulation.Settings.ShipMassKg);
+            _simulation.World.Ship.Tuning.ReverseThrustNewtons / _simulation.World.Ship.MassKg,
+            _simulation.World.PlayerBoardComputer, _simulation.World.PlayerSubclass,
+            unchecked((int)_simulation.World.Tick + target.EnemyId));
         _autopilotTargetId = target.EnemyId;
         _keyboard.Clear();
         message = $"AUTOPILOT ENGAGED: {target.Name}";
@@ -592,7 +604,7 @@ public partial class Flight : Node
             }
             return;
         }
-        if (_simulation.World.IsPlayerInRealSpace && !_starMap.Visible && input is InputEventKey voiceKey &&
+        if (_voiceInputEnabled && _simulation.World.IsPlayerInRealSpace && !_starMap.Visible && input is InputEventKey voiceKey &&
             (voiceKey.PhysicalKeycode == Key.V || voiceKey.Keycode == Key.V))
         {
             if (voiceKey.Pressed && !voiceKey.Echo) _voiceCommandRecorder.StartRecording();
@@ -846,6 +858,16 @@ public partial class Flight : Node
         return LoadBridgePreferences().GetValue("bridge", "quick_start_enabled", false).AsBool();
     }
 
+    private static bool LoadVoiceInputEnabled()
+    {
+        return LoadBridgePreferences().GetValue("bridge", "voice_input_enabled", true).AsBool();
+    }
+
+    private static bool LoadVoiceOutputEnabled()
+    {
+        return LoadBridgePreferences().GetValue("bridge", "voice_output_enabled", true).AsBool();
+    }
+
     private static BoosterConfiguration LoadBoosterConfiguration()
     {
         ConfigFile preferences = LoadBridgePreferences();
@@ -875,6 +897,26 @@ public partial class Flight : Node
         _quickStartEnabled = enabled;
         var preferences = LoadBridgePreferences();
         preferences.SetValue("bridge", "quick_start_enabled", enabled);
+        if (preferences.Save(BridgePreferencesPath) != Error.Ok)
+            GD.PushWarning("Could not save bridge preferences.");
+    }
+
+    private void SetVoiceInputEnabled(bool enabled)
+    {
+        _voiceInputEnabled = enabled;
+        if (!enabled) _voiceCommandRecorder.CancelRecording();
+        var preferences = LoadBridgePreferences();
+        preferences.SetValue("bridge", "voice_input_enabled", enabled);
+        if (preferences.Save(BridgePreferencesPath) != Error.Ok)
+            GD.PushWarning("Could not save bridge preferences.");
+    }
+
+    private void SetVoiceOutputEnabled(bool enabled)
+    {
+        _voiceOutputEnabled = enabled;
+        if (!enabled) _notificationSpeech.Clear();
+        var preferences = LoadBridgePreferences();
+        preferences.SetValue("bridge", "voice_output_enabled", enabled);
         if (preferences.Save(BridgePreferencesPath) != Error.Ok)
             GD.PushWarning("Could not save bridge preferences.");
     }
@@ -1200,7 +1242,8 @@ public partial class Flight : Node
             }
             return;
         }
-        ShipCommand flight = _autopilot.Tick(_simulation.World.Ship, target.Ship);
+        ShipCommand flight = _autopilot.Tick(_simulation.World.Ship, _simulation.World.Lance, target.Ship, target.Lance,
+            _simulation.World.GameState);
         // Preserve manual/Armarium weapon intents; the autopilot owns only flight controls.
         _lastCommand = _lastCommand with
         {

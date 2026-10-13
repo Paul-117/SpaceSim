@@ -16,6 +16,7 @@ public sealed record ArmariumState(
     float AvailablePower,
     float MaximumPower,
     float LanceSystemCondition,
+    float LanceRangeMeters,
     long SimulationTick);
 
 public static class ArmariumStateBuilder
@@ -31,7 +32,7 @@ public static class ArmariumStateBuilder
         return new ArmariumState(hasTarget, bearing, distance, world.Lance.ChargeFraction, world.Lance.IsReady,
             world.LanceAim.YawOffsetDegrees, targetHitSequence, lastTargetHitBearingDegrees,
             world.Ship.Power.WeaponsAvailable, world.Ship.Power.MaximumWeaponsDraw,
-            world.Ship.Systems.WeaponsCondition, world.Tick);
+            world.Ship.Systems.WeaponsCondition, world.Ship.Tuning.LanceRangeMeters, world.Tick);
     }
 
     /// <summary>Horizontal distance for the tactical map; vertical separation is not represented there.</summary>

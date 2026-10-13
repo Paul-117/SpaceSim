@@ -28,6 +28,7 @@ public sealed class Simulation
         bool duelMode = false,
         EnemyAiModel duelAiModel = EnemyAiModel.Kestrel,
         ShipTuning? playerTuning = null, ShipTuning? enemyTuning = null,
+        BoardComputerProfile? playerBoardComputer = null, ShipSubclass playerSubclass = ShipSubclass.Patrol,
         BoardComputerProfile? duelBoardComputer = null,
         EnemyShipClass duelEnemyShipClass = EnemyShipClass.Corvette,
         float? duelPlayerMassKg = null, float? duelPlayerMaximumHull = null,
@@ -49,7 +50,7 @@ public sealed class Simulation
         playerTuning?.Validate();
         enemyTuning?.Validate();
         World = new WorldState(CreateShip(initialShip, tuning: playerTuning,
-            massKg: duelPlayerMassKg, maximumHull: duelPlayerMaximumHull), encounters);
+            massKg: duelPlayerMassKg, maximumHull: duelPlayerMaximumHull), encounters, playerBoardComputer, playerSubclass);
         if (Settings.StartWarpReady)
         {
             World.WarpDrive.ChargedSeconds = Settings.WarpChargeSeconds;

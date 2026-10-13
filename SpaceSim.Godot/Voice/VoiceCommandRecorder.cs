@@ -71,6 +71,16 @@ public partial class VoiceCommandRecorder : Node
         TranscriptionCompleted?.Invoke(result);
     }
 
+    /// <summary>Discards an active microphone capture without starting transcription.</summary>
+    public void CancelRecording()
+    {
+        if (!IsRecording) return;
+        IsRecording = false;
+        _recordEffect.SetRecordingActive(false);
+        _microphone.Stop();
+        StatusChanged?.Invoke("VOICE INPUT DISABLED");
+    }
+
     public override void _ExitTree()
     {
         if (_recordEffect is not null) _recordEffect.SetRecordingActive(false);

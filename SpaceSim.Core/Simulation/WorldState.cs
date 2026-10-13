@@ -4,12 +4,18 @@ using SpaceSim.Core.Targets;
 using SpaceSim.Core.Weapons;
 using SpaceSim.Core.Navigation;
 using SpaceSim.Core.Combat;
+using SpaceSim.Core.AI;
+using SpaceSim.Core.Generation;
 
 namespace SpaceSim.Core.Simulation;
 
 public sealed class WorldState
 {
     public ShipState Ship { get; }
+    /// <summary>The installed player flight computer. It governs only automated commands.</summary>
+    public BoardComputerProfile PlayerBoardComputer { get; }
+    /// <summary>Combat doctrine used by the player autopilot for the installed loadout.</summary>
+    public ShipSubclass PlayerSubclass { get; }
     public LanceState Lance { get; } = new();
     public LanceAimState LanceAim { get; } = new();
     public Vector3 LanceDirection => LanceAimSystem.GetDirection(Ship.Forward, LanceAim.YawOffsetDegrees);
@@ -36,9 +42,13 @@ public sealed class WorldState
     public long Tick { get; internal set; }
     public double TimeSeconds => (double)Tick / SimulationSettings.TickRate;
 
-    internal WorldState(ShipState ship, EncounterState[] encounters)
+    internal WorldState(ShipState ship, EncounterState[] encounters, BoardComputerProfile? playerBoardComputer = null,
+        ShipSubclass playerSubclass = ShipSubclass.Patrol)
     {
         Ship = ship;
+        PlayerBoardComputer = playerBoardComputer ?? BoardComputerProfile.StandardMk3;
+        PlayerBoardComputer.Validate();
+        PlayerSubclass = playerSubclass;
         Encounters = Array.AsReadOnly(encounters);
         CurrentEncounter = encounters[0];
     }

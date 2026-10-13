@@ -48,6 +48,11 @@ public sealed class EnemyAiController
         _boardComputer = new BoardComputerCommandProcessor(BoardComputer, seed);
     }
 
+    /// <summary>Creates the same Kestrel command pipeline for a player-side autopilot.</summary>
+    public static EnemyAiController CreateDuelPilot(EnemyAiSettings settings, float nominalReverseAcceleration,
+        BoardComputerProfile boardComputer, ShipSubclass subclass, int seed = 0) =>
+        new(settings, EnemyDifficulty.Hard, nominalReverseAcceleration, EnemyAiModel.Kestrel, seed, boardComputer, subclass);
+
     internal ShipCommand Tick(EnemyShipState enemy, ShipState player, LanceState playerLance,
         float lanceRange, GameState gameState)
     {
@@ -61,7 +66,7 @@ public sealed class EnemyAiController
 
     /// <summary>Runs this controller as a symmetric duel pilot. The owner supplies the normal
     /// ShipCommand; it does not receive any privileged simulation access.</summary>
-    internal ShipCommand TickDuelPilot(ShipState controlledShip, LanceState controlledLance,
+    public ShipCommand TickDuelPilot(ShipState controlledShip, LanceState controlledLance,
         ShipState targetShip, LanceState targetLance, float lanceRange, GameState gameState) =>
         TickCore(controlledShip, controlledLance, targetShip, targetLance, lanceRange, gameState, detectTarget: false, null);
 

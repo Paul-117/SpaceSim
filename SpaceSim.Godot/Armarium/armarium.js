@@ -14,12 +14,13 @@
   const lanceLabel = document.getElementById("lance-label");
   const chargeFill = document.getElementById("charge-fill");
   const turretStatus = document.getElementById("turret-status");
+  const weaponRange = document.getElementById("weapon-range");
   const availableEnergy = document.getElementById("available-energy");
   const lanceSystemStatus = document.getElementById("lance-system-status");
   const mapStatus = document.getElementById("map-status");
   let socket = null;
   let heldTurretDirection = null;
-  let state = { targetAvailable: false, targetBearingDegrees: 0, targetDistanceMeters: 0, lanceCharge: 0, lanceReady: false, lanceTurretAngleDegrees: 0, targetHitSequence: 0, lastTargetHitBearingDegrees: 0, availablePower: 0, maximumPower: 40, lanceSystemCondition: 1 };
+  let state = { targetAvailable: false, targetBearingDegrees: 0, targetDistanceMeters: 0, lanceCharge: 0, lanceReady: false, lanceTurretAngleDegrees: 0, targetHitSequence: 0, lastTargetHitBearingDegrees: 0, availablePower: 0, maximumPower: 40, lanceSystemCondition: 1, lanceRangeMeters: 1000 };
   let displayedTargetBearing = 0;
   let displayedTurretAngle = 0;
   let lastTargetHitSequence = null;
@@ -164,8 +165,22 @@
     const lanceStatus = effectiveFactor >= .999 ? "ONLINE" : effectiveFactor > 0 ? "LIMITED" : "OFFLINE";
     lanceSystemStatus.textContent = `LANCE STATUS: ${lanceStatus}`;
     lanceSystemStatus.className = lanceStatus === "ONLINE" ? "" : lanceStatus === "LIMITED" ? "limited" : "offline";
+    weaponRange.textContent = `WEAPON RANGE ${formatRange(state.lanceRangeMeters)}`;
     turretStatus.textContent = `TURRET ${state.lanceTurretAngleDegrees >= 0 ? "+" : ""}${state.lanceTurretAngleDegrees.toFixed(1)}° / ±5°`;
-    targetStatus.textContent = state.targetAvailable ? "TARGET ACQUIRED" : "NO TARGET";
+    if (!state.targetAvailable) {
+      targetStatus.textContent = "NO TARGET";
+      targetStatus.className = "";
+    } else if (state.targetDistanceMeters <= state.lanceRangeMeters) {
+      targetStatus.textContent = `TARGET IN RANGE · ${formatRange(state.targetDistanceMeters)}`;
+      targetStatus.className = "in-range";
+    } else {
+      targetStatus.textContent = `TARGET ACQUIRED · ${formatRange(state.targetDistanceMeters)}`;
+      targetStatus.className = "";
+    }
+  }
+  function formatRange(meters) {
+    const value = Number(meters) || 0;
+    return value >= 1000 ? `${(value / 1000).toFixed(value % 1000 ? 2 : 1)} KM` : `${Math.round(value)} M`;
   }
   function connect() {
     const scheme = location.protocol === "https:" ? "wss" : "ws";

@@ -36,7 +36,7 @@ public sealed class StationServer : IDisposable
     private readonly ConcurrentDictionary<int, StationConnection> _connections = new();
     private readonly CancellationTokenSource _stopping = new();
     private readonly TcpListener _listener;
-    private ArmariumState _latestState = new(false, 0f, 0f, 0f, false, 0f, 0, 0f, 0f, 40f, 1f, 0);
+    private ArmariumState _latestState = new(false, 0f, 0f, 0f, false, 0f, 0, 0f, 0f, 40f, 1f, 1_000f, 0);
     private VoltariumState _latestVoltariumState = new(100f, 100f, 125f, 125f, 0f, 100f, 100f, 0f,
         40f, 28f, 32f, 50f, 35f, 40f, 50f, 35f, 40f, 0);
     private SensoriumState _latestSensoriumState = new(Array.Empty<SensoriumContact>(), 0);
@@ -438,6 +438,7 @@ public sealed class StationServer : IDisposable
         public float AvailablePower => State.AvailablePower;
         public float MaximumPower => State.MaximumPower;
         public float LanceSystemCondition => State.LanceSystemCondition;
+        public float LanceRangeMeters => State.LanceRangeMeters;
         public long SimulationTick => State.SimulationTick;
     }
     private sealed record VoltariumStateMessage(VoltariumState State, long ConnectionSequence)

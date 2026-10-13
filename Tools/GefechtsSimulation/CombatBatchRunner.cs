@@ -69,6 +69,7 @@ public static class CombatBatchRunner
         };
         var simulation = new Simulation(settings, nomadInitial, seed, enemyInitial: enemyInitial, duelMode: true,
             duelAiModel: EnemyAiModel.Kestrel, playerTuning: nomadGenerated.Tuning, enemyTuning: enemyGenerated.Tuning,
+            playerBoardComputer: nomadGenerated.BoardComputer, playerSubclass: nomadGenerated.Subclass,
             duelBoardComputer: enemyGenerated.BoardComputer, duelEnemyShipClass: enemy.ShipClass,
             duelPlayerMassKg: nomad.MassKg, duelPlayerMaximumHull: nomad.MaximumHull,
             duelEnemyLoadout: enemyGenerated, duelEnemyName: enemy.Name);

@@ -370,6 +370,11 @@ public partial class BridgeUi : Control
             _shieldsState.Text = $"REBOOT {World.Ship.Shield.RebootRemaining:0.0}s";
             SetLabelColor(_shieldsState, Yellow);
         }
+        else if (World.Ship.Shield.CurrentShield < World.Ship.Shield.MaximumShield - .001f)
+        {
+            _shieldsState.Text = $"SHIELD {World.Ship.Shield.CurrentShield:0}/{World.Ship.Shield.MaximumShield:0} HP";
+            SetLabelColor(_shieldsState, Yellow);
+        }
         else
         {
             SetSystemStatus(_shieldsState, World.Ship.Power.ShieldsAvailable, World.Ship.Power.MaximumShieldsDraw,

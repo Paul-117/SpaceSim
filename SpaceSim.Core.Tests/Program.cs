@@ -140,6 +140,8 @@ var tests = new (string Name, Action Run)[]
         Near(Vector3.Distance(duel.World.Ship.Position, enemy.Ship.Position), 2_000f);
         Check(!duel.World.RequireSensoriumConfirmationForBridgeContacts && duel.World.VisibleEnemies.Single() == enemy,
             "Both ships must be mutually visible without Sensorium.");
+        Check(duel.World.PlayerBoardComputer == BoardComputerProfile.StandardMk3,
+            "A player ship without a selected loadout must receive the Standard Mk III board computer.");
         Near(enemy.Ship.Shield.CurrentShield, enemy.Ship.Shield.MaximumShield);
         Step(duel, 1);
         Near(duel.World.Ship.Reactor.OperatingLevelPercent, 100f);
@@ -838,7 +840,7 @@ var tests = new (string Name, Action Run)[]
         ArmariumState noTarget = ArmariumStateBuilder.Build(empty.World);
         Check(!noTarget.TargetAvailable && noTarget.TargetBearingDegrees == 0f && noTarget.LanceCharge == 0f &&
               noTarget.TargetDistanceMeters == 0f && noTarget.LanceTurretAngleDegrees == 0f &&
-              noTarget.MaximumPower == 40f && noTarget.LanceSystemCondition == 1f,
+              noTarget.MaximumPower == 40f && noTarget.LanceSystemCondition == 1f && noTarget.LanceRangeMeters == 1_000f,
             "An empty encounter must not expose a target or world state.");
         Step(empty, 300);
         Check(ArmariumStateBuilder.Build(empty.World).LanceReady,
@@ -1249,7 +1251,8 @@ var tests = new (string Name, Action Run)[]
         JumpToCombat(sim);
         var autopilot = new AutopilotController(sim.Settings.EnemyAi,
             sim.Settings.ReverseThrustNewtons / sim.Settings.ShipMassKg);
-        ShipCommand command = autopilot.Tick(sim.World.Ship, sim.World.CurrentEnemy!.Ship);
+        ShipCommand command = autopilot.Tick(sim.World.Ship, sim.World.Lance,
+            sim.World.CurrentEnemy!.Ship, sim.World.CurrentEnemy.Lance, sim.World.GameState);
         Check(!command.FireLance && !command.AimLanceLeft && !command.AimLanceRight,
             "Autopilot must leave every weapon intent to the bridge and Armarium.");
         Check(autopilot.CurrentState is AutopilotState.Approach or AutopilotState.Attack or AutopilotState.Reposition,
@@ -1785,7 +1788,7 @@ static async Task StationServerSmokeAsync()
         ["debug/index.html"] = "<main>ENEMY AI DEBUG</main>"
     };
     using var server = new StationServer(new StationServerOptions { Port = 0, StateUpdatesPerSecond = 30 }, assets, commands, reactorCommands, sensoriumCommands);
-    server.UpdateState(new ArmariumState(true, -12.4f, 640f, 0.72f, false, 2.5f, 3, -12.4f, 32f, 40f, 1f, 42));
+    server.UpdateState(new ArmariumState(true, -12.4f, 640f, 0.72f, false, 2.5f, 3, -12.4f, 32f, 40f, 1f, 1_000f, 42));
     server.UpdateVoltariumState(new VoltariumState(75f, 70f, 87.5f, 125f, 50f, 100f, 100f, 3.5f,
         40f, 28f, 32f, 35f, 24.5f, 28f, 50f, 35f, 40f, 42));
     server.UpdateSensoriumState(new SensoriumState(
@@ -1813,7 +1816,8 @@ static async Task StationServerSmokeAsync()
           MathF.Abs(state.RootElement.GetProperty("targetDistanceMeters").GetSingle() - 640f) < 0.001f &&
           MathF.Abs(state.RootElement.GetProperty("targetBearingDegrees").GetSingle() + 12.4f) < 0.001f &&
           MathF.Abs(state.RootElement.GetProperty("availablePower").GetSingle() - 32f) < 0.001f &&
-          MathF.Abs(state.RootElement.GetProperty("maximumPower").GetSingle() - 40f) < 0.001f,
+          MathF.Abs(state.RootElement.GetProperty("maximumPower").GetSingle() - 40f) < 0.001f &&
+          MathF.Abs(state.RootElement.GetProperty("lanceRangeMeters").GetSingle() - 1_000f) < 0.001f,
         "Station server must transmit only the current Armarium snapshot.");
     await SendWebSocketJsonAsync(socket, new { type = "fire_lance" });
     bool received = SpinWait.SpinUntil(() => commands.ReadCommand().FireLance, TimeSpan.FromSeconds(1));

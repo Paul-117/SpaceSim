@@ -1,5 +1,8 @@
 using System.Numerics;
+using SpaceSim.Core.Combat;
+using SpaceSim.Core.Generation;
 using SpaceSim.Core.Ships;
+using SpaceSim.Core.Weapons;
 
 namespace SpaceSim.Core.AI;
 
@@ -14,33 +17,40 @@ public sealed class AutopilotController
     private const float AimToleranceRadians = AimToleranceDegrees * MathF.PI / 180f;
     private readonly EnemyAiSettings _settings;
     private readonly float _nominalReverseAcceleration;
+    private readonly EnemyAiController _kestrel;
     private FlightContext _context;
 
     public AutopilotState CurrentState { get; private set; } = AutopilotState.Approach;
     public float TimeInState { get; private set; }
 
-    public AutopilotController(EnemyAiSettings settings, float nominalReverseAcceleration)
+    public AutopilotController(EnemyAiSettings settings, float nominalReverseAcceleration,
+        BoardComputerProfile? boardComputer = null, ShipSubclass subclass = ShipSubclass.Patrol, int seed = 0)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         if (!float.IsFinite(nominalReverseAcceleration) || nominalReverseAcceleration <= 0f)
             throw new ArgumentOutOfRangeException(nameof(nominalReverseAcceleration));
         _nominalReverseAcceleration = nominalReverseAcceleration;
+        _kestrel = EnemyAiController.CreateDuelPilot(_settings, nominalReverseAcceleration,
+            boardComputer ?? BoardComputerProfile.StandardMk3, subclass, seed);
     }
 
-    public ShipCommand Tick(ShipState ship, ShipState target)
+    /// <summary>Compatibility overload for movement-only callers.</summary>
+    public ShipCommand Tick(ShipState ship, ShipState target) =>
+        Tick(ship, new LanceState(), target, new LanceState(), GameState.Running);
+
+    /// <summary>Uses the Kestrel FSM and the installed board computer, then removes all weapon intents.</summary>
+    public ShipCommand Tick(ShipState ship, LanceState lance, ShipState target, LanceState targetLance, GameState gameState)
     {
-        ArgumentNullException.ThrowIfNull(ship);
-        ArgumentNullException.ThrowIfNull(target);
         _context = FlightContext.Create(ship, target);
-        TimeInState += 1f / SpaceSim.Core.Simulation.SimulationSettings.TickRate;
-        EvaluateTransitions();
-        return CurrentState switch
+        ShipCommand command = _kestrel.TickDuelPilot(ship, lance, target, targetLance, ship.Tuning.LanceRangeMeters, gameState);
+        CurrentState = _kestrel.CurrentState switch
         {
-            AutopilotState.Approach => Approach(ship, target),
-            AutopilotState.Attack => AttackPosition(ship),
-            AutopilotState.Reposition => Reposition(ship, target),
-            _ => default
+            EnemyAiState.Attack => AutopilotState.Attack,
+            EnemyAiState.Reposition => AutopilotState.Reposition,
+            _ => AutopilotState.Approach
         };
+        TimeInState = _kestrel.TimeInState;
+        return command with { FireLance = false, AimLanceLeft = false, AimLanceRight = false };
     }
 
     private void EvaluateTransitions()
