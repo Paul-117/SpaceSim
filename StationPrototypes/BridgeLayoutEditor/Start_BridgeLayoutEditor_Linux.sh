@@ -4,24 +4,47 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 editor_file="$script_dir/index.html"
 repo_root="$(cd -- "$script_dir/../.." && pwd)"
+ui_folder="${1:-}"
 port=47871
+
+# A named UI gets its own local server while an older generic editor might still
+# be open in another terminal. This avoids silently serving stale JavaScript.
+if [[ -n "$ui_folder" ]]; then
+  port=47872
+fi
 
 if [[ ! -f "$editor_file" ]]; then
   printf 'Bridge Layout Editor wurde nicht gefunden: %s\n' "$editor_file" >&2
   exit 1
 fi
 
-if ! curl --silent --fail "http://127.0.0.1:$port/api/bridge-assets" >/dev/null 2>&1; then
-  python3 "$script_dir/bridge_layout_server.py" --root "$repo_root" --port "$port" >/tmp/spacesim-bridge-layout-editor.log 2>&1 &
-  sleep 1
+if ! command -v python3 >/dev/null 2>&1; then
+  printf 'Python 3 wurde nicht gefunden. Installiere es mit: sudo apt install python3\n' >&2
+  exit 1
+fi
+
+if [[ -n "$ui_folder" && ! "$ui_folder" =~ ^[A-Za-z0-9_-]+$ ]]; then
+  printf 'Ungueltiger UI-Ordnername: %s\n' "$ui_folder" >&2
+  exit 1
 fi
 
 editor_url="http://127.0.0.1:$port/StationPrototypes/BridgeLayoutEditor/"
-for browser in firefox firefox-esr google-chrome chromium chromium-browser; do
-  if command -v "$browser" >/dev/null 2>&1; then
-    exec "$browser" --new-window "$editor_url"
+if [[ -n "$ui_folder" ]]; then
+  editor_url+="?ui=$ui_folder"
+fi
+if curl --silent --fail "$editor_url" >/dev/null 2>&1; then
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$editor_url" >/dev/null 2>&1 &
+  else
+    printf 'Oeffne diese Adresse manuell:\n%s\n' "$editor_url"
   fi
-done
+  exit 0
+fi
 
-printf 'Kein unterstuetzter Browser gefunden. Bitte Firefox installieren.\n' >&2
-exit 1
+printf 'Starte Bridge Layout Editor auf Port %s ...\n' "$port"
+printf 'Dieses Terminal muss waehrend der Editor geoeffnet ist weiterlaufen.\n'
+server_args=(--root "$repo_root" --port "$port" --open)
+if [[ -n "$ui_folder" ]]; then
+  server_args+=(--ui "$ui_folder")
+fi
+exec python3 "$script_dir/bridge_layout_server.py" "${server_args[@]}"

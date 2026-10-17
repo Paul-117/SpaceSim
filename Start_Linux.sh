@@ -63,6 +63,19 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 export GODOT_NUGET_SOURCE="$package_source"
 
+import_stamp="$godot_project/.godot/.spacesim-import-revision"
+git_revision="$(git -C "$project_root" rev-parse HEAD 2>/dev/null || true)"
+
+# Godot's generated import cache is intentionally not stored in Git. Rebuild it once
+# after every checked-out revision so a fresh Linux clone cannot start with missing PNGs.
+if [[ ! -d "$godot_project/.godot/imported" || \
+      ( -n "$git_revision" && ( ! -f "$import_stamp" || "$(<"$import_stamp")" != "$git_revision" ) ) ]]; then
+    printf 'Importiere Godot-Assets fuer diesen Git-Stand ...\n'
+    "$godot_bin" --headless --editor --path "$godot_project" --import
+    mkdir -p "$(dirname -- "$import_stamp")"
+    printf '%s\n' "$git_revision" > "$import_stamp"
+fi
+
 printf 'Baue SpaceSim mit %s ...\n' "$(basename -- "$godot_bin")"
 dotnet restore "$project_root/SpaceSim.sln" \
     --source "$package_source" \

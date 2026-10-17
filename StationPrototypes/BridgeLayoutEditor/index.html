@@ -3,16 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SpaceSim Bridge Layout Editor</title>
-  <link rel="stylesheet" href="editor.css">
+  <title>SpaceSim UI Layout Editor</title>
+  <link rel="stylesheet" href="editor.css?v=4">
 </head>
 <body>
   <header class="topbar">
     <div>
-      <strong>BRIDGE LAYOUT EDITOR</strong>
-      <span>1920 x 1080</span>
+      <strong>UI LAYOUT EDITOR</strong>
+      <span id="canvas-size">1920 x 1080</span>
     </div>
     <div class="top-actions">
+      <label class="ui-control" for="ui-folder">UI <select id="ui-folder" aria-label="UI folder"></select></label>
       <button id="reference-toggle" type="button">Reference: On</button>
       <button id="grid-toggle" type="button">Grid: On</button>
       <button id="snap-toggle" type="button">Snap: 10 px</button>
@@ -41,8 +42,8 @@
     <section class="canvas-area">
       <div id="canvas-viewport" class="canvas-viewport">
         <div id="stage-wrap">
-          <div id="stage" class="show-grid" aria-label="Bridge UI Layout Preview">
-            <img id="reference" src="../../UI/Bridge/Bridge UI New.png" alt="Bridge UI reference">
+          <div id="stage" class="show-grid" aria-label="UI Layout Preview">
+            <img id="reference" alt="UI reference">
             <div id="objects"></div>
           </div>
         </div>
@@ -102,7 +103,7 @@
   <dialog id="asset-dialog" class="asset-dialog">
     <form method="dialog" class="asset-dialog-shell">
       <div class="asset-dialog-heading">
-        <div><strong>ELEMENT HINZUFUEGEN</strong><span id="asset-dialog-status">Suche UI/Bridge ...</span></div>
+        <div><strong>ELEMENT HINZUFUEGEN</strong><span id="asset-dialog-status">Suche UI-Assets ...</span></div>
         <button value="cancel" aria-label="Schliessen">×</button>
       </div>
       <div id="asset-dialog-list" class="asset-dialog-list"></div>
@@ -112,6 +113,6 @@
       </div>
     </form>
   </dialog>
-  <script src="editor.js"></script>
+  <script src="editor.js?v=4"></script>
 </body>
 </html>

@@ -16,6 +16,8 @@ public sealed class WorldState
     public BoardComputerProfile PlayerBoardComputer { get; }
     /// <summary>Combat doctrine used by the player autopilot for the installed loadout.</summary>
     public ShipSubclass PlayerSubclass { get; }
+    /// <summary>Installed passive sensor package used by the player loadout display.</summary>
+    public EnemySensorDefinition PlayerSensor { get; }
     public LanceState Lance { get; } = new();
     public LanceAimState LanceAim { get; } = new();
     public Vector3 LanceDirection => LanceAimSystem.GetDirection(Ship.Forward, LanceAim.YawOffsetDegrees);
@@ -43,12 +45,13 @@ public sealed class WorldState
     public double TimeSeconds => (double)Tick / SimulationSettings.TickRate;
 
     internal WorldState(ShipState ship, EncounterState[] encounters, BoardComputerProfile? playerBoardComputer = null,
-        ShipSubclass playerSubclass = ShipSubclass.Patrol)
+        ShipSubclass playerSubclass = ShipSubclass.Patrol, EnemySensorDefinition? playerSensor = null)
     {
         Ship = ship;
         PlayerBoardComputer = playerBoardComputer ?? BoardComputerProfile.StandardMk3;
         PlayerBoardComputer.Validate();
         PlayerSubclass = playerSubclass;
+        PlayerSensor = playerSensor ?? EnemySensorDefinitions.ArgusS200;
         Encounters = Array.AsReadOnly(encounters);
         CurrentEncounter = encounters[0];
     }

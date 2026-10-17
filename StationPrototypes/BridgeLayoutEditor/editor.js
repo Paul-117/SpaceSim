@@ -14,7 +14,19 @@ const assetDialogList = document.querySelector("#asset-dialog-list");
 const assetDialogStatus = document.querySelector("#asset-dialog-status");
 const bindingFields = document.querySelector("#binding-fields");
 const bindingStatus = document.querySelector("#binding-status");
-const bridgeAssetsPath = "../../UI/Bridge/";
+const uiFolder = document.querySelector("#ui-folder");
+const canvasSize = document.querySelector("#canvas-size");
+const gameWidgetsButton = document.querySelector("#dialog-add-game-widgets");
+
+let currentUi = "Bridge";
+let currentFiles = [];
+let currentReference = null;
+let canvasWidth = 1920;
+let canvasHeight = 1080;
+
+function assetPath(file) {
+  return `../../UI/${encodeURIComponent(currentUi)}/${encodeURIComponent(file)}`;
+}
 
 const fields = {
   name: document.querySelector("#field-name"), x: document.querySelector("#field-x"), y: document.querySelector("#field-y"),
@@ -41,9 +53,8 @@ const assets = [
   ["Wide blue frame", "37.png", 640, 210, 640, 214]
 ];
 
-// The complete UI/Bridge asset folder is available from the add dialog. Named
-// entries above are the common assets; the remaining source files stay usable
-// without having to add them to the stage layer list first.
+// Bridge keeps its named convenience entries. Every selected UI folder is also
+// read dynamically, so new PNGs appear in the add dialog without code changes.
 const additionalAssets = [
   ["Asset 2", "2.png", 640, 210, 640, 214],
   ["Asset 3", "3.png", 640, 210, 640, 214],
@@ -165,7 +176,51 @@ defaultObjects.push(...[
   defaultText("flight-thrust-value", "Flight value: Thrust", "0%", 1410, 946, 70, 23, "#e8f5ff")
 ]);
 
-let objects = loadLayout();
+function loadoutText(id, name, text, x, y, width, fontSize = 18, color = "#b9e8ff") {
+  return { id, type: "text", name, text, x, y, width, height: Math.max(24, fontSize + 8), fontSize, color };
+}
+
+function addLoadoutPanel(items, id, frame, title, titlePosition, rows, labelX, valueX, firstRowY, rowSpacing = 30) {
+  items.push({ id: `${id}-frame`, type: "asset", name: `${title} frame`, file: "Rahmen.png", ...frame });
+  items.push(loadoutText(`${id}-title`, `${title} title`, title, titlePosition.x, titlePosition.y, 270, 26, "#f1fbff"));
+  rows.forEach(([label, value], index) => {
+    const y = firstRowY + index * rowSpacing;
+    items.push(loadoutText(`${id}-label-${index}`, `${title}: ${label}`, label, labelX, y, Math.max(140, valueX - labelX - 10)));
+    items.push(loadoutText(`${id}-value-${index}`, `${title}: ${label} value`, value, valueX, y, 180, 19, "#f4fbff"));
+  });
+}
+
+function createLoadoutDefaultLayout() {
+  const items = [
+    { id: "loadout-background", type: "asset", name: "Background", file: "Background.png", x: 0, y: 0, width: 1448, height: 1086, locked: true },
+    loadoutText("loadout-heading", "Screen title", "SHIP SYSTEMS", 33, 35, 370, 43, "#f4fbff"),
+    loadoutText("loadout-subheading", "Screen subtitle", "- EQUIP AND REVIEW YOUR SHIP", 22, 82, 470, 27, "#8ee5ff"),
+    { id: "loadout-nomad", type: "asset", name: "Nomad ship", file: "Nomad-transparent.png", x: 180, y: 300, width: 1100, height: 550 }
+  ];
+
+  // The frame PNG contains transparent padding. These dimensions align its visible border with the reference.
+  addLoadoutPanel(items, "booster", { x: 19, y: 52, width: 361, height: 383 }, "MAIN BOOSTER", { x: 63, y: 145 }, [
+    ["Name:", "Atlas M-100"], ["Leistung:", "100 kN"], ["Ramp-up:", "10 s"], ["Max Velocity:", "100 m/s"], ["Draw:", "30 PU"]
+  ], 56, 212, 193);
+  addLoadoutPanel(items, "reactor", { x: 369, y: 52, width: 361, height: 383 }, "REAKTOR", { x: 413, y: 145 }, [
+    ["Name:", "CORE-X125"], ["Max Output:", "125 PU"], ["Fuel Usage Max:", "7,0 U/min"], ["Ramp Up (0-100 %):", "60 s"]
+  ], 406, 580, 193);
+  addLoadoutPanel(items, "sensor", { x: 719, y: 52, width: 361, height: 383 }, "SENSOR", { x: 763, y: 145 }, [
+    ["Name:", "ARGUS S-200"], ["Min. Reichweite:", "1.000 m"], ["Max. Reichweite:", "2.500 m"], ["Bedarf:", "20 PU"]
+  ], 756, 928, 193);
+  addLoadoutPanel(items, "weapon", { x: 1069, y: 41, width: 361, height: 438 }, "BUGWAFFE", { x: 1113, y: 145 }, [
+    ["Name:", "PEREGRINE L-1000"], ["Schaden:", "20"], ["Reichweite:", "1.000 m"], ["Ladezeit:", "5,0 s"], ["DPS:", "4,00"], ["Schwenkfenster:", "+/- 5°"], ["Schwenkrate:", "3,33°/s"], ["Leistung:", "40 PU"]
+  ], 1106, 1244, 193, 24);
+  addLoadoutPanel(items, "shields", { x: 227, y: 672, width: 479, height: 408 }, "SCHILDE", { x: 282, y: 769 }, [
+    ["Name:", "GUARDIAN S-20"], ["Schild-HP:", "20"], ["Aufladezeit:", "5,0 s"], ["Reboot:", "10 s"], ["Leistung:", "30 PU"]
+  ], 282, 474, 811, 31);
+  addLoadoutPanel(items, "computer", { x: 741, y: 672, width: 480, height: 408 }, "BOARDCOMPUTER", { x: 800, y: 769 }, [
+    ["Type:", "CIVILIAN"], ["Mk:", "I"], ["Command-Intervall:", "6 Ticks"], ["Delay:", "12 Ticks"], ["Fehlertoleranz:", "8.10 Grad"], ["Schubabweichung:", "+/- 30.0 %"], ["Yaw:", "55.0 %"]
+  ], 808, 1018, 811, 26);
+  return items;
+}
+
+let objects = [];
 let selectedId = null;
 let action = null;
 let snapEnabled = true;
@@ -178,14 +233,21 @@ let copiedText = null;
 let textCopyIndex = 0;
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
-function layoutKey() { return "spacesim-bridge-layout-editor-v1"; }
+function layoutKey() {
+  return currentUi === "Bridge" ? "spacesim-bridge-layout-editor-v1" : `spacesim-ui-layout-editor-v3-${currentUi}`;
+}
+function defaultLayout() {
+  if (currentUi === "Bridge") return clone(defaultObjects);
+  if (currentUi === "Loadout") return createLoadoutDefaultLayout();
+  return [];
+}
 function loadLayout() {
   try {
-    const layout = JSON.parse(localStorage.getItem(layoutKey())) || clone(defaultObjects);
+    const layout = JSON.parse(localStorage.getItem(layoutKey())) || defaultLayout();
     reconcileBindings(layout);
     return layout;
   }
-  catch { return clone(defaultObjects); }
+  catch { return defaultLayout(); }
 }
 
 function render() {
@@ -203,14 +265,14 @@ function render() {
     node.style.zIndex = index + 1;
     if (item.type === "asset") {
       const image = document.createElement("img");
-      image.src = `${bridgeAssetsPath}${item.file}`;
+      image.src = assetPath(item.file);
       image.alt = item.name;
       node.append(image);
     } else if (item.type === "sprite") {
       const image = document.createElement("img");
       const scaleX = item.width / item.crop.width;
       const scaleY = item.height / item.crop.height;
-      image.src = `${bridgeAssetsPath}${item.file}`;
+      image.src = assetPath(item.file);
       image.alt = item.name;
       image.style.position = "absolute";
       image.style.width = `${1254 * scaleX}px`;
@@ -413,7 +475,7 @@ function pointerDown(event) {
 
 function stagePoint(event) {
   const rect = stage.getBoundingClientRect();
-  return { x: (event.clientX - rect.left) * 1920 / rect.width, y: (event.clientY - rect.top) * 1080 / rect.height };
+  return { x: (event.clientX - rect.left) * canvasWidth / rect.width, y: (event.clientY - rect.top) * canvasHeight / rect.height };
 }
 
 function snap(value) {
@@ -571,7 +633,7 @@ function addAsset([name, file, x, y, width, height, crop]) {
 
 function addText() {
   const id = `text-${Date.now()}`;
-  objects.push({ id, type: "text", name: "New text", text: "NEW TEXT", x: 800, y: 500, width: 260, height: 44, fontSize: 30, color: "#8bdcff" });
+  objects.push({ id, type: "text", name: "New text", text: "NEW TEXT", x: Math.round(canvasWidth * .42), y: Math.round(canvasHeight * .46), width: 260, height: 44, fontSize: 30, color: "#8bdcff" });
   selectedId = id;
   render();
 }
@@ -611,8 +673,11 @@ function openAddElementDialog() {
 }
 
 function defaultAssetForFile(file) {
+  if (file === currentReference) return ["Reference image", file, 0, 0, canvasWidth, canvasHeight];
+  if (/^(background|rahmen|frame)/i.test(file)) return [file.replace(/\.[^.]+$/, ""), file, 0, 0, canvasWidth, canvasHeight];
+  if (/nomad|ship/i.test(file)) return [file.replace(/\.[^.]+$/, ""), file, Math.round(canvasWidth * .3), Math.round(canvasHeight * .3), Math.round(canvasWidth * .4), Math.round(canvasHeight * .2)];
   const known = assets.find(asset => asset[1] === file);
-  return known ?? [`Neue Datei: ${file}`, file, 760, 360, 280, 140];
+  return known ?? [`Neue Datei: ${file}`, file, Math.round(canvasWidth * .4), Math.round(canvasHeight * .35), 280, 140];
 }
 
 function renderAssetCatalog(files) {
@@ -633,16 +698,17 @@ function renderAssetCatalog(files) {
 }
 
 async function refreshAssetCatalog() {
-  assetDialogStatus.textContent = "Durchsuche UI/Bridge ...";
+  assetDialogStatus.textContent = `Durchsuche UI/${currentUi} ...`;
   try {
-    const response = await fetch(new URL("../../api/bridge-assets", window.location.href), { cache: "no-store" });
+    const response = await fetch(new URL(`../../api/ui-assets?ui=${encodeURIComponent(currentUi)}`, window.location.href), { cache: "no-store" });
     if (!response.ok) throw new Error("Asset API unavailable");
-    const files = await response.json();
-    if (!Array.isArray(files)) throw new Error("Invalid asset response");
-    renderAssetCatalog(files);
-    assetDialogStatus.textContent = `${files.length} Dateien aus UI/Bridge - automatisch aktualisiert`;
+    const catalog = await response.json();
+    if (!Array.isArray(catalog.files)) throw new Error("Invalid asset response");
+    currentFiles = catalog.files;
+    renderAssetCatalog(currentFiles);
+    assetDialogStatus.textContent = `${currentFiles.length} Dateien aus UI/${currentUi} - automatisch aktualisiert`;
   } catch {
-    renderAssetCatalog(assets.map(asset => asset[1]));
+    renderAssetCatalog(currentFiles.length > 0 ? currentFiles : assets.map(asset => asset[1]));
     assetDialogStatus.textContent = "Lokaler Server nicht aktiv - zeige bekannten Asset-Katalog.";
   }
 }
@@ -654,6 +720,7 @@ function addMissingGameWidgets() {
   return additions;
 }
 document.querySelector("#dialog-add-game-widgets").addEventListener("click", () => {
+  if (currentUi !== "Bridge") return;
   const additions = addMissingGameWidgets();
   selectedId = additions.at(-1)?.id ?? selectedId;
   assetDialog.close();
@@ -682,11 +749,11 @@ layoutFile.addEventListener("change", async event => {
     if (!Array.isArray(imported)) throw new Error("Layout is not an array.");
     objects = imported;
     reconcileBindings();
-    const additions = addMissingGameWidgets();
+    const additions = currentUi === "Bridge" ? addMissingGameWidgets() : [];
     selectedId = additions.at(-1)?.id ?? null;
     render();
   } catch {
-    alert("Die JSON-Datei konnte nicht als Bridge-Layout gelesen werden.");
+    alert("Die JSON-Datei konnte nicht als UI-Layout gelesen werden.");
   } finally {
     layoutFile.value = "";
   }
@@ -729,13 +796,13 @@ document.querySelector("#delete-selected").addEventListener("click", () => {
   render();
 });
 document.querySelector("#save-layout").addEventListener("click", () => localStorage.setItem(layoutKey(), JSON.stringify(objects)));
-document.querySelector("#reset-layout").addEventListener("click", () => { objects = clone(defaultObjects); selectedId = null; render(); });
+document.querySelector("#reset-layout").addEventListener("click", () => { objects = defaultLayout(); selectedId = null; render(); });
 document.querySelector("#export-layout").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(objects, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "bridge-layout.json";
+  link.download = `${currentUi.toLowerCase()}-layout.json`;
   link.click();
   URL.revokeObjectURL(url);
 });
@@ -743,14 +810,86 @@ document.querySelector("#export-layout").addEventListener("click", () => {
 function resizeStage() {
   const availableWidth = viewport.clientWidth - 36;
   const availableHeight = viewport.clientHeight - 36;
-  const fitScale = Math.min(availableWidth / 1920, availableHeight / 1080, 1);
+  const fitScale = Math.min(availableWidth / canvasWidth, availableHeight / canvasHeight, 1);
   const scale = fitScale * zoomFactor;
   stage.style.setProperty("--scale", scale);
-  stageWrap.style.width = `${1920 * scale}px`;
-  stageWrap.style.height = `${1080 * scale}px`;
-  stageWrap.style.marginLeft = `${Math.max(0, (availableWidth - 1920 * scale) / 2)}px`;
-  stageWrap.style.marginTop = `${Math.max(0, (availableHeight - 1080 * scale) / 2)}px`;
+  stageWrap.style.width = `${canvasWidth * scale}px`;
+  stageWrap.style.height = `${canvasHeight * scale}px`;
+  stageWrap.style.marginLeft = `${Math.max(0, (availableWidth - canvasWidth * scale) / 2)}px`;
+  stageWrap.style.marginTop = `${Math.max(0, (availableHeight - canvasHeight * scale) / 2)}px`;
 }
+
+function setCanvasSize(width, height) {
+  canvasWidth = Math.max(1, Math.round(width));
+  canvasHeight = Math.max(1, Math.round(height));
+  stage.style.setProperty("--stage-width", `${canvasWidth}px`);
+  stage.style.setProperty("--stage-height", `${canvasHeight}px`);
+  canvasSize.textContent = `${canvasWidth} x ${canvasHeight}`;
+  resizeStage();
+}
+
+function configureReference(file) {
+  currentReference = file;
+  if (!file) {
+    reference.removeAttribute("src");
+    reference.classList.add("hidden");
+    return;
+  }
+
+  reference.classList.remove("hidden");
+  reference.src = assetPath(file);
+}
+
+async function loadUiCatalog(name) {
+  const response = await fetch(new URL(`../../api/ui-assets?ui=${encodeURIComponent(name)}`, window.location.href), { cache: "no-store" });
+  if (!response.ok) throw new Error("UI folder unavailable");
+  const catalog = await response.json();
+  if (!Array.isArray(catalog.files)) throw new Error("Invalid UI catalog");
+  return catalog;
+}
+
+async function selectUi(name) {
+  currentUi = name;
+  localStorage.setItem("spacesim-ui-layout-editor-selected", currentUi);
+  uiFolder.value = currentUi;
+  document.title = `SpaceSim ${currentUi} UI Layout Editor`;
+  gameWidgetsButton.hidden = currentUi !== "Bridge";
+  try {
+    const catalog = await loadUiCatalog(currentUi);
+    currentFiles = catalog.files;
+    configureReference(catalog.reference);
+  } catch {
+    currentFiles = currentUi === "Bridge" ? assets.map(asset => asset[1]) : [];
+    configureReference(null);
+  }
+  objects = loadLayout();
+  selectedId = null;
+  render();
+}
+
+async function initializeEditor() {
+  let folders = ["Bridge"];
+  try {
+    const response = await fetch(new URL("../../api/ui-folders", window.location.href), { cache: "no-store" });
+    const value = await response.json();
+    if (Array.isArray(value) && value.length > 0) folders = value;
+  } catch {
+    // The Bridge editor can still open from a static file with its known assets.
+  }
+  uiFolder.innerHTML = "";
+  folders.forEach(folder => {
+    const option = document.createElement("option");
+    option.value = folder;
+    option.textContent = folder;
+    uiFolder.append(option);
+  });
+  const requested = new URLSearchParams(window.location.search).get("ui");
+  const saved = localStorage.getItem("spacesim-ui-layout-editor-selected");
+  const initial = [requested, saved, "Bridge"].find(folder => folder && folders.includes(folder)) ?? folders[0];
+  await selectUi(initial);
+}
+
+uiFolder.addEventListener("change", event => selectUi(event.target.value));
 new ResizeObserver(resizeStage).observe(viewport);
-resizeStage();
-render();
+setCanvasSize(1920, 1080);
+initializeEditor();

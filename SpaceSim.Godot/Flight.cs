@@ -39,6 +39,7 @@ public partial class Flight : Node
     private readonly FlightHud _hud = new();
     private readonly ThrusterStatusPanel _thrusterPanel = new();
     private BridgeUi _bridgeUi = null!;
+    private LoadoutUi _loadoutUi = null!;
     private readonly StarMap _starMap = new();
     private readonly MainMenuOverlay _mainMenu = new();
     private readonly GameOverOverlay _gameOver = new();
@@ -118,6 +119,7 @@ public partial class Flight : Node
                 ? CreateQuickStartSimulation()
                 : CreateSimulation();
         _bridgeUi = GD.Load<PackedScene>("res://UI/Bridge/BridgeUI.tscn").Instantiate<BridgeUi>();
+        _loadoutUi = GD.Load<PackedScene>("res://UI/Loadout/LoadoutUI.tscn").Instantiate<LoadoutUi>();
         _sensoriumEnabled = LoadSensoriumEnabled();
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
         _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
@@ -171,6 +173,7 @@ public partial class Flight : Node
         cockpit.AddChild(_hud);
         cockpit.AddChild(_thrusterPanel);
         cockpit.AddChild(_bridgeUi);
+        cockpit.AddChild(_loadoutUi);
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
         cockpit.AddChild(_mainMenu);
@@ -231,7 +234,8 @@ public partial class Flight : Node
             playerBoardComputer: playerLoadout?.BoardComputer, playerSubclass: playerLoadout?.Subclass ?? ShipSubclass.Patrol,
             duelBoardComputer: enemyLoadout?.BoardComputer, duelEnemyShipClass: enemyLoadout?.ShipClass ?? _duelEnemyShipClass,
             duelPlayerMassKg: playerLoadout?.Hull.MassKg, duelPlayerMaximumHull: playerLoadout?.Hull.MaximumHull,
-            duelEnemyLoadout: enemyLoadout, duelEnemyName: _duelEnemyLoadout?.Name);
+            duelEnemyLoadout: enemyLoadout, duelEnemyName: _duelEnemyLoadout?.Name,
+            playerSensor: playerLoadout?.Sensor);
     }
 
     private static NVector3 CourseVector(float course) => new(MathF.Sin(course), 0f, -MathF.Cos(course));
@@ -266,6 +270,7 @@ public partial class Flight : Node
         _hud.Settings = _simulation.Settings;
         _thrusterPanel.World = _simulation.World;
         _bridgeUi.World = _simulation.World;
+        _loadoutUi.World = _simulation.World;
         _starMap.World = _simulation.World;
     }
 
@@ -617,6 +622,14 @@ public partial class Flight : Node
         {
             _keyboard.Clear();
             _mainMenu.ShowPause();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (_simulation.World.IsPlayerInRealSpace && !_starMap.Visible && input is InputEventKey { Pressed: true, Echo: false } loadoutKey &&
+            (loadoutKey.PhysicalKeycode == Key.L || loadoutKey.Keycode == Key.L))
+        {
+            _loadoutUi.Open();
+            _keyboard.Clear();
             GetViewport().SetInputAsHandled();
             return;
         }
@@ -1083,6 +1096,7 @@ public partial class Flight : Node
         _bridgeUi.Command = _lastCommand;
         _bridgeUi.AutopilotActive = _autopilot is not null;
         _bridgeUi.AutopilotTargetName = CurrentAutopilotTarget()?.Name ?? "-";
+        if (!_simulation.World.IsPlayerInRealSpace && _loadoutUi.IsOpen) _loadoutUi.Close();
         _hud.ArmariumOnline = _stationServer?.IsArmariumOnline == true;
         _hud.IsFocused = _keyboard.IsFocused;
         bool captureReady = _enemySmokeTest
