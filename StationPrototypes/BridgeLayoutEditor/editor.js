@@ -231,6 +231,11 @@ let panAnimationFrame = null;
 const collapsedGroups = new Set();
 let copiedText = null;
 let textCopyIndex = 0;
+// Dragging updates only the selected DOM object, once per animation frame.
+// Bound contents are synchronized after the drag ends, so the preview retains
+// the direct, smooth movement of the earlier editor implementation.
+let interactionPreviewFrame = null;
+let pendingInteractionItem = null;
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function layoutKey() {
@@ -412,10 +417,10 @@ function syncBoundChildren(parent) {
   childrenOf(parent).forEach(child => applyRelative(child, parent));
 }
 
-function geometryChanged(item) {
+function geometryChanged(item, syncContents = false) {
   const parent = objects.find(entry => entry.id === item.parentId);
   if (parent) captureRelative(item, parent);
-  syncBoundChildren(item);
+  if (syncContents) syncBoundChildren(item);
 }
 
 function reconcileBindings(layout = objects) {
@@ -473,6 +478,77 @@ function pointerDown(event) {
   render();
 }
 
+function nodeFor(item) {
+  return objectsRoot.querySelector(`[data-id="${CSS.escape(item.id)}"]`);
+}
+
+function rebuildBarNode(node, item) {
+  node.querySelectorAll(".bar-segment").forEach(segment => segment.remove());
+  const activeSegments = Math.round((item.fill ?? 0) * item.segments);
+  for (let segment = 0; segment < item.segments; segment++) {
+    const part = document.createElement("div");
+    part.className = `bar-segment${segment < activeSegments ? " active" : ""}`;
+    if (segment < activeSegments) part.style.background = item.color;
+    part.style.left = `${segment * (item.segmentWidth + item.gap)}px`;
+    part.style.width = `${item.segmentWidth}px`;
+    part.style.height = `${item.segmentHeight}px`;
+    node.append(part);
+  }
+  if (item.id === selectedId && !item.locked && !node.querySelector(".resize-handle")) {
+    const handle = document.createElement("div");
+    handle.className = "resize-handle";
+    node.append(handle);
+  }
+}
+
+function updateRenderedItem(item) {
+  const node = nodeFor(item);
+  if (node) {
+    node.style.left = `${item.x}px`;
+    node.style.top = `${item.y}px`;
+    node.style.width = `${item.width}px`;
+    node.style.height = `${item.height}px`;
+    if (item.type === "text") node.style.fontSize = `${item.fontSize}px`;
+    if (item.type === "sprite") {
+      const image = node.querySelector("img");
+      if (image) {
+        const scaleX = item.width / item.crop.width;
+        const scaleY = item.height / item.crop.height;
+        image.style.width = `${1254 * scaleX}px`;
+        image.style.height = `${1254 * scaleY}px`;
+        image.style.left = `${-item.crop.x * scaleX}px`;
+        image.style.top = `${-item.crop.y * scaleY}px`;
+      }
+    }
+    if (item.type === "bar") rebuildBarNode(node, item);
+  }
+}
+
+function queueInteractionPreview(item) {
+  pendingInteractionItem = item;
+  if (interactionPreviewFrame !== null) return;
+  interactionPreviewFrame = requestAnimationFrame(() => {
+    interactionPreviewFrame = null;
+    if (pendingInteractionItem) updateRenderedItem(pendingInteractionItem);
+    pendingInteractionItem = null;
+  });
+}
+
+function finishInteraction() {
+  const changedItem = pendingInteractionItem ?? objects.find(item => item.id === action?.id);
+  action = null;
+  if (interactionPreviewFrame !== null) {
+    cancelAnimationFrame(interactionPreviewFrame);
+    interactionPreviewFrame = null;
+  }
+  if (pendingInteractionItem) updateRenderedItem(pendingInteractionItem);
+  pendingInteractionItem = null;
+  // A single post-drag synchronization preserves Bind Content without making
+  // every pointer movement recalculate a complete grouped layout.
+  if (changedItem) syncBoundChildren(changedItem);
+  render();
+}
+
 function stagePoint(event) {
   const rect = stage.getBoundingClientRect();
   return { x: (event.clientX - rect.left) * canvasWidth / rect.width, y: (event.clientY - rect.top) * canvasHeight / rect.height };
@@ -502,9 +578,10 @@ window.addEventListener("pointermove", event => {
     }
   }
   geometryChanged(item);
-  render();
+  queueInteractionPreview(item);
 });
-window.addEventListener("pointerup", () => { action = null; });
+window.addEventListener("pointerup", () => { if (action) finishInteraction(); });
+window.addEventListener("pointercancel", () => { if (action) finishInteraction(); });
 
 function updateInspector() {
   const item = selected();
@@ -560,7 +637,7 @@ form.addEventListener("input", event => {
     if (item.type === "bar" && property === "height") item.segmentHeight = item.height;
   }
   if (item.type === "bar") normalizeBar(item);
-  geometryChanged(item);
+  geometryChanged(item, true);
   render();
 });
 
@@ -579,7 +656,7 @@ window.addEventListener("keydown", event => {
   if (!item || item.locked || document.activeElement.tagName === "INPUT") return;
   const delta = event.shiftKey ? (snapEnabled ? 50 : 10) : (snapEnabled ? snapSize : 1);
   const movement = { ArrowLeft: [-delta, 0], ArrowRight: [delta, 0], ArrowUp: [0, -delta], ArrowDown: [0, delta] }[event.key];
-  if (movement) { item.x += movement[0]; item.y += movement[1]; geometryChanged(item); event.preventDefault(); render(); }
+  if (movement) { item.x += movement[0]; item.y += movement[1]; geometryChanged(item, true); event.preventDefault(); render(); }
   if (event.key === "Delete") {
     unbindContent(item);
     objects = objects.filter(entry => entry.id !== item.id);
@@ -614,6 +691,7 @@ window.addEventListener("keyup", event => {
 
 window.addEventListener("blur", () => {
   panKeys.clear();
+  if (action) finishInteraction();
 });
 
 window.addEventListener("keydown", event => {

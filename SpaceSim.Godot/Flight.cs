@@ -40,6 +40,7 @@ public partial class Flight : Node
     private readonly ThrusterStatusPanel _thrusterPanel = new();
     private BridgeUi _bridgeUi = null!;
     private LoadoutUi _loadoutUi = null!;
+    private ShopUi _shopUi = null!;
     private readonly StarMap _starMap = new();
     private readonly MainMenuOverlay _mainMenu = new();
     private readonly GameOverOverlay _gameOver = new();
@@ -120,6 +121,7 @@ public partial class Flight : Node
                 : CreateSimulation();
         _bridgeUi = GD.Load<PackedScene>("res://UI/Bridge/BridgeUI.tscn").Instantiate<BridgeUi>();
         _loadoutUi = GD.Load<PackedScene>("res://UI/Loadout/LoadoutUI.tscn").Instantiate<LoadoutUi>();
+        _shopUi = GD.Load<PackedScene>("res://UI/Shop/ShopUI.tscn").Instantiate<ShopUi>();
         _sensoriumEnabled = LoadSensoriumEnabled();
         _keyboard.MainThrottleRiseSeconds = _simulation.Settings.Power.BridgeMainThrottleRiseSeconds;
         _keyboard.MainThrottleFallSeconds = _simulation.Settings.Power.BridgeMainThrottleFallSeconds;
@@ -174,6 +176,7 @@ public partial class Flight : Node
         cockpit.AddChild(_thrusterPanel);
         cockpit.AddChild(_bridgeUi);
         cockpit.AddChild(_loadoutUi);
+        cockpit.AddChild(_shopUi);
         cockpit.AddChild(_starMap);
         cockpit.AddChild(_gameOver);
         cockpit.AddChild(_mainMenu);
@@ -271,6 +274,7 @@ public partial class Flight : Node
         _thrusterPanel.World = _simulation.World;
         _bridgeUi.World = _simulation.World;
         _loadoutUi.World = _simulation.World;
+        _shopUi.World = _simulation.World;
         _starMap.World = _simulation.World;
     }
 
@@ -600,6 +604,7 @@ public partial class Flight : Node
     public override void _Input(InputEvent input)
     {
         if (_gameOver.Visible) return;
+        if (_shopUi.IsOpen) return;
         if (_mainMenu.IsOpen)
         {
             if (input is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
@@ -629,6 +634,17 @@ public partial class Flight : Node
             (loadoutKey.PhysicalKeycode == Key.L || loadoutKey.Keycode == Key.L))
         {
             _loadoutUi.Open();
+            _keyboard.Clear();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (!_duelMode && _simulation.World.IsPlayerInRealSpace && !_starMap.Visible &&
+            input is InputEventKey { Pressed: true, Echo: false } shopKey &&
+            (shopKey.PhysicalKeycode == Key.E || shopKey.Keycode == Key.E) &&
+            _simulation.World.CurrentEncounter.Shop is { } shop &&
+            shop.IsInInteractionRange(_simulation.World.Ship.Position))
+        {
+            _shopUi.Open();
             _keyboard.Clear();
             GetViewport().SetInputAsHandled();
             return;
@@ -1079,10 +1095,11 @@ public partial class Flight : Node
         _arena.IsFreeCamera = _freeCameraMode;
         _arena.HidePlayerGuidance = _simulation.World.IsPlayerInHyperspace;
         _arena.HyperspaceEntryPoint = _hyperspaceEntryPoint;
-        _arena.HyperspaceEnemyPoint = _simulation.World.HyperspacePhase == HyperspacePhase.PlanningEntry &&
-                                     _simulation.World.CurrentEncounter.LastKnownEnemyPosition is { } lastKnownPosition
+        _arena.HyperspaceKnownPoint = _simulation.World.HyperspacePhase == HyperspacePhase.PlanningEntry &&
+                                     _simulation.World.CurrentEncounter.LastKnownNavigationPosition is { } lastKnownPosition
             ? ViewSettings.Project(lastKnownPosition)
             : null;
+        _arena.HyperspaceKnownPointIsShop = _simulation.World.CurrentEncounter.Shop is not null;
         UpdateSelectedContact();
         _hud.CameraZoom = _cameraZoom;
         _hud.IsFreeCamera = _freeCameraMode;
@@ -1097,6 +1114,7 @@ public partial class Flight : Node
         _bridgeUi.AutopilotActive = _autopilot is not null;
         _bridgeUi.AutopilotTargetName = CurrentAutopilotTarget()?.Name ?? "-";
         if (!_simulation.World.IsPlayerInRealSpace && _loadoutUi.IsOpen) _loadoutUi.Close();
+        if (!_simulation.World.IsPlayerInRealSpace && _shopUi.IsOpen) _shopUi.Close();
         _hud.ArmariumOnline = _stationServer?.IsArmariumOnline == true;
         _hud.IsFocused = _keyboard.IsFocused;
         bool captureReady = _enemySmokeTest
@@ -1196,7 +1214,7 @@ public partial class Flight : Node
         _starMap.Close();
         _hyperspaceEntryPoint = null;
         _freeCameraMode = true;
-        NVector3? lastKnownPosition = _simulation.World.CurrentEncounter.LastKnownEnemyPosition;
+        NVector3? lastKnownPosition = _simulation.World.CurrentEncounter.LastKnownNavigationPosition;
         _freeCameraPosition = lastKnownPosition is null ? Vector2.Zero : ViewSettings.Project(lastKnownPosition.Value);
         _camera.Position = _freeCameraPosition;
     }

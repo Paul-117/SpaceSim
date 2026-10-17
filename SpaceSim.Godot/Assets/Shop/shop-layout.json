@@ -1,0 +1,36 @@
+﻿[
+  { "id": "shop-background", "type": "asset", "name": "Shop background", "file": "01110615-496a-4c6d-9b40-3f377f6bfb9c.png", "x": 0, "y": 0, "width": 1920, "height": 1080, "locked": true },
+  { "id": "shop-title", "type": "text", "name": "Shop title", "text": "STATION MARKET", "x": 126, "y": 58, "width": 660, "height": 62, "fontSize": 52, "color": "#f4fbff" },
+  { "id": "shop-subtitle", "type": "text", "name": "Shop subtitle", "text": "BUY SUPPLIES AND SERVICES", "x": 128, "y": 123, "width": 610, "height": 36, "fontSize": 27, "color": "#8bdcff" },
+  { "id": "shop-credits-label", "type": "text", "name": "Credits label", "text": "CREDITS:", "x": 1512, "y": 83, "width": 158, "height": 48, "fontSize": 28, "color": "#8bdcff" },
+  { "id": "shop-credits", "type": "text", "name": "Current credits", "text": "100", "x": 1730, "y": 71, "width": 120, "height": 62, "fontSize": 44, "color": "#f4fbff" },
+
+  { "id": "repair-panel", "type": "asset", "name": "Repair offer panel", "file": "7e8ff14d-6963-4c4a-82a9-a3e49c2e9dca.png", "x": 92, "y": 201, "width": 856, "height": 316 },
+  { "id": "repair-icon", "type": "asset", "name": "Repair icon", "file": "7ec37d1b-19d5-481c-9eb9-53bc571ead2b.png", "x": 126, "y": 234, "width": 252, "height": 252 },
+  { "id": "repair-title", "type": "text", "name": "Repair title", "text": "REPAIR", "x": 420, "y": 232, "width": 300, "height": 53, "fontSize": 42, "color": "#f4fbff" },
+  { "id": "repair-description", "type": "text", "name": "Repair description", "text": "Restores hull integrity\nto your ship.", "x": 420, "y": 307, "width": 410, "height": 84, "fontSize": 25, "color": "#b9e8ff" },
+  { "id": "repair-cost-label", "type": "text", "name": "Repair cost label", "text": "COST:", "x": 420, "y": 440, "width": 135, "height": 44, "fontSize": 29, "color": "#8bdcff" },
+  { "id": "repair-cost", "type": "text", "name": "Repair cost", "text": "1", "x": 546, "y": 424, "width": 60, "height": 65, "fontSize": 47, "color": "#f4fbff" },
+  { "id": "repair-action", "type": "text", "name": "Repair action", "text": "PURCHASE", "x": 693, "y": 433, "width": 210, "height": 50, "fontSize": 29, "color": "#f4fbff" },
+
+  { "id": "fuel-panel", "type": "asset", "name": "Fuel offer panel", "file": "7e8ff14d-6963-4c4a-82a9-a3e49c2e9dca.png", "x": 972, "y": 201, "width": 856, "height": 316 },
+  { "id": "fuel-icon", "type": "asset", "name": "Fuel icon", "file": "ab3a10fe-9b91-4c73-bce6-f811736a7653.png", "x": 1004, "y": 234, "width": 252, "height": 252 },
+  { "id": "fuel-title", "type": "text", "name": "Fuel title", "text": "FUEL", "x": 1267, "y": 232, "width": 250, "height": 53, "fontSize": 42, "color": "#f4fbff" },
+  { "id": "fuel-description", "type": "text", "name": "Fuel description", "text": "Refills your ship's\nfuel reserves.", "x": 1267, "y": 307, "width": 410, "height": 84, "fontSize": 25, "color": "#b9e8ff" },
+  { "id": "fuel-cost-label", "type": "text", "name": "Fuel cost label", "text": "COST:", "x": 1267, "y": 440, "width": 135, "height": 44, "fontSize": 29, "color": "#8bdcff" },
+  { "id": "fuel-cost", "type": "text", "name": "Fuel cost", "text": "2", "x": 1394, "y": 424, "width": 60, "height": 65, "fontSize": 47, "color": "#f4fbff" },
+  { "id": "fuel-action", "type": "text", "name": "Fuel action", "text": "PURCHASE", "x": 1573, "y": 433, "width": 210, "height": 50, "fontSize": 29, "color": "#f4fbff" },
+
+  { "id": "additional-left-panel", "type": "asset", "name": "Additional item panel left", "file": "7e8ff14d-6963-4c4a-82a9-a3e49c2e9dca.png", "x": 92, "y": 548, "width": 856, "height": 316 },
+  { "id": "additional-left-title", "type": "text", "name": "Additional item left", "text": "ADDITIONAL ITEM", "x": 420, "y": 659, "width": 390, "height": 52, "fontSize": 36, "color": "#517c9d" },
+  { "id": "additional-left-status", "type": "text", "name": "Additional item left status", "text": "COMING SOON", "x": 420, "y": 743, "width": 270, "height": 38, "fontSize": 25, "color": "#517c9d" },
+  { "id": "additional-left-plus", "type": "text", "name": "Additional item left plus", "text": "+", "x": 229, "y": 650, "width": 80, "height": 100, "fontSize": 92, "color": "#517c9d" },
+
+  { "id": "additional-right-panel", "type": "asset", "name": "Additional item panel right", "file": "7e8ff14d-6963-4c4a-82a9-a3e49c2e9dca.png", "x": 972, "y": 548, "width": 856, "height": 316 },
+  { "id": "additional-right-title", "type": "text", "name": "Additional item right", "text": "ADDITIONAL ITEM", "x": 1267, "y": 659, "width": 390, "height": 52, "fontSize": 36, "color": "#517c9d" },
+  { "id": "additional-right-status", "type": "text", "name": "Additional item right status", "text": "COMING SOON", "x": 1267, "y": 743, "width": 270, "height": 38, "fontSize": 25, "color": "#517c9d" },
+  { "id": "additional-right-plus", "type": "text", "name": "Additional item right plus", "text": "+", "x": 1109, "y": 650, "width": 80, "height": 100, "fontSize": 92, "color": "#517c9d" },
+
+  { "id": "shop-info", "type": "text", "name": "Shop information", "text": "Trade, repair and refuel at this station.", "x": 220, "y": 943, "width": 730, "height": 50, "fontSize": 25, "color": "#8bdcff" },
+  { "id": "shop-leave", "type": "text", "name": "Leave shop", "text": "DOCK / LEAVE  [E]", "x": 1370, "y": 936, "width": 390, "height": 60, "fontSize": 30, "color": "#f4fbff" }
+]

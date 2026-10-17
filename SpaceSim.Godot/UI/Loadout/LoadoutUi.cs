@@ -40,7 +40,11 @@ public partial class LoadoutUi : Control
         Visible = false;
     }
 
-    public override void _Process(double delta) => Visible = IsOpen;
+    public override void _Process(double delta)
+    {
+        Visible = IsOpen;
+        if (IsOpen) UpdateValues();
+    }
 
     public override void _Input(InputEvent input)
     {
@@ -147,6 +151,10 @@ public partial class LoadoutUi : Control
 
         Set("computer-value-0", computer.Class.ToString().ToUpperInvariant());
         Set("computer-value-1", ToRoman(computer.Mark));
+
+        Set("loadout-current-fuel", $"{ship.Reactor.Fuel:0.0}/{ship.Reactor.FuelCapacity:0.0}");
+        Set("loadout-current-hull", $"{ship.Hull.CurrentHull:0}/{ship.Hull.MaximumHull:0}");
+        Set("loadout-current-credits", World.Credits.ToString());
     }
 
     private void Set(string id, string value)

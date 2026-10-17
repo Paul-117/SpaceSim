@@ -23,14 +23,19 @@ public sealed class EncounterState
     public EnemyShipState? Enemy => _enemies.Count == 1 ? _enemies[0] : null;
     /// <summary>Convenience access for encounters that contain exactly one enemy.</summary>
     public EnemyAiController? EnemyAi => Enemy is { } enemy ? GetEnemyAi(enemy.EnemyId) : null;
-    /// <summary>Sensor estimate shown during hyperspace entry planning; it deliberately is not the live enemy position.</summary>
+    /// <summary>Optional neutral station available only in the station encounter.</summary>
+    public ShopState? Shop { get; }
+    /// <summary>Approximate hostile position shown while a combat encounter entry point is planned.</summary>
     public Vector3? LastKnownEnemyPosition { get; private set; }
+    /// <summary>Known station position displayed while the player chooses a hyperspace entry point.</summary>
+    public Vector3? LastKnownShopPosition { get; private set; }
 
-    internal EncounterState(int id, string name, int initialTargetCount)
+    internal EncounterState(int id, string name, int initialTargetCount, Vector3? shopPosition = null)
     {
         Id = id;
         Name = name;
         InitialTargetCount = initialTargetCount;
+        Shop = shopPosition is { } position ? new ShopState(position) : null;
         Targets = MutableTargets.AsReadOnly();
         Enemies = _enemies.AsReadOnly();
     }
@@ -56,17 +61,33 @@ public sealed class EncounterState
         foreach (EnemyShipState enemy in _enemies) _bridgeContactEnemyIds.Add(enemy.EnemyId);
     }
 
-    internal void CaptureLastKnownEnemyPosition(Random random, float maximumErrorMeters)
+    /// <summary>
+    /// Captures the one navigational marker available during hyperspace planning. Combat encounters expose an
+    /// intentionally imprecise last-known hostile position; the station encounter exposes its fixed location.
+    /// </summary>
+    internal void CaptureNavigationPosition(Random random, float enemyPositionErrorMeters = 300f)
     {
+        if (Shop is { } shop)
+        {
+            LastKnownShopPosition = shop.Position;
+            LastKnownEnemyPosition = null;
+            return;
+        }
+
         EnemyShipState? enemy = _enemies.FirstOrDefault(candidate => !candidate.IsDestroyed);
         if (enemy is null)
         {
             LastKnownEnemyPosition = null;
             return;
         }
+
         float angle = (float)(random.NextDouble() * MathF.Tau);
         // sqrt gives an even distribution across the error disc rather than crowding its centre.
-        float distance = MathF.Sqrt((float)random.NextDouble()) * maximumErrorMeters;
-        LastKnownEnemyPosition = enemy.Ship.Position + new Vector3(MathF.Cos(angle) * distance, 0f, MathF.Sin(angle) * distance);
+        float radius = MathF.Sqrt((float)random.NextDouble()) * enemyPositionErrorMeters;
+        LastKnownEnemyPosition = enemy.Ship.Position + new Vector3(MathF.Cos(angle) * radius, 0f,
+            MathF.Sin(angle) * radius);
+        LastKnownShopPosition = null;
     }
+
+    public Vector3? LastKnownNavigationPosition => Shop is not null ? LastKnownShopPosition : LastKnownEnemyPosition;
 }

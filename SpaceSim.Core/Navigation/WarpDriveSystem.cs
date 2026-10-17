@@ -51,7 +51,7 @@ internal static class WarpDriveSystem
             var destination = world.Encounters.FirstOrDefault(e => e.Id == destinationId);
             if (destination is null) return;
             world.CurrentEncounter = destination;
-            destination.CaptureLastKnownEnemyPosition(navigationRandom, 300f);
+            destination.CaptureNavigationPosition(navigationRandom);
             world.HyperspacePhase = HyperspacePhase.PlanningEntry;
             return;
         }

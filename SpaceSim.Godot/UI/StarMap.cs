@@ -80,7 +80,9 @@ public partial class StarMap : Control
             int activeEnemies = encounter.Enemies.Count(enemy => !enemy.IsDestroyed);
             string enemyStatus = encounter.Enemies.Count == 0 ? string.Empty :
                 activeEnemies == 0 ? "\nGegner zerstÃ¶rt" : $"\n{activeEnemies} GEGNER AKTIV";
-            button.Text = $"{encounter.Name}\n{encounter.Targets.Count} / {encounter.InitialTargetCount} Ziele"
+            string contents = encounter.Shop is not null ? "\nSTATION MARKET" :
+                $"\n{encounter.Targets.Count} / {encounter.InitialTargetCount} Ziele";
+            button.Text = $"{encounter.Name}{contents}{enemyStatus}"
                 + (current ? "\nAKTUELL" : SelectedEncounterId == encounter.Id ? "\nAUSGEWÄHLT" : "\nSprungpunkt wählen");
             button.Size = _destinationSize;
             button.Position = PointPosition(index++) + new Vector2(-_destinationSize.X / 2, 26);

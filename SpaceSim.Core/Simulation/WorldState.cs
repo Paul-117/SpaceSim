@@ -11,6 +11,11 @@ namespace SpaceSim.Core.Simulation;
 
 public sealed class WorldState
 {
+    /// <summary>
+    /// Player funds are authoritative simulation state. Economy systems can change this value later;
+    /// a fresh game always starts with the configured prototype balance of 100 credits.
+    /// </summary>
+    public int Credits { get; internal set; } = 100;
     public ShipState Ship { get; }
     /// <summary>The installed player flight computer. It governs only automated commands.</summary>
     public BoardComputerProfile PlayerBoardComputer { get; }

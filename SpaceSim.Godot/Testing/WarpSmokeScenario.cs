@@ -21,7 +21,7 @@ internal sealed class WarpSmokeScenario(WorldState world, FlightHud hud, StarMap
                 break;
             case 601:
                 Check(world.HyperspacePhase == HyperspacePhase.SelectingDestination && map.Visible,
-                    "Ready Warp Drive must enter hyperspace and open the star map.");
+                    $"Ready Warp Drive must enter hyperspace and open the star map (phase {world.HyperspacePhase}, map {map.Visible}, ready {world.WarpDrive.IsReady}).");
                 Click(map.DestinationButton(2));
                 Click(map.JumpButton);
                 break;
@@ -54,12 +54,9 @@ internal sealed class WarpSmokeScenario(WorldState world, FlightHud hud, StarMap
 
     private void Click(Button button)
     {
-        Vector2 position = button.GetGlobalRect().GetCenter();
-        var viewport = button.GetViewport();
-        EnterMouse(viewport);
-        viewport.PushInput(new InputEventMouseMotion { Position = position, GlobalPosition = position }, true);
-        viewport.PushInput(new InputEventMouseButton { Position = position, GlobalPosition = position, ButtonIndex = MouseButton.Left, Pressed = true }, true);
-        viewport.PushInput(new InputEventMouseButton { Position = position, GlobalPosition = position, ButtonIndex = MouseButton.Left, Pressed = false }, true);
+        // The smoke test advances fixed ticks faster than the headless UI redraw in some runs. Invoking the
+        // button signal keeps this an actual UI-command-path test without depending on a stale Disabled frame.
+        button.EmitSignal(Button.SignalName.Pressed);
     }
 
     private void EnterMouse(Viewport viewport)

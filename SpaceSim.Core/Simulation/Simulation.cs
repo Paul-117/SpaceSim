@@ -46,7 +46,8 @@ public sealed class Simulation
             new EncounterState(1, "Encounter 1", Settings.TargetCount),
             new EncounterState(2, "Encounter 2", Settings.EncounterTwoTargetCount),
             new EncounterState(3, "Encounter 3", Settings.EncounterThreeTargetCount),
-            new EncounterState(4, "Encounter 4", Settings.EncounterFourTargetCount)
+            new EncounterState(4, "Encounter 4", Settings.EncounterFourTargetCount),
+            new EncounterState(5, "Station Market", 0, Vector3.Zero)
         };
         playerTuning?.Validate();
         enemyTuning?.Validate();
@@ -154,6 +155,11 @@ public sealed class Simulation
             World.Tick++;
             return;
         }
+        if (ShopCollisionSystem.Resolve(World, _events))
+        {
+            World.Tick++;
+            return;
+        }
         LanceSystem.FirePlayer(World, command.FireLance, Settings, _damageRandom, _events);
         foreach (EnemyShipState enemy in enemies.Where(enemy => enemy.IsDestroyed))
         {
@@ -197,6 +203,9 @@ public sealed class Simulation
             ShipPhysics.Step(enemy.Ship, command, Settings);
         }
         WarpDriveSystem.Step(World, navigation, Settings, _events, _navigationRandom);
+        // Re-entry places the ship directly into the selected local world. A station impact at the chosen
+        // entry point must resolve immediately rather than granting one free physics frame inside its hull.
+        if (World.IsPlayerInRealSpace) ShopCollisionSystem.Resolve(World, _events);
     }
 
     private ShipState CreateShip(ShipInitialState initial, float? reactorOperatingLevelPercent = null, ShipTuning? tuning = null,

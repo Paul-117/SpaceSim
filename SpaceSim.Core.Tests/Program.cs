@@ -96,6 +96,7 @@ var tests = new (string Name, Action Run)[]
         Near(BowWeaponDefinitions.PeregrineL1000.Damage, 20f);
         Near(settings.Hull.SubsystemDamageChancePerHullHit, .5f);
         var sim = CombatSimulation(power: CombatPower());
+        Check(sim.World.Credits == 100, "A new player world must start with 100 credits.");
         JumpToCombat(sim);
         EnemyShipState enemy = sim.World.CurrentEnemy!;
         float hullBefore = enemy.Ship.Hull.CurrentHull;
@@ -943,20 +944,24 @@ var tests = new (string Name, Action Run)[]
     }),
     ("Station server serves Armarium and relays hello state and fire", () =>
         StationServerSmokeAsync().GetAwaiter().GetResult()),
-    ("Four encounters assign their configured content and enemy difficulty", () =>
+    ("Four combat encounters plus one separate station encounter assign their configured content", () =>
     {
         var sim = new Simulation(new SimulationSettings
         {
             Power = new PowerSettings { DefaultReactorOperatingLevelPercent = 32f }
         });
         Check(sim.World.CurrentEncounter.Id == 1, "Start in encounter 1.");
-        Check(sim.World.Encounters.Count == 4, "There must be four destinations.");
+        Check(sim.World.Encounters.Count == 5, "There must be four combat destinations and one station destination.");
         Check(sim.World.Encounters[0].Targets.Count == 10 && sim.World.Encounters[1].Targets.Count == 0 &&
               sim.World.Encounters[2].Targets.Count == 0 && sim.World.Encounters[3].Targets.Count == 0,
             "Targets belong only to encounter 1.");
         Check(sim.World.Encounters[0].Enemies.Count == 0 && sim.World.Encounters[1].Enemies.Count == 1 &&
               sim.World.Encounters[2].Enemies.Count == 1 && sim.World.Encounters[3].Enemies.Count == 1,
             "Wrong enemy populations.");
+        Check(sim.World.Encounters.Take(4).All(encounter => encounter.Shop is null) &&
+              sim.World.Encounters[4].Shop is not null && sim.World.Encounters[4].Enemies.Count == 0 &&
+              sim.World.Encounters[4].Targets.Count == 0,
+            "The neutral station must be a separate, empty fifth encounter.");
         Check(sim.World.Encounters[1].Enemies.Single().Difficulty == EnemyDifficulty.Easy &&
               sim.World.Encounters[2].Enemies.Single().Difficulty == EnemyDifficulty.Medium &&
               sim.World.Encounters[3].Enemies.Single().Difficulty == EnemyDifficulty.Hard,
@@ -1121,21 +1126,54 @@ var tests = new (string Name, Action Run)[]
         Check(sim.Events.OfType<EncounterChanged>().Single() == new EncounterChanged(1, 2),
             "Quick Start must publish the usual encounter-change event for presentation.");
     }),
-    ("Hyperspace entry planning uses a bounded last known enemy position", () =>
+    ("Hyperspace entry planning uses the fixed known station position", () =>
+    {
+        var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -1_000)));
+        Step(sim, 600);
+        sim.Step(default, new NavigationCommand(EnterHyperspace: true));
+        sim.Step(default, new NavigationCommand(5));
+        Check(sim.World.HyperspacePhase == HyperspacePhase.PlanningEntry,
+            "Selecting a destination must enter the hyperspace entry-planning phase.");
+        Vector3 known = sim.World.CurrentEncounter.LastKnownShopPosition ?? throw new Exception(
+            "A selected encounter must expose its known shop position.");
+        NearVector(known, sim.World.CurrentEncounter.Shop!.Position);
+        sim.Step(default);
+        NearVector(sim.World.CurrentEncounter.LastKnownShopPosition!.Value, known, .0001f);
+    }),
+    ("Combat entry planning retains a bounded last known enemy position", () =>
     {
         var sim = CombatSimulation(enemy: new ShipInitialState(new Vector3(0, 0, -1_000)));
         Step(sim, 600);
         sim.Step(default, new NavigationCommand(EnterHyperspace: true));
         sim.Step(default, new NavigationCommand(3));
-        Check(sim.World.HyperspacePhase == HyperspacePhase.PlanningEntry,
-            "Selecting a destination must enter the hyperspace entry-planning phase.");
         Vector3 known = sim.World.CurrentEncounter.LastKnownEnemyPosition ?? throw new Exception(
-            "An encounter with an active enemy must supply a last known position.");
+            "A combat destination with an active enemy must supply a last known position.");
         Vector3 actual = sim.World.CurrentEnemy!.Ship.Position;
         Check(Vector3.Distance(known, actual) <= 300.001f,
-            "Last known enemy position must stay within the configured three-hundred-metre uncertainty radius.");
-        sim.Step(default);
-        NearVector(sim.World.CurrentEncounter.LastKnownEnemyPosition!.Value, known, .0001f);
+            "Combat last-known positions must remain inside the configured three-hundred-metre uncertainty radius.");
+    }),
+    ("Shops use a one kilometre footprint and one hundred metre docking range", () =>
+    {
+        var sim = new Simulation();
+        var shop = sim.World.Encounters.Single(encounter => encounter.Shop is not null).Shop!;
+        Near(shop.WidthMeters, 1_000f);
+        Near(shop.DepthMeters, 1_000f);
+        Near(shop.InteractionRangeMeters, 100f);
+        Check(shop.IsInInteractionRange(shop.Position + new Vector3(600f, 0f, 0f)),
+            "One hundred metres beyond the 500 metre footprint edge must permit shop interaction.");
+        Check(!shop.IsInInteractionRange(shop.Position + new Vector3(600.1f, 0f, 0f)),
+            "Shop interaction must end immediately beyond the configured docking range.");
+    }),
+    ("Entering the station footprint destroys the player ship", () =>
+    {
+        var sim = new Simulation(new SimulationSettings { StartInHyperspace = true });
+        sim.Step(default, new NavigationCommand(5));
+        sim.Step(default, new NavigationCommand(EntryPosition: Vector3.Zero));
+        Check(sim.World.GameState == GameState.GameOver && sim.World.Ship.Hull.CurrentHull == 0f,
+            "A player entering the station's solid footprint must be destroyed immediately.");
+        Check(sim.Events.OfType<ShopCollision>().Count() == 1 &&
+              sim.Events.OfType<PlayerDestroyed>().Single().EnemyId == -1,
+            "Station contact must publish an environmental collision and the normal player-destruction event.");
     }),
     ("Early jump is rejected without being queued", () =>
     {

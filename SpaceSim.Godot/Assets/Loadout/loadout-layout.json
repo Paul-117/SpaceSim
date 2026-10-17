@@ -280,14 +280,14 @@
     "name": "REAKTOR frame",
     "file": "Rahmen.png",
     "x": 962,
-    "y": 98,
+    "y": 99,
     "width": 354,
     "height": 334,
     "parentId": "loadout-background",
-    "relativeX": 0.42348993288590603,
-    "relativeY": 0.17857142857142858,
-    "relativeWidth": 0.24228187919463087,
-    "relativeHeight": 0.28095238095238095
+    "relativeX": 0.42368240930869266,
+    "relativeY": 0.17983193277310924,
+    "relativeWidth": 0.24229979466119098,
+    "relativeHeight": 0.280672268907563
   },
   {
     "id": "reactor-title",
@@ -1158,5 +1158,77 @@
     "relativeWidth": 0.12080536912751678,
     "relativeHeight": 0.02142857142857143,
     "relativeFontSize": 0.01507936507936508
+  },
+  {
+    "id": "text-1792220302055",
+    "type": "text",
+    "name": "Fuel",
+    "text": "Fuel:",
+    "x": 1283,
+    "y": 23,
+    "width": 60,
+    "height": 30,
+    "fontSize": 30,
+    "color": "#8bdcff"
+  },
+  {
+    "id": "loadout-current-fuel",
+    "type": "text",
+    "name": "Current Fuel",
+    "text": "Current",
+    "x": 1343,
+    "y": 17,
+    "width": 97,
+    "height": 40,
+    "fontSize": 30,
+    "color": "#8bdcff"
+  },
+  {
+    "id": "text-1792220390704-2",
+    "type": "text",
+    "name": "Hull Integrity",
+    "text": "Hull Integrity: ",
+    "x": 972,
+    "y": 21,
+    "width": 162,
+    "height": 33,
+    "fontSize": 30,
+    "color": "#8bdcff"
+  },
+  {
+    "id": "loadout-current-hull",
+    "type": "text",
+    "name": "Current Integrity",
+    "text": "Current",
+    "x": 1140,
+    "y": 20,
+    "width": 105,
+    "height": 34,
+    "fontSize": 30,
+    "color": "#8bdcff"
+  },
+  {
+    "id": "text-1792220470352-4",
+    "type": "text",
+    "name": "Money",
+    "text": "Money: ",
+    "x": 1487,
+    "y": 21,
+    "width": 89,
+    "height": 29,
+    "fontSize": 30,
+    "color": "#8bdcff"
+  },
+  {
+    "id": "loadout-current-credits",
+    "type": "text",
+    "name": "Money current",
+    "text": "Current",
+    "x": 1582,
+    "y": 23,
+    "width": 89,
+    "height": 29,
+    "fontSize": 30,
+    "color": "#8bdcff"
   }
 ]

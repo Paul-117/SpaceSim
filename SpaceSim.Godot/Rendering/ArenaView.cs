@@ -19,7 +19,10 @@ public partial class ArenaView : Node2D
     public bool IsFreeCamera { get; set; }
     public bool HidePlayerGuidance { get; set; }
     public Vector2? HyperspaceEntryPoint { get; set; }
-    public Vector2? HyperspaceEnemyPoint { get; set; }
+    /// <summary>Known navigation location shown while the player selects a hyperspace entry point.</summary>
+    public Vector2? HyperspaceKnownPoint { get; set; }
+    /// <summary>Distinguishes the fixed shop marker from an approximate hostile contact marker.</summary>
+    public bool HyperspaceKnownPointIsShop { get; set; }
     /// <summary>Presentation-only contact selection made from the bridge map.</summary>
     public int? SelectedEnemyId { get; set; }
     /// <summary>Current Camera2D magnification; indicators use it to derive visible world bounds.</summary>
@@ -68,6 +71,7 @@ public partial class ArenaView : Node2D
     {
         if (World is null) return;
         if (!HidePlayerGuidance) DrawAimAndDrift();
+        if (World.IsPlayerInRealSpace) DrawShop();
         DrawEnemy();
         if (!HidePlayerGuidance && !IsFreeCamera) DrawEnemyIndicator();
         foreach (var target in World.Targets)
@@ -86,24 +90,25 @@ public partial class ArenaView : Node2D
                 $"T{target.Id:00}  {distance:0} m", fontSize: 12, modulate: ViewSettings.Muted);
         }
         if (!HidePlayerGuidance) DrawNearestIndicator();
-        if (HyperspaceEnemyPoint is { } lastKnown)
+        if (HyperspaceKnownPoint is { } knownPoint)
         {
             Color marker = new Color("94a0a3");
             float markerHalfSize = ScreenPixelsToWorld(9);
-            DrawLine(lastKnown + new Vector2(-markerHalfSize, -markerHalfSize), lastKnown + new Vector2(markerHalfSize, markerHalfSize),
+            DrawLine(knownPoint + new Vector2(-markerHalfSize, -markerHalfSize), knownPoint + new Vector2(markerHalfSize, markerHalfSize),
                 marker, ScreenPixelsToWorld(1.8f), true);
-            DrawLine(lastKnown + new Vector2(-markerHalfSize, markerHalfSize), lastKnown + new Vector2(markerHalfSize, -markerHalfSize),
+            DrawLine(knownPoint + new Vector2(-markerHalfSize, markerHalfSize), knownPoint + new Vector2(markerHalfSize, -markerHalfSize),
                 marker, ScreenPixelsToWorld(1.8f), true);
-            DrawString(ThemeDB.FallbackFont, lastKnown + new Vector2(ScreenPixelsToWorld(14), ScreenPixelsToWorld(-10)), "LAST KNOWN POSITION",
+            string label = HyperspaceKnownPointIsShop ? "SHOP LOCATION" : "LAST KNOWN POSITION";
+            DrawString(ThemeDB.FallbackFont, knownPoint + new Vector2(ScreenPixelsToWorld(14), ScreenPixelsToWorld(-10)), label,
                 fontSize: ScreenFontSize(12), modulate: marker);
         }
         if (HyperspaceEntryPoint is { } entry)
         {
-            if (HyperspaceEnemyPoint is { } knownPoint)
+            if (HyperspaceKnownPoint is { } distanceReference)
             {
-                DrawLine(entry, knownPoint, ViewSettings.Alpha(ViewSettings.Amber, .72f), ScreenPixelsToWorld(1.4f), true);
-                float distanceMeters = entry.DistanceTo(knownPoint) / ViewSettings.PixelsPerMeter;
-                Vector2 midpoint = entry.Lerp(knownPoint, .5f);
+                DrawLine(entry, distanceReference, ViewSettings.Alpha(ViewSettings.Amber, .72f), ScreenPixelsToWorld(1.4f), true);
+                float distanceMeters = entry.DistanceTo(distanceReference) / ViewSettings.PixelsPerMeter;
+                Vector2 midpoint = entry.Lerp(distanceReference, .5f);
                 DrawString(ThemeDB.FallbackFont, midpoint + new Vector2(ScreenPixelsToWorld(8), ScreenPixelsToWorld(-7)), $"{distanceMeters:0} m",
                     fontSize: ScreenFontSize(12), modulate: ViewSettings.Amber);
             }
@@ -135,6 +140,21 @@ public partial class ArenaView : Node2D
         DrawLine(from, to, ViewSettings.Alpha(color, alpha * 0.12f), 14, true);
         DrawLine(from, to, ViewSettings.Alpha(color, alpha * 0.55f), 5, true);
         DrawLine(from, to, new Color(0.9f, 1f, 1f, alpha), 1.8f, true);
+    }
+
+    private void DrawShop()
+    {
+        var shop = World.CurrentEncounter.Shop;
+        if (shop is null) return;
+        Vector2 center = ViewSettings.Project(shop.Position);
+        Vector2 halfSize = new(shop.WidthMeters * ViewSettings.PixelsPerMeter / 2f,
+            shop.DepthMeters * ViewSettings.PixelsPerMeter / 2f);
+        var footprint = new Rect2(center - halfSize, halfSize * 2f);
+        Color outline = new("67d4ff");
+        DrawRect(footprint, ViewSettings.Alpha(outline, .055f), true);
+        DrawRect(footprint, ViewSettings.Alpha(outline, .9f), false, ScreenPixelsToWorld(2f), true);
+        DrawString(ThemeDB.FallbackFont, center + new Vector2(ScreenPixelsToWorld(-19), ScreenPixelsToWorld(5)), "SHOP",
+            fontSize: ScreenFontSize(15), modulate: outline);
     }
 
     private void DrawFadingBeamTail(Vector2 from, Vector2 to, Color color, float alpha)
